@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Code Dungeon</title>
+    <meta name="claude:viewport-fit-sides" content="cover" />
+  </head>
+  <body>
+    <div id="app" class="app" inert>
+      <header class="titlebar">
+        <span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="titlebar-name">Code Dungeon</span>
+        <span class="titlebar-project" id="project-name"></span>
+        <button type="button" class="chip-btn" id="menu-btn" aria-label="Apri il menu">Menu</button>
+      </header>
+
+      <div class="workbench">
+        <nav class="activitybar" aria-hidden="true">
+          <span class="act act-files is-on"></span>
+          <span class="act act-search"></span>
+          <span class="act act-tour"></span>
+        </nav>
+
+        <aside class="sidebar" aria-label="Esplora file">
+          <div class="sidebar-title">Esplora</div>
+          <div class="explorer" id="explorer">
+            <canvas class="walker" id="walker" aria-hidden="true"></canvas>
+            <ul class="file-list" id="file-list"></ul>
+          </div>
+          <div class="sidebar-title sidebar-tours">Tour salvati</div>
+          <ul class="tour-list" id="tour-list"></ul>
+        </aside>
+
+        <main class="main">
+          <div class="tabs" id="tabs" role="presentation"></div>
+          <div class="editor-wrap">
+            <div class="editor" id="editor" role="region" aria-label="Editor del codice" tabindex="0"></div>
+            <div class="editor-empty" id="editor-empty">
+              <p>Nessun file aperto.</p>
+              <p class="muted">Scegli un tour, oppure chiedi all'agente di aprire un file.</p>
+            </div>
+            <canvas class="wipe" id="wipe" aria-hidden="true"></canvas>
+          </div>
+
+          <section class="dialog" id="dialog" aria-label="Dialogo con la guida">
+            <div class="portrait-frame">
+              <canvas class="portrait" id="portrait" aria-hidden="true"></canvas>
+            </div>
+            <div class="dialog-body">
+              <div class="dialog-head">
+                <span class="speaker" id="speaker">Lumen</span>
+                <span class="step-title" id="step-title"></span>
+                <div class="level-switch" id="level-switch" role="radiogroup" aria-label="Livello della spiegazione"></div>
+              </div>
+              <p class="dialog-text" id="dialog-text" aria-hidden="true"></p>
+              <p class="sr-only" id="dialog-live" aria-live="polite"></p>
+              <p class="dialog-note" id="dialog-note" hidden></p>
+              <div class="choices" id="choices"></div>
+              <div class="dialog-foot">
+                <button type="button" class="pix-btn ghost" id="prev-btn">◀ Indietro</button>
+                <span class="advance" id="advance" aria-hidden="true">▼</span>
+                <button type="button" class="pix-btn" id="next-btn">Avanti ▶</button>
+              </div>
+            </div>
+            <form class="ask" id="ask-form" autocomplete="off">
+              <label class="sr-only" for="ask-input">Domanda per la guida</label>
+              <input id="ask-input" name="question" type="text" maxlength="500" placeholder="Chiedi a Lumen qualcosa su questo codice…" />
+              <button type="submit" class="pix-btn">Chiedi</button>
+            </form>
+          </section>
+        </main>
+      </div>
+
+      <footer class="statusbar">
+        <span class="status-conn" id="status-conn"></span>
+        <span class="status-step" id="status-step"></span>
+        <span class="status-right">
+          <span id="status-level"></span>
+          <span id="status-gen"></span>
+          <span id="status-lang"></span>
+        </span>
+      </footer>
+    </div>
+
+    <div class="title-screen" id="title-screen" role="dialog" aria-modal="true" aria-labelledby="title-logo">
+      <div class="title-inner">
+        <div class="title-hero">
+          <canvas class="title-portrait" id="title-portrait" aria-hidden="true"></canvas>
+          <div>
+            <h1 class="logo" id="title-logo">Code<br />Dungeon</h1>
+            <p class="tagline">Lumen ti accompagna dentro il codice, un passo del programma alla volta.</p>
+          </div>
+        </div>
+
+        <fieldset class="menu-group">
+          <legend>Livello di spiegazione</legend>
+          <div class="option-grid level-grid" id="level-options"></div>
+        </fieldset>
+
+        <fieldset class="menu-group">
+          <legend>Generazione dei testi</legend>
+          <div class="option-grid gen-grid" id="gen-options"></div>
+        </fieldset>
+
+        <div class="title-actions">
+          <p class="title-source" id="title-source"></p>
+          <button type="button" class="pix-btn big" id="start-btn">Entra nel dungeon ▶</button>
+        </div>
+        <p class="title-keys">Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc menu</p>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "id": "viaggio-di-un-pacchetto",
+  "title": "Il viaggio di un pacchetto",
+  "description": "Dal client che si collega fino alla funzione che risponde, seguendo un pacchetto dentro il server.",
+  "generation": "istantanea",
+  "steps": [
+    {
+      "id": "ingresso",
+      "file": "server.py",
+      "lines": [25, 33],
+      "title": "Il portone d'ingresso",
+      "expression": "felice",
+      "text": {
+        "facile": "Benvenuto nel dungeon! Questo è il portone del server: resta sempre aperto e aspetta che qualcuno bussi. Ogni volta che arriva un visitatore, gli assegna un aiutante personale e torna subito ad aspettare il prossimo.",
+        "medio": "main() apre un socket TCP sulla porta 9000 e resta in un ciclo infinito su accept(). Per ogni client crea un thread che esegue handle_client, così più client possono essere serviti in parallelo.",
+        "difficile": "Socket AF_INET/SOCK_STREAM con SO_REUSEADDR, bind su tutte le interfacce e listen() con backlog predefinito. Il modello è thread-per-connessione: semplice, ma non scala oltre qualche migliaio di client, dove servirebbero selectors o asyncio.",
+        "arduo": "Bind su 0.0.0.0: il servizio è esposto su ogni interfaccia, non solo in loopback. Nessun limite al numero di thread: un attaccante che apre migliaia di connessioni lente esaurisce thread e memoria (stile slowloris). Manca anche un timeout sul socket: settimeout() non viene mai chiamato."
+      }
+    },
+    {
+      "id": "aiutante",
+      "file": "server.py",
+      "lines": [12, 22],
+      "title": "L'aiutante di ogni client",
+      "expression": "neutro",
+      "text": {
+        "facile": "Ecco l'aiutante personale. Ripete sempre gli stessi tre gesti: legge un messaggio, lo consegna a chi sa gestirlo, rimanda indietro la risposta. Se qualcosa va storto, saluta e chiude.",
+        "medio": "handle_client tiene un dizionario session per ricordare lo stato del client (per esempio chi ha fatto login). Nel ciclo legge un pacchetto, lo passa a dispatch e invia la risposta con sendall.",
+        "difficile": "Il dizionario session vive per tutta la connessione ed è privato del thread, quindi non serve sincronizzazione. Il context manager chiude il socket in ogni caso. Vengono catturate solo ConnectionError e ProtocolError: ogni altra eccezione termina il thread con un traceback.",
+        "arduo": "Eccezioni non previste (JSONDecodeError, UnicodeError, TypeError da compare_digest con input non ASCII) risalgono fino al thread e lo uccidono: il socket si chiude, ma il traceback finisce nei log e rivela dettagli interni. Conviene un except finale che logga e chiude in modo controllato."
+      }
+    },
+    {
+      "id": "formato",
+      "file": "protocol.py",
+      "lines": [4, 10],
+      "title": "La forma di un pacchetto",
+      "expression": "pensieroso",
+      "text": {
+        "facile": "Prima di seguire il messaggio, guardiamo com'è fatto. Ogni messaggio ha un'etichetta in cima, sempre della stessa misura: dice chi lo manda, che tipo di messaggio è e quanto è lungo il resto.",
+        "medio": "L'header è lungo 10 byte: 4 di magic number (DUNG), 1 di versione, 1 di tipo e 4 di lunghezza del payload. I tipi possibili sono PING, LOGIN e MESSAGE.",
+        "difficile": "struct.Struct(\"!4sBBI\"): '!' impone network byte order (big-endian) senza padding, quindi 4+1+1+4 = 10 byte. Precompilare la Struct evita di riparsare il formato a ogni pacchetto.",
+        "arduo": "Il campo lunghezza è un unsigned int a 32 bit: il client può dichiarare fino a 4.294.967.295 byte di payload. Il protocollo non ha checksum né autenticazione dell'header, e il tipo occupa un byte intero anche se ne usiamo tre valori. Tienilo a mente: tra poco diventa importante."
+      }
+    },
+    {
+      "id": "lettura",
+      "file": "protocol.py",
+      "lines": [27, 35],
+      "title": "Si legge l'etichetta",
+      "expression": "neutro",
+      "text": {
+        "facile": "L'aiutante legge prima l'etichetta e controlla due cose: che la firma sia quella giusta e che la versione sia quella che conosce. Se no, rifiuta il messaggio. Poi legge il resto del messaggio.",
+        "medio": "read_packet legge esattamente 10 byte, li scompone con unpack e verifica magic e versione, lanciando ProtocolError se non tornano. Poi usa la lunghezza per leggere il payload.",
+        "difficile": "recv_exact è necessario perché TCP è uno stream: recv() può restituire meno byte di quelli chiesti, quindi si accumula in un bytearray finché non si arriva a n. La validazione di magic e versione avviene prima di leggere il payload.",
+        "arduo": "Viene validato tutto l'header tranne il campo più pericoloso: length. Nessun controllo su un massimo, e il tipo non viene validato qui ma solo più avanti nel dispatcher."
+      }
+    },
+    {
+      "id": "falla-lunghezza",
+      "file": "protocol.py",
+      "lines": [34, 34],
+      "title": "Un punto debole",
+      "expression": "preoccupato",
+      "text": {
+        "facile": "Ops, qui c'è un punto debole! Il server si fida ciecamente di quanto dice l'etichetta sulla lunghezza. Un visitatore dispettoso potrebbe dire \"il mio messaggio è enorme\" e far aspettare e riempire il server per niente.",
+        "medio": "Il server legge tanti byte quanti ne dichiara il client, senza un limite. Un client malevolo può dichiarare una lunghezza enorme e far consumare memoria al server. Basterebbe rifiutare i pacchetti oltre una soglia, per esempio 64 KB.",
+        "difficile": "Allocazione guidata dall'input: recv_exact chiede length byte al socket. Con length = 0xFFFFFFFF il server tenta di riservare memoria enorme, e un client lento tiene il thread bloccato per sempre. Mitigazione: MAX_PAYLOAD controllato subito dopo unpack, più un timeout sul socket.",
+        "arduo": "Denial of service sulla memoria con un solo header da 10 byte. In CPython socket.recv(bufsize) alloca subito un buffer di bufsize byte, prima che arrivino dati: con length = 0xFFFFFFFF la prima recv chiede ~4 GiB. Il risultato è una MemoryError non gestita o forte pressione sulla memoria, moltiplicata dai thread illimitati. Fix: if length > MAX_PAYLOAD: raise ProtocolError, recv a blocchi limitati (es. 64 KiB), settimeout() e un tetto alle connessioni."
+      }
+    },
+    {
+      "id": "tabella",
+      "file": "dispatcher.py",
+      "lines": [5, 9],
+      "title": "La bacheca degli incarichi",
+      "expression": "felice",
+      "text": {
+        "facile": "Il messaggio è arrivato! Ora bisogna capire a chi darlo. Questa è una bacheca: per ogni tipo di messaggio c'è scritto quale aiutante specializzato se ne occupa.",
+        "medio": "HANDLERS è un dizionario che associa ogni tipo di pacchetto alla sua funzione. È più pulito di una lunga catena di if/elif e aggiungere un tipo nuovo significa aggiungere una riga.",
+        "difficile": "Dispatch table: le funzioni in Python sono oggetti di prima classe, quindi si possono usare come valori. La ricerca nel dict è O(1) e la tabella è definita una sola volta all'import del modulo.",
+        "arduo": "Approccio a whitelist esplicita: solo i tipi presenti nella tabella sono raggiungibili. È molto più sicuro di un dispatch dinamico come getattr(handlers, 'handle_' + nome), che potrebbe esporre funzioni non pensate per l'esterno."
+      }
+    },
+    {
+      "id": "smistamento",
+      "file": "dispatcher.py",
+      "lines": [12, 16],
+      "title": "Lo smistamento",
+      "expression": "pensieroso",
+      "text": {
+        "facile": "Qui si guarda il tipo scritto sull'etichetta e si cerca sulla bacheca. Se il tipo non esiste, il messaggio viene rifiutato. Che tipo di messaggio vuoi seguire?",
+        "medio": "dispatch cerca il tipo in HANDLERS con get(): se non lo trova lancia ProtocolError, altrimenti chiama la funzione passandole la sessione e il payload. Scegli quale ramo seguire.",
+        "difficile": "get() restituisce None per tipi sconosciuti, gestito con un'eccezione che chiude la connessione. Tutti gli handler condividono la firma (session, payload) -> bytes. Scegli il ramo da esplorare.",
+        "arduo": "Un tipo sconosciuto chiude la connessione: comportamento fail-closed, corretto. Il valore viene riportato in esadecimale nel messaggio d'errore, utile per il debug ma da non rimandare al client. Scegli il ramo da analizzare."
+      },
+      "next": [
+        { "goto": "ping", "when": "type == PING (0x01)" },
+        { "goto": "login", "when": "type == LOGIN (0x02)" },
+        { "goto": "messaggio", "when": "type == MESSAGE (0x03)" }
+      ]
+    },
+    {
+      "id": "ping",
+      "file": "handlers.py",
+      "lines": [10, 11],
+      "title": "Ramo PING",
+      "expression": "felice",
+      "text": {
+        "facile": "Il messaggio più semplice: il client chiede \"ci sei?\" e il server risponde \"pong!\". Serve solo a controllare che il server sia vivo.",
+        "medio": "handle_ping ignora sessione e payload e restituisce un pacchetto PING con payload \"pong\". È un controllo di vitalità (health check).",
+        "difficile": "Handler senza stato e senza effetti collaterali: costruisce la risposta con build_packet riusando la stessa Struct dell'header.",
+        "arduo": "Il ping non richiede autenticazione, quindi chiunque può verificare che il servizio esista sulla porta 9000 (fingerprinting). La risposta è più corta della richiesta, quindi niente rischio di amplificazione."
+      },
+      "next": [{ "goto": "ritorno" }]
+    },
+    {
+      "id": "login",
+      "file": "handlers.py",
+      "lines": [14, 22],
+      "title": "Ramo LOGIN",
+      "expression": "pensieroso",
+      "text": {
+        "facile": "Qui il visitatore dice chi è e la sua parola segreta. Se corrispondono, il server se lo ricorda per il resto della visita. Altrimenti risponde \"accesso negato\".",
+        "medio": "handle_login legge il payload come JSON, cerca l'utente in USERS e confronta la password. Se va bene salva il nome utente nella sessione, così i pacchetti successivi sono autenticati.",
+        "difficile": "hmac.compare_digest confronta in tempo costante, evitando che il tempo di risposta riveli quanti caratteri sono corretti. La sessione autenticata è legata alla connessione TCP.",
+        "arduo": "Bene il confronto in tempo costante, ma: password in chiaro nel codice (servono hash lenti come Argon2 o bcrypt); nessun limite ai tentativi, quindi brute force libero; json.loads e compare_digest con caratteri non ASCII lanciano eccezioni non gestite. Inoltre il timing rivela comunque se l'utente esiste, perché il confronto avviene solo per utenti noti."
+      },
+      "next": [{ "goto": "ritorno" }]
+    },
+    {
+      "id": "messaggio",
+      "file": "handlers.py",
+      "lines": [25, 30],
+      "title": "Ramo MESSAGE",
+      "expression": "neutro",
+      "text": {
+        "facile": "Un messaggio vero e proprio! Ma attenzione: il server lo accetta solo da chi ha già detto chi è. Se il visitatore non ha fatto il login, gli chiede di farlo prima.",
+        "medio": "handle_message controlla che nella sessione ci sia un utente. Se sì, decodifica il testo in UTF-8, lo stampa e risponde \"ricevuto\".",
+        "difficile": "errors=\"replace\" rende la decodifica robusta ai byte non validi sostituendoli con il carattere di rimpiazzo. Il controllo di autenticazione è fatto dentro l'handler, non centralizzato nel dispatcher.",
+        "arduo": "Il testo dell'utente finisce nei log senza filtri: caratteri di controllo e sequenze ANSI permettono log injection o di manipolare il terminale di chi li legge. L'autorizzazione vive in ogni handler: un handler futuro che la dimentica diventa una falla, meglio un controllo centrale nel dispatcher."
+      },
+      "next": [{ "goto": "ritorno" }]
+    },
+    {
+      "id": "ritorno",
+      "file": "server.py",
+      "lines": [17, 19],
+      "title": "Il viaggio di ritorno",
+      "expression": "felice",
+      "text": {
+        "facile": "E siamo tornati all'aiutante: la risposta viene spedita al client e si ricomincia ad aspettare il prossimo messaggio. Hai seguito un pacchetto per tutto il dungeon!",
+        "medio": "La risposta prodotta dall'handler torna a handle_client, che la invia con sendall. Il ciclo riparte con il pacchetto successivo della stessa connessione.",
+        "difficile": "sendall gestisce gli invii parziali iterando finché tutto il buffer è trasmesso. Il protocollo è richiesta-risposta sincrono: un pacchetto alla volta per connessione.",
+        "arduo": "Riepilogo dei rischi trovati: length non limitato (DoS di memoria), thread e connessioni illimitati, nessun timeout, eccezioni non gestite che rivelano dettagli nei log, credenziali in chiaro senza rate limiting, log injection. Il dispatch a whitelist e il confronto in tempo costante sono invece scelte corrette."
+      },
+      "next": []
+    }
+  ]
+}
