@@ -1,6 +1,7 @@
 {
   "name": "code-dungeon",
   "version": "0.1.0",
+  "private": true,
   "description": "Un gioco cozy in pixel art che spiega il codice generato dagli LLM. Il gioco è un server MCP: qualsiasi agente lo pilota.",
   "license": "MIT",
   "author": "Armidon1",
