@@ -34,7 +34,7 @@ Ogni testo: 2-4 frasi, massimo ~70 parole, nella lingua dell'utente. Non ripeter
 ## Durante la spiegazione dal vivo
 
 - Le domande possono arrivare da sole come evento `<channel source="code-dungeon" question_id="..." level="..." file="..." lines="..." step="...">` (Claude Code con il canale attivo). Rispondi subito con `show_dialog` passando `question_id`: l'utente legge nel gioco, non nel terminale.
-- Altrimenti, quando l'utente chiede di restare in ascolto, chiama `wait_for_question` in ciclo: rispondi a ogni domanda e richiamalo. Se l'utente dice di aver fatto una domanda, usa `get_user_questions`.
+- Altrimenti, dopo `play_tour` e dopo ogni risposta, chiama `wait_for_question` e resta in ascolto: rispondi a ogni domanda e richiamalo. L'utente non deve tornare al terminale per chiedertelo. Smetti solo se ti scrive nel terminale.
 - Ogni domanda arriva con il contesto (livello, file, righe, passo). Rispondi con `show_dialog` al livello dell'utente; se ti riferisci ad altro codice, prima `highlight_lines`.
 - Una risposta lunga può stare in più `show_dialog` di fila: il gioco li mette in coda e l'utente li legge con "Avanti".
 - Per domande che richiedono fonti esterne (documentazione, RFC, CVE) usa i tuoi strumenti di ricerca e cita la fonte nel fumetto.

@@ -63,7 +63,8 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         'Le domande che l\'utente scrive nel gioco possono arrivare da sole come <channel source="code-dungeon" question_id="..." ...>: ' +
         "rispondi subito nel gioco con show_dialog passando question_id (highlight_lines prima, se parli di altro codice). " +
         "L'utente legge la risposta nel gioco, non nel terminale. " +
-        "Se le domande non arrivano da sole, usa wait_for_question per restare in ascolto, oppure get_user_questions quando l'utente te lo chiede.",
+        "Se le domande non arrivano da sole, dopo play_tour e dopo ogni risposta chiama wait_for_question e resta in ascolto: " +
+        "l'utente non deve tornare al terminale per chiedertelo. Smetti solo se l'utente ti scrive nel terminale.",
     },
   );
 
@@ -85,6 +86,11 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       : bridge.listening
         ? `Nessuna finestra del gioco aperta: chiedi all'utente di aprire ${bridge.url}. Il comando verrà mostrato appena si collega.`
         : "Il ponte verso il gioco non è attivo (porta occupata?). Il tour viene comunque salvato.";
+
+  /** Dopo un tour o una risposta l'agente torna in ascolto da solo: l'utente non deve chiederlo dal terminale. */
+  const LISTEN =
+    " Ora resta in ascolto delle domande dell'utente: chiama wait_for_question" +
+    ' (non serve se le domande ti arrivano da sole come <channel source="code-dungeon">).';
 
   const withTour = async (id: string, fn: (t: Tour) => Promise<ToolResult> | ToolResult): Promise<ToolResult> => {
     try {
@@ -196,7 +202,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     },
     async ({ text, expression, speaker, question_id }) => {
       if (question_id) bridge.answer(question_id);
-      return ok(`Fumetto mostrato. ${delivered(bridge.send({ type: "dialog", text, expression, speaker }))}`);
+      return ok(`Fumetto mostrato. ${delivered(bridge.send({ type: "dialog", text, expression, speaker }))}${LISTEN}`);
     },
   );
 
@@ -397,7 +403,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         if (broken.length) throw new Error(`Collegamenti verso passi inesistenti: ${broken.join(", ")}`);
         if (from_step && !ids.has(from_step)) throw new Error(`Passo non trovato: ${from_step}`);
         for (const s of tour.steps) await checkStepDiagram(s.diagram).catch((e) => Promise.reject(new Error(`Passo ${s.id}: ${e.message}`)));
-        return ok(`Tour "${tour.title}" avviato. ${delivered(bridge.send({ type: "play_tour", tour, fromStep: from_step }))}`);
+        return ok(`Tour "${tour.title}" avviato. ${delivered(bridge.send({ type: "play_tour", tour, fromStep: from_step }))}${LISTEN}`);
       }),
   );
 

@@ -51,8 +51,10 @@ Il server parte nella cartella in cui lavora l'agente e la usa come progetto. Pe
 **Claude Code**
 
 ```bash
-claude mcp add code-dungeon -- node /percorso/code-dungeon/dist/server/cli.js mcp
+claude mcp add --scope user code-dungeon -- node /percorso/code-dungeon/dist/server/cli.js mcp
 ```
+
+Con `--scope user` vale in tutte le cartelle: non serve spostare nulla, basta avviare `claude` nel progetto da spiegare. I tour e gli schemi finiscono in `.tour/` di quel progetto. Una sessione alla volta: la seconda trova la porta 7337 occupata.
 
 **Codex CLI** (`~/.codex/config.toml`)
 
@@ -83,15 +85,15 @@ Poi, dal tuo agente nella cartella del progetto da spiegare:
 
 ### Domande senza tornare al terminale
 
-Con **Claude Code** le domande scritte nel gioco arrivano da sole nella sessione: Code Dungeon è anche un *canale* di Claude Code. I canali sono in anteprima, quindi per ora va avviato così:
+Dopo aver avviato un tour o risposto a una domanda, l'agente resta in ascolto da solo (`wait_for_question`): scrivi nel gioco e la risposta arriva nel fumetto, con qualsiasi agente. Per parlargli di altro nel terminale, interrompilo (in Claude Code con Esc). Se l'agente tarda, il gioco ti ricorda come richiamarlo.
+
+**Extra per Claude Code.** Code Dungeon è anche un *canale*: una funzione sperimentale di Claude Code con cui un server può far arrivare un messaggio nella sessione senza essere chiamato. Così le domande arrivano da sole e il terminale resta libero. Gli altri agenti la ignorano. Per attivarla:
 
 ```bash
 claude --dangerously-load-development-channels server:code-dungeon
 ```
 
-Conferma l'avviso iniziale e da lì in poi ogni domanda fatta nel gioco viene letta e risposta senza che tu scriva nulla nel terminale.
-
-Con gli altri agenti (o Claude Code avviato normalmente) di' una volta *"resta in ascolto delle domande nel gioco"*: l'agente usa `wait_for_question` e risponde a ogni domanda appena arriva. Se l'agente tarda, il gioco ti ricorda come chiamarlo.
+e conferma l'avviso iniziale (serve perché i canali fatti in casa non sono ancora nell'elenco approvato).
 
 ## Strumenti MCP
 
