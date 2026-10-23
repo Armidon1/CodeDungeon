@@ -105,6 +105,8 @@ button { cursor: pointer; }
   border: 2px solid var(--line);
 }
 .chip-btn:hover { border-color: var(--lantern); color: var(--lantern); }
+.chip-btn + .chip-btn { margin-left: 0; }
+#sound-btn[aria-pressed="true"] { color: var(--ink-faint); text-decoration: line-through; }
 
 .workbench {
   display: grid;
@@ -552,6 +554,14 @@ button.board-node:hover { color: var(--lantern); }
 .face-kind { font-size: 13px; }
 .face .chip-btn { margin-left: 0; }
 .guide-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+.track-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.sound-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; margin-top: 12px; color: var(--ink-dim); }
+.sound-slider { display: flex; align-items: center; gap: 10px; }
+.sound-slider input { width: 140px; min-width: 0; accent-color: var(--lantern); }
+.sound-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.sound-check input { accent-color: var(--lantern); width: 18px; height: 18px; }
+.sound-note { margin: 10px 0 0; }
+
 .reader-intro { margin: 0 0 10px; color: var(--ink-dim); font-size: 15px; }
 .reader-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .option.check:has(input:checked) .option-name::before { content: "✓ "; }
@@ -620,6 +630,9 @@ button.board-node:hover { color: var(--lantern); }
   .guide-actions .pix-btn { flex: 1; }
   .title-actions .pix-btn { width: 100%; }
   .reader-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .track-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sound-slider { flex: 1 1 100%; }
+  .sound-slider input { flex: 1; width: auto; }
   .testo-grande .dialog-text { font-size: 21px; }
 }
 

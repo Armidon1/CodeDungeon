@@ -2,6 +2,7 @@
 // localStorage ne tiene una copia, usata nella demo e finché il ponte non risponde.
 
 import { LEVELS, cleanReader, type GenerationMode, type Level, type ReaderProfile, type StoredPrefs } from "../shared/types";
+import { SOUND_DEFAULTS, cleanSound, type SoundSettings } from "./audio";
 import { BUILTIN_GUIDES, GUIDE_INFO, type BuiltinGuide } from "./portrait";
 
 export interface GuideChoice {
@@ -16,10 +17,12 @@ export interface Settings {
   guide: GuideChoice;
   /** Risposte al questionario sull'accessibilità. */
   reader: ReaderProfile;
+  /** Musica, effetti e voce della guida. */
+  sound: SoundSettings;
 }
 
 const KEY = "code-dungeon:settings";
-const DEFAULTS: Settings = { level: "medio", generation: "istantanea", guide: { id: "lumen", name: GUIDE_INFO.lumen.name }, reader: { aids: [] } };
+const DEFAULTS: Settings = { level: "medio", generation: "istantanea", guide: { id: "lumen", name: GUIDE_INFO.lumen.name }, reader: { aids: [] }, sound: SOUND_DEFAULTS };
 const defaults = (): Settings => structuredClone(DEFAULTS);
 
 /** Nome proposto per una guida: quello del ritratto predefinito, "Guida" per un'immagine propria. */
@@ -41,6 +44,7 @@ function parseSettings(raw: unknown): Settings {
     generation: s.generation === "su_richiesta" ? "su_richiesta" : "istantanea",
     guide: readGuide(s.guide),
     reader: cleanReader(s.reader),
+    sound: cleanSound(s.sound),
   };
 }
 
@@ -70,7 +74,7 @@ export function fromStored(p: StoredPrefs): Settings {
 }
 
 export function toStored(s: Settings): StoredPrefs {
-  return { settings: { level: s.level, generation: s.generation, guide: s.guide }, reader: s.reader };
+  return { settings: { level: s.level, generation: s.generation, guide: s.guide, sound: s.sound }, reader: s.reader };
 }
 
 export const LEVEL_INFO: Record<Level, { label: string; hint: string }> = {

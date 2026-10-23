@@ -10,7 +10,7 @@ agente (Claude Code / Codex / Gemini CLI) ──MCP stdio──▶ server Code D
                                                           └─ .tour/*.json nel tuo progetto (finiscono su Git)
 ```
 
-## Stato: tappa 7 di 8
+## Stato: tappa 8 di 9
 
 Funziona già:
 
@@ -21,6 +21,7 @@ Funziona già:
 - menu iniziale con 4 livelli (facile, medio, difficile, arduo) e modalità di generazione, livello cambiabile durante il tour;
 - domande dal vivo: le scrivi nel gioco, l'agente le legge e risponde nel fumetto;
 - questionario "Cosa ti aiuta a capire" nel menu: frasi brevi, poco testo per volta (fumetto a pagine), più schemi, esempi, termini spiegati, font ad alta leggibilità (Atkinson Hyperlegible), testo più grande, meno animazioni. Il gioco si adatta subito, l'agente riceve le richieste e adatta le spiegazioni;
+- musica e suoni in stile videogame: quattro colonne sonore chiptune a scelta, effetti dell'interfaccia e la voce della guida a bip mentre parla, con un timbro diverso per ogni ritratto. Tutto generato dal gioco, senza file audio; volumi separati e tasto M per togliere l'audio;
 - impostazioni salvate in SQLite sul tuo computer, uguali in tutti i progetti;
 - lavagna degli schemi: l'agente disegna flussi e sequenze in pixel art, pezzo per pezzo mentre spiega; lo schema compare in una finestra e resta come scheda dell'editor (e nell'elenco "Schemi");
 - layout per telefono;

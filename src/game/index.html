@@ -12,6 +12,7 @@
         <span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="titlebar-name">Code Dungeon</span>
         <span class="titlebar-project" id="project-name"></span>
+        <button type="button" class="chip-btn" id="sound-btn" aria-pressed="false" title="Audio (tasto M)">♪ Audio</button>
         <button type="button" class="chip-btn" id="menu-btn" aria-label="Apri il menu">Menu</button>
       </header>
 
@@ -160,6 +161,24 @@
           </section>
         </fieldset>
 
+        <fieldset class="menu-group">
+          <legend>Musica e suoni</legend>
+          <div class="option-grid track-grid" id="track-options"></div>
+          <div class="sound-bar">
+            <label class="sound-slider" for="music-volume">Musica
+              <input type="range" id="music-volume" min="0" max="100" step="5" />
+            </label>
+            <label class="sound-slider" for="sfx-volume">Effetti
+              <input type="range" id="sfx-volume" min="0" max="100" step="5" />
+            </label>
+            <label class="sound-check" for="voice-on">
+              <input type="checkbox" id="voice-on" />
+              Voce della guida mentre parla
+            </label>
+          </div>
+          <p class="small muted sound-note">Musiche e suoni sono creati dal gioco, senza file audio. Il tasto M toglie e rimette l'audio.</p>
+        </fieldset>
+
         <fieldset class="menu-group" aria-describedby="reader-privacy">
           <legend>Cosa ti aiuta a capire</legend>
           <p class="reader-intro">Facoltativo. Scegli quello che ti serve: il gioco cambia subito, l'agente adatta le spiegazioni.</p>
@@ -177,7 +196,7 @@
           <p class="title-source" id="title-source"></p>
           <button type="button" class="pix-btn big" id="start-btn">Entra nel dungeon ▶</button>
         </div>
-        <p class="title-keys">Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu</p>
+        <p class="title-keys">Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu · M audio</p>
       </div>
     </div>
 

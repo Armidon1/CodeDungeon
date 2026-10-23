@@ -14,6 +14,8 @@ import {
   type Tour,
   type TourStep,
 } from "../shared/types";
+import * as sound from "./audio";
+import { TRACK_IDS, TRACK_INFO, type SoundSettings } from "./audio";
 import { Board } from "./diagram";
 import { highlightLines, langLabel, langOf } from "./highlight";
 import { GuidePicker } from "./guide";
@@ -97,10 +99,20 @@ export class App {
 
   constructor(private source: GameSource) {
     applyReader(this.settings.reader);
+    sound.configure(this.settings.sound);
     this.buildTitleScreen();
+    this.buildSoundOptions();
     this.buildReaderOptions();
     this.buildLevelSwitch();
     this.bindControls();
+    // il browser lascia suonare solo dopo un gesto dell'utente
+    const unlock = () => {
+      sound.unlock();
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+    };
+    window.addEventListener("pointerdown", unlock, true);
+    window.addEventListener("keydown", unlock, true);
     source.onStatus((s) => {
       this.connection = s;
       this.renderStatus();
@@ -136,6 +148,7 @@ export class App {
   }
 
   private openTitle(): void {
+    sound.play("menu");
     $("title-screen").hidden = false;
     $("app").inert = true;
     this.syncTitleOptions();
@@ -149,6 +162,7 @@ export class App {
   }
 
   private async start(): Promise<void> {
+    sound.play("confirm");
     this.closeTitle();
     if (this.tour) {
       this.showStep(this.stepIndex >= 0 ? this.stepIndex : 0, false);
@@ -184,6 +198,8 @@ export class App {
     this.settings = fromStored(p);
     saveSettings(this.settings);
     applyReader(this.settings.reader);
+    sound.configure(this.settings.sound);
+    this.syncSoundOptions();
     setGuideLook(this.guidePicker.refresh());
     this.renderGuide();
     this.syncLevelSwitch();
@@ -193,6 +209,67 @@ export class App {
     // durante un tour il passo si rilegge con il nuovo livello o con le pagine
     const changed = before.level !== this.settings.level || before.reader.aids.includes("poco_testo") !== this.settings.reader.aids.includes("poco_testo");
     if (changed && this.tour && this.stepIndex >= 0 && $("title-screen").hidden && !this.liveAnswer) this.showStep(this.stepIndex, false);
+  }
+
+  // ---------- Suoni ----------
+
+  private buildSoundOptions(): void {
+    const box = $("track-options");
+    const tracks = [...TRACK_IDS.map((id) => ({ id, ...TRACK_INFO[id] })), { id: "off", label: "Nessuna", hint: "Silenzio: restano gli effetti." }];
+    for (const t of tracks) {
+      const id = `opt-music-${t.id}`;
+      box.insertAdjacentHTML(
+        "beforeend",
+        `<label class="option" for="${id}">
+          <input type="radio" name="music" id="${id}" value="${t.id}">
+          <span class="option-name">${t.label}</span>
+          <span class="option-hint">${t.hint}</span>
+        </label>`,
+      );
+    }
+    box.addEventListener("change", (e) => {
+      // scegliere un brano vuol dire volerlo sentire: l'audio si riaccende
+      this.setSound({ music: (e.target as HTMLInputElement).value as SoundSettings["music"], muted: false });
+    });
+    for (const [el, key] of [["music-volume", "musicVolume"], ["sfx-volume", "sfxVolume"]] as const) {
+      const input = $<HTMLInputElement>(el);
+      // mentre si trascina cambia solo il volume; si salva al rilascio
+      input.addEventListener("input", () => this.setSound({ [key]: Number(input.value) / 100 }, false));
+      input.addEventListener("change", () => {
+        this.setSound({ [key]: Number(input.value) / 100 });
+        if (key === "sfxVolume") sound.play("select");
+      });
+    }
+    $<HTMLInputElement>("voice-on").addEventListener("change", (e) => {
+      this.setSound({ voice: (e.target as HTMLInputElement).checked });
+      sound.blip(this.settings.guide.id, "felice");
+    });
+    $("sound-btn").addEventListener("click", () => this.toggleMute());
+    this.syncSoundOptions();
+  }
+
+  private syncSoundOptions(): void {
+    const s = this.settings.sound;
+    const radio = document.getElementById(`opt-music-${s.music}`) as HTMLInputElement | null;
+    if (radio) radio.checked = true;
+    $<HTMLInputElement>("music-volume").value = String(Math.round(s.musicVolume * 100));
+    $<HTMLInputElement>("sfx-volume").value = String(Math.round(s.sfxVolume * 100));
+    $<HTMLInputElement>("voice-on").checked = s.voice;
+    const btn = $("sound-btn");
+    btn.setAttribute("aria-pressed", String(s.muted));
+    btn.setAttribute("aria-label", s.muted ? "Audio spento: riattiva" : "Audio attivo: spegni");
+  }
+
+  private setSound(patch: Partial<SoundSettings>, save = true): void {
+    this.settings.sound = { ...this.settings.sound, ...patch };
+    sound.configure(this.settings.sound);
+    this.syncSoundOptions();
+    if (save) this.persist();
+  }
+
+  private toggleMute(): void {
+    this.setSound({ muted: !this.settings.sound.muted });
+    sound.play("select");
   }
 
   // ---------- Questionario ----------
@@ -268,6 +345,7 @@ export class App {
     }
     $("title-screen").addEventListener("change", (e) => {
       const input = e.target as HTMLInputElement;
+      if (input.type === "radio" || input.type === "checkbox") sound.play("select");
       if (input.name === "level") this.setLevel(input.value as Level);
       if (input.name === "generation") {
         this.settings.generation = input.value as Settings["generation"];
@@ -404,6 +482,7 @@ export class App {
     const y = target.offsetTop + (target.offsetHeight - size) / 2;
     target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
     walker.classList.add("is-visible");
+    if (walker.style.transform !== `translate(${x}px, ${y}px)`) sound.play("step");
     if (reducedMotion()) {
       walker.style.transform = `translate(${x}px, ${y}px)`;
       return;
@@ -624,7 +703,10 @@ export class App {
     this.popFromStep = fromStep;
     const pop = $("board-pop");
     // se lo stesso schema è già aperto, resta ridotto come l'ha lasciato l'utente
-    if (pop.hidden || this.popBoard.current?.id !== d.id) this.foldPop(false);
+    if (pop.hidden || this.popBoard.current?.id !== d.id) {
+      this.foldPop(false);
+      sound.play("board");
+    }
     $("board-pop-title").textContent = d.title;
     if (!pop.contains(this.popBoard.el)) pop.append(this.popBoard.el);
     pop.hidden = false;
@@ -718,21 +800,27 @@ export class App {
       if (choices.length) {
         this.awaitingChoice = true;
         this.renderChoices(choices);
+        sound.play("choice");
       }
       this.updateNav();
       // il dialogo può essere cresciuto (scelte): ricentra le righe evidenziate
       requestAnimationFrame(() => this.scrollToHighlight());
     };
 
+    const voice = () => sound.blip(this.settings.guide.id, line.expression);
     if (reducedMotion()) {
+      voice();
       finish();
       return;
     }
     let i = 0;
     textEl.textContent = "";
     const timer = window.setInterval(() => {
+      const from = i;
       i = Math.min(text.length, i + 2);
       textEl.textContent = text.slice(0, i);
+      // un bip per sillaba, non per spazi e punteggiatura (come nei Mystery Dungeon)
+      if (/[\p{L}\p{N}]/u.test(text.slice(from, i))) voice();
       if (i >= text.length) finish();
     }, 24);
     this.typing = { full: text, timer };
@@ -761,6 +849,7 @@ export class App {
       btn.className = "choice";
       btn.textContent = `${i + 1}. ${c.label}`;
       btn.addEventListener("click", () => {
+        sound.play("confirm");
         this.awaitingChoice = false;
         this.renderChoices([]);
         c.run();
@@ -841,9 +930,13 @@ export class App {
       this.typingFinish?.();
       return;
     }
-    if (this.morePages) return this.showPage(this.page + 1);
+    if (this.morePages) {
+      sound.play("next");
+      return this.showPage(this.page + 1);
+    }
     if (this.awaitingChoice) return;
     if (this.afterLine) {
+      sound.play("next");
       const fn = this.afterLine;
       this.afterLine = undefined;
       fn();
@@ -852,6 +945,7 @@ export class App {
     if (!this.tour || this.stepIndex < 0) return;
     const step = this.tour.steps[this.stepIndex];
     if (step.next && step.next.length === 0) return this.endTour();
+    sound.play("next");
     if (step.next && step.next.length === 1) return this.followLink(step.next[0]);
     if (this.stepIndex + 1 < this.tour.steps.length) return this.showStep(this.stepIndex + 1);
     this.endTour();
@@ -862,9 +956,15 @@ export class App {
       this.typingFinish?.();
       return;
     }
-    if (this.page > 0) return this.showPage(this.page - 1);
+    if (this.page > 0) {
+      sound.play("back");
+      return this.showPage(this.page - 1);
+    }
     const prev = this.history.pop();
-    if (prev !== undefined) this.showStep(prev, false);
+    if (prev !== undefined) {
+      sound.play("back");
+      this.showStep(prev, false);
+    }
   }
 
   private endTour(): void {
@@ -874,6 +974,7 @@ export class App {
     this.tour = undefined;
     this.history = [];
     $("step-title").textContent = "Fine";
+    sound.play("end");
     this.say({
       text: `Abbiamo finito «${title}»! Puoi rigiocarlo, cambiare livello per rileggerlo con occhi diversi, o farmi una domanda.`,
       expression: "felice",
@@ -931,7 +1032,9 @@ export class App {
   private ask(text: string): void {
     const q = text.trim();
     if (!q) return;
-    if (this.source.ask(q, this.context())) {
+    const sent = this.source.ask(q, this.context());
+    sound.play(sent ? "ask" : "error");
+    if (sent) {
       this.say({ text: "Ho passato la tua domanda all'agente. Fammi pensare...", expression: "pensieroso" });
       this.portrait.set({ talking: false });
       this.waitHint = window.setTimeout(() => {
@@ -964,6 +1067,7 @@ export class App {
         await this.goToFile(cmd.path, [cmd.start, cmd.end], cmd.content);
         break;
       case "dialog": {
+        sound.play("answer");
         const line: DialogLine = { text: cmd.text, expression: cmd.expression ?? "neutro", speaker: cmd.speaker };
         // l'utente sta ancora leggendo una risposta: il nuovo fumetto aspetta il suo turno
         if (this.liveAnswer) {
@@ -1134,7 +1238,12 @@ export class App {
         else if (this.source.files.length) void this.start();
         return;
       }
-      if (inField || !$("title-screen").hidden) return;
+      if (inField) return;
+      if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        this.toggleMute();
+        return;
+      }
+      if (!$("title-screen").hidden) return;
       if ((e.target as HTMLElement).closest("button") && (e.key === "Enter" || e.key === " ")) return;
       if (e.key === "Enter" || e.key === " " || e.key === "ArrowRight") {
         e.preventDefault();
