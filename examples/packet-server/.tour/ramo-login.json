@@ -1,0 +1,154 @@
+{
+  "version": 1,
+  "id": "ramo-login",
+  "title": "Il ramo LOGIN",
+  "description": "Un pacchetto di tipo LOGIN (0x02) dall'arrivo sul socket fino alla risposta ok/denied, con le falle che incontra lungo la strada.",
+  "generation": "istantanea",
+  "steps": [
+    {
+      "id": "arrivo",
+      "file": "server.py",
+      "lines": [
+        12,
+        22
+      ],
+      "title": "La porta del client",
+      "expression": "felice",
+      "text": {
+        "facile": "Ogni visitatore che bussa al server ha una stanza tutta sua. Qui il server aspetta i suoi messaggi uno alla volta, li fa smistare e rimanda indietro la risposta. Seguiamo un messaggio speciale: quello con cui il visitatore dice chi è.",
+        "medio": "handle_client gira in un thread per ogni connessione. Il ciclo legge un pacchetto con read_packet, lo passa a dispatch e invia la risposta. Il dizionario session è la memoria di questa connessione: il login ci scriverà dentro il nome utente.",
+        "difficile": "Un thread per connessione con un loop bloccante: semplice, ma non scala oltre qualche centinaio di client. session è stato locale al thread, quindi niente lock. Nota l'except: cattura solo ConnectionError e ProtocolError. Qualsiasi altra eccezione, più avanti, uscirà dal loop in modo meno pulito.",
+        "arduo": "Bind su 0.0.0.0, nessun TLS, nessun timeout sul socket: un client lento tiene occupato un thread per sempre (slowloris). Il loop cattura solo ConnectionError e ProtocolError; un'eccezione dall'handler termina il thread con traceback su stderr e chiude conn tramite il context manager. Tienilo a mente per il passo sul JSON."
+      }
+    },
+    {
+      "id": "header",
+      "file": "protocol.py",
+      "lines": [
+        27,
+        35
+      ],
+      "title": "L'etichetta del pacco",
+      "expression": "pensieroso",
+      "text": {
+        "facile": "Ogni messaggio arriva come un pacco con un'etichetta di 10 byte. Il server legge l'etichetta: c'è la parola segreta DUNG, la versione, il tipo di pacco e quanto è grande il contenuto. Per il login il tipo è il numero 2.",
+        "medio": "read_packet legge prima 10 byte esatti e li scompone con HEADER.unpack in magic, versione, tipo e lunghezza. Controlla magic e versione, poi legge esattamente length byte di payload. Restituisce la coppia (ptype, payload), qui (0x02, b'{\"user\":...}').",
+        "difficile": "Il framing è lunghezza-prefissata: recv_exact cicla finché non ha n byte, gestendo correttamente le letture parziali di TCP. I controlli su magic e versione sollevano ProtocolError, che il loop gestisce. Il tipo invece non viene validato qui: se ne occupa il dispatcher.",
+        "arduo": "HEADER è '!4sBBI': network byte order, length è un uint32. Nessun limite: un client può dichiarare 4 GiB e recv_exact accumula fino a esaurire la memoria (DoS). Va aggiunto un MAX_PAYLOAD controllato prima di recv_exact. bytearray.extend in loop è O(n) ammortizzato, il problema è solo il tetto."
+      }
+    },
+    {
+      "id": "smistamento",
+      "file": "dispatcher.py",
+      "lines": [
+        5,
+        16
+      ],
+      "title": "Il bivio dei tipi",
+      "expression": "neutro",
+      "text": {
+        "facile": "Qui c'è un cartello con tre frecce: una per ogni tipo di pacco. Il nostro pacco dice «2», quindi prende la freccia del login. Se il numero fosse sconosciuto, il server lo rifiuterebbe.",
+        "medio": "HANDLERS è un dizionario che associa ogni tipo alla sua funzione. dispatch cerca il tipo con .get: per TYPE_LOGIN trova handle_login e la chiama con session e payload. Un tipo assente solleva ProtocolError.",
+        "difficile": "Tabella di dispatch invece di una catena di if: aggiungere un tipo è una riga. Tutti gli handler condividono la firma (session, payload) e restituiscono bytes già incorniciati. L'errore per tipo sconosciuto chiude la connessione, una scelta rigida ma sicura.",
+        "arduo": "Il lookup è su un int da un byte: nessuna confusione di tipi possibile. Il formato {ptype:#04x} è sicuro. Il dispatcher non applica alcuna macchina a stati: il client può inviare LOGIN quante volte vuole, senza rate limit. Brute force delle password possibile alla velocità della rete."
+      },
+      "next": [
+        {
+          "goto": "login-json",
+          "when": "type == LOGIN (0x02)"
+        },
+        {
+          "goto": "altri-tipi",
+          "when": "PING o MESSAGE"
+        }
+      ]
+    },
+    {
+      "id": "altri-tipi",
+      "file": "handlers.py",
+      "lines": [
+        25,
+        30
+      ],
+      "title": "La stanza accanto",
+      "expression": "neutro",
+      "text": {
+        "facile": "Questa è la stanza dei messaggi, non quella del login. Guarda però la prima riga: se non hai ancora detto chi sei, la porta resta chiusa. Torniamo al login, è lui che apre questa porta.",
+        "medio": "handle_message controlla se 'user' è in session: è il segno lasciato da un login riuscito. Senza, risponde «login richiesto». Il ramo LOGIN serve proprio a scrivere quella chiave.",
+        "difficile": "L'autorizzazione è un semplice controllo di presenza in session, legata alla connessione TCP. Niente token né scadenza: l'identità vale finché il socket resta aperto.",
+        "arduo": "La sessione è legata al socket, quindi senza TLS chi può iniettare nella connessione TCP eredita l'identità. print con dati del client in chiaro: possibile log injection con \\n nel testo."
+      },
+      "next": [
+        {
+          "goto": "login-json",
+          "when": "Torna al LOGIN"
+        }
+      ]
+    },
+    {
+      "id": "login-json",
+      "file": "handlers.py",
+      "lines": [
+        14,
+        17
+      ],
+      "title": "Aprire la busta",
+      "expression": "pensieroso",
+      "text": {
+        "facile": "Dentro il pacco c'è un biglietto con nome e parola d'ordine, scritto in un formato chiamato JSON. La guardia lo apre e legge i due campi. Se un campo manca, usa un biglietto vuoto.",
+        "medio": "handle_login decodifica il payload con json.loads e legge 'user' e 'password' con .get, che restituisce \"\" se la chiave manca. Poi cerca la password attesa nel dizionario USERS.",
+        "difficile": "json.loads accetta bytes direttamente. I .get con default evitano KeyError, ma il codice presume che il JSON sia un oggetto e che i valori siano stringhe. Nessuna di queste ipotesi viene verificata.",
+        "arduo": "Input non fidato deserializzato senza schema. json.loads su bytes non UTF-8 o JSON malformato solleva UnicodeDecodeError/JSONDecodeError (ValueError), non catturati dal loop. Un array JSON fa fallire .get con AttributeError. Lo vediamo nel prossimo passo."
+      }
+    },
+    {
+      "id": "falla-json",
+      "file": "server.py",
+      "lines": [
+        16,
+        22
+      ],
+      "title": "La busta rotta",
+      "expression": "preoccupato",
+      "text": {
+        "facile": "Problema: se il biglietto è scarabocchiato, la guardia si spaventa e scappa senza salutare. La stanza si chiude di colpo e nel registro resta una brutta scritta d'errore. Il server non crolla, ma è una porta lasciata gestire male.",
+        "medio": "Un payload LOGIN non valido fa sollevare a json.loads un errore che qui nessuno cattura: l'except prende solo ConnectionError e ProtocolError. Il thread termina con un traceback. Correzione: in handle_login catturare ValueError e rispondere «denied».",
+        "difficile": "L'eccezione esce dal while e dal with: il socket viene chiuso, il thread muore e Python stampa il traceback. Gli altri client non ne risentono, ma il comportamento è implicito. Meglio validare in handle_login (isinstance(data, dict), tipi str) e trasformare gli errori di parsing in ProtocolError.",
+        "arduo": "Eccezioni non gestite: ValueError da json.loads, AttributeError su JSON non-oggetto, TypeError da hmac.compare_digest se password è un numero o una stringa non ASCII. Effetto: chiusura brusca e log rumoroso a scelta dell'attaccante (log flooding). Fix: schema stretto, catch esplicito, risposta denied uniforme per non creare un oracolo."
+      }
+    },
+    {
+      "id": "confronto",
+      "file": "handlers.py",
+      "lines": [
+        18,
+        22
+      ],
+      "title": "La parola d'ordine",
+      "expression": "felice",
+      "text": {
+        "facile": "La guardia confronta la parola d'ordine con quella del suo libro, lettera per lettera, sempre con la stessa calma: così nessuno capisce quanto ci è andato vicino. Se è giusta, scrive il tuo nome nella memoria della stanza e risponde «ok». Altrimenti «denied».",
+        "medio": "Se l'utente esiste, hmac.compare_digest confronta le password. Se coincidono, session['user'] prende il nome e la risposta è un pacchetto LOGIN con «ok». In tutti gli altri casi la risposta è «denied».",
+        "difficile": "compare_digest impiega un tempo che non dipende da dove le stringhe differiscono: evita attacchi a tempo, a differenza di ==. Utente inesistente e password sbagliata danno la stessa risposta, quindi niente enumerazione degli utenti dal contenuto.",
+        "arduo": "Buono il confronto a tempo costante, ma il ramo expected is None salta compare_digest: il tempo di risposta distingue utenti esistenti da inesistenti. Le password in USERS sono in chiaro: in produzione servono hash lenti (argon2id, scrypt) e un confronto anche per utenti fittizi."
+      }
+    },
+    {
+      "id": "risposta",
+      "file": "protocol.py",
+      "lines": [
+        38,
+        39
+      ],
+      "title": "Il pacco di ritorno",
+      "expression": "felice",
+      "text": {
+        "facile": "La risposta viene impacchettata con la stessa etichetta di 10 byte e rispedita al visitatore. Da ora in poi il server si ricorda chi sei, finché resti collegato.",
+        "medio": "build_packet crea l'header con lo stesso tipo LOGIN e la lunghezza di «ok» o «denied», poi attacca il payload. server.py lo invia con sendall e il ciclo torna ad aspettare il pacchetto successivo.",
+        "difficile": "La risposta riusa il tipo della richiesta: il client distingue l'esito solo dal payload testuale. Un codice di stato numerico nel payload sarebbe più robusto e facile da estendere.",
+        "arduo": "«ok» e «denied» hanno lunghezze diverse, quindi l'esito è visibile anche cifrando senza padding. Nessun limite ai tentativi: servono backoff per connessione e per utente, più un tetto ai LOGIN falliti prima di chiudere il socket."
+      },
+      "next": []
+    }
+  ]
+}

@@ -48,8 +48,12 @@ export class Bridge {
   private clients = new Set<WebSocket>();
   private questions: UserQuestion[] = [];
   private lastContext: GameContext | undefined;
-  /** Ultimo comando visivo, rimandato a chi si collega dopo (es. il gioco aperto in ritardo). */
-  private lastVisual: ServerMessage | undefined;
+  /**
+   * Scena corrente, rimandata a chi si collega dopo (gioco aperto in ritardo o ricaricato):
+   * l'ultimo tour, l'ultimo file aperto o evidenziato e l'ultimo fumetto, nell'ordine in cui sono arrivati.
+   * Un nuovo tour azzera il resto.
+   */
+  private scene: ServerMessage[] = [];
   readonly url: string;
   listening = false;
 
@@ -98,10 +102,35 @@ export class Bridge {
 
   /** Invia un messaggio a tutte le finestre del gioco. Ritorna quante lo hanno ricevuto. */
   send(msg: ServerMessage): number {
-    if (msg.type !== "response") this.lastVisual = msg;
+    this.remember(msg);
     const data = JSON.stringify(msg);
     for (const ws of this.clients) ws.send(data);
     return this.clients.size;
+  }
+
+  private remember(msg: ServerMessage): void {
+    if (msg.type === "play_tour") {
+      this.scene = [msg];
+    } else if (msg.type === "open_file" || msg.type === "highlight") {
+      this.scene = [...this.scene.filter((m) => m.type !== "open_file" && m.type !== "highlight"), msg];
+    } else if (msg.type === "dialog") {
+      this.scene = [...this.scene.filter((m) => m.type !== "dialog"), msg];
+    }
+  }
+
+  /**
+   * La scena da rimandare: il tour riparte dal passo in cui l'utente era arrivato.
+   * Se era già tornato al tour, la risposta dal vivo non viene ripetuta.
+   */
+  private replay(): ServerMessage[] {
+    const ctx = this.lastContext;
+    const inTour = this.scene.some((m) => m.type === "play_tour");
+    const scene = inTour && ctx && !ctx.live ? this.scene.filter((m) => m.type === "play_tour") : this.scene;
+    return scene.map((m) =>
+      m.type === "play_tour" && ctx?.tourId === m.tour.id && ctx.stepId && m.tour.steps.some((s) => s.id === ctx.stepId)
+        ? { ...m, fromStep: ctx.stepId }
+        : m,
+    );
   }
 
   /** Domande in attesa; le consuma. */
@@ -127,7 +156,7 @@ export class Bridge {
     const files = await this.opts.project.listFiles().catch(() => []);
     const hello: ServerMessage = { type: "hello", project: this.opts.project.name, files, agent: this.opts.agent };
     ws.send(JSON.stringify(hello));
-    if (this.lastVisual) ws.send(JSON.stringify(this.lastVisual));
+    for (const m of this.replay()) ws.send(JSON.stringify(m));
   }
 
   private async onMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {

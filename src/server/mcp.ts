@@ -159,7 +159,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     },
     async () => {
       const q = bridge.takeQuestions();
-      return ok(q.length ? `${q.length} domande in attesa:` : "Nessuna domanda in attesa.", q.length ? q : undefined);
+      return ok(q.length === 0 ? "Nessuna domanda in attesa." : q.length === 1 ? "1 domanda in attesa:" : `${q.length} domande in attesa:`, q.length ? q : undefined);
     },
   );
 
@@ -249,7 +249,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         };
         tour.steps.push(step);
         await project.saveTour(tour);
-        return ok(`Passo "${id}" aggiunto (${tour.steps.length} passi in totale).`);
+        return ok(`Passo "${id}" aggiunto (${tour.steps.length === 1 ? "1 passo" : `${tour.steps.length} passi`} in totale).`);
       }),
   );
 

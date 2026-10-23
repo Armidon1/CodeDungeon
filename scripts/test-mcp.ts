@@ -92,6 +92,26 @@ check(/recv_exact/.test(text(r)) && /arduo/.test(text(r)), "get_user_questions r
 r = await client.callTool({ name: "get_user_questions", arguments: {} });
 check(/Nessuna domanda/.test(text(r)), "le domande vengono svuotate");
 
+// gioco aperto o ricaricato in ritardo: riceve la scena, non solo l'ultimo comando
+const lateGame = async (): Promise<any[]> => {
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
+  const got: any[] = [];
+  ws.on("message", (d) => got.push(JSON.parse(String(d))));
+  await new Promise((res) => setTimeout(res, 250));
+  ws.close();
+  return got.map((m) => m.type === "play_tour" ? `play_tour:${m.fromStep ?? ""}` : m.type);
+};
+await client.callTool({ name: "highlight_lines", arguments: { path: "protocol.py", start: 27, end: 35 } });
+await client.callTool({ name: "show_dialog", arguments: { text: "Risposta dal vivo." } });
+game.send(JSON.stringify({ type: "state", context: { level: "medio", tourId: TOUR, stepId: "fine", live: true } }));
+await new Promise((res) => setTimeout(res, 150));
+let late = await lateGame();
+check(late.join(",") === "hello,play_tour:fine,highlight,dialog", "chi arriva tardi riceve tour dal passo corrente, codice e risposta");
+game.send(JSON.stringify({ type: "state", context: { level: "medio", tourId: TOUR, stepId: "fine", live: false } }));
+await new Promise((res) => setTimeout(res, 150));
+late = await lateGame();
+check(late.join(",") === "hello,play_tour:fine", "la risposta già chiusa non viene ripetuta");
+
 await fs.rm(path.join(project, ".tour", `${TOUR}.json`), { force: true });
 game.close();
 evil.close();

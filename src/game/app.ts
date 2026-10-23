@@ -44,7 +44,10 @@ export class App {
   private typing: { full: string; timer: number } | undefined;
   private awaitingChoice = false;
   private afterLine: (() => void) | undefined;
+  /** Sul fumetto c'è una risposta dal vivo dell'agente, non il testo di un passo. */
+  private liveAnswer = false;
   private connection: ConnectionState = "connecting";
+  private loaded = false;
 
   constructor(private source: GameSource) {
     this.buildTitleScreen();
@@ -54,6 +57,8 @@ export class App {
       this.connection = s;
       this.renderStatus();
       this.renderTitleSource();
+      // il ponte è ripartito (es. nuova sessione dell'agente): file e tour possono essere cambiati
+      if (s === "connected" && this.loaded) void this.onReady();
     });
     source.onCommand((cmd) => void this.onAgentCommand(cmd));
     this.titlePortrait.set({ expression: "felice" });
@@ -65,6 +70,7 @@ export class App {
   // ---------- Avvio ----------
 
   private async onReady(): Promise<void> {
+    this.loaded = true;
     $("project-name").textContent = this.source.projectName;
     this.renderFileList();
     await this.renderTourList();
@@ -211,7 +217,7 @@ export class App {
       btn.className = "tour-item";
       btn.innerHTML = `<span class="tour-title"></span><span class="tour-meta"></span>`;
       btn.querySelector(".tour-title")!.textContent = t.title;
-      btn.querySelector(".tour-meta")!.textContent = `${t.steps} passi`;
+      btn.querySelector(".tour-meta")!.textContent = t.steps === 1 ? "1 passo" : `${t.steps} passi`;
       btn.addEventListener("click", () => void this.playTour(t.id));
       li.append(btn);
       list.append(li);
@@ -373,6 +379,9 @@ export class App {
 
   private say(line: DialogLine): void {
     this.stopTyping();
+    // un nuovo fumetto sostituisce la risposta dal vivo: niente "riprendi" in sospeso
+    this.afterLine = undefined;
+    this.liveAnswer = false;
     const textEl = $("dialog-text");
     $("speaker").textContent = line.speaker ?? GUIDE;
     this.portrait.set({ expression: line.expression, talking: true });
@@ -634,6 +643,8 @@ export class App {
         const resume = this.tour && this.stepIndex >= 0 ? this.stepIndex : undefined;
         this.say({ text: cmd.text, expression: cmd.expression ?? "neutro", speaker: cmd.speaker });
         if (resume !== undefined) this.afterLine = () => this.showStep(resume, false);
+        this.liveAnswer = true;
+        this.reportState();
         break;
       }
       case "play_tour":
@@ -652,6 +663,7 @@ export class App {
       lines: this.highlight,
       tourId: this.tour?.id,
       stepId: step?.id,
+      live: this.liveAnswer,
     };
   }
 
