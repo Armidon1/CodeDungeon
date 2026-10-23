@@ -1,5 +1,7 @@
 # Code Dungeon
 
+<p align="center"><img src="docs/img/tour-board.png" alt="Lumen explains the way back of a packet in server.py, next to the pixel-art diagram of the whole flow" width="900"></p>
+
 A cozy pixel-art game that explains code written by LLMs. A guide (Lumen, a little lantern, or one you pick) walks you through a pixelated VS Code and follows the **real flow of the program**: from the packet that arrives to the function that answers it.
 
 The game is an **MCP server**: it has no agent of its own and is driven by the one you already use (Claude Code, Codex, Gemini CLI or any MCP client). The agent builds the tour with the game's tools and answers your questions live.
@@ -29,6 +31,29 @@ Already working:
 - phone layout;
 - optional desktop app (Tauri): the game in its own window, which finds the open session by itself;
 - sample project `examples/packet-server` (a TCP server in Python) with an 11-step tour, including a real DoS flaw.
+
+## A look inside
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/img/menu.png" alt="Start menu with language, explanation level, text generation and guide choice"></td>
+    <td width="50%"><img src="docs/img/branches.png" alt="The guide at a branching point: three choices, one per packet type"></td>
+  </tr>
+  <tr>
+    <td><b>Start menu.</b> Pick the language, how deep the explanation goes and your guide.</td>
+    <td><b>Branches.</b> Where the program branches, you choose which path to follow.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/img/security-flaw.png" alt="Worried Lumen points at a missing length limit in protocol.py"></td>
+    <td><img src="docs/img/reader-and-music.png" alt="Menu sections for music and for what helps you understand"></td>
+  </tr>
+  <tr>
+    <td><b>Real flaws.</b> The guide gets worried when it finds a bug or a security hole.</td>
+    <td><b>Made for you.</b> Chiptune music, and options that change how the game and the agent explain.</td>
+  </tr>
+</table>
+
+<p align="center"><img src="docs/img/guides.png" alt="The four guides, Lumen, Aria, Patrizio and Nilo, each with five expressions: neutral, happy, thoughtful, worried, surprised" width="600"><br><sub>The four guides and their five expressions. You can also use your own photo or drawing.</sub></p>
 
 The full roadmap is in [docs/progetto.md](docs/progetto.md) (in Italian).
 
