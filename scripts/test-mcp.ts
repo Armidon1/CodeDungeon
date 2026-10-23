@@ -15,6 +15,9 @@ const TOUR = "prova-automatica";
 // preferenze in una cartella temporanea: il test non tocca quelle dell'utente
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "code-dungeon-test-"));
 const env = { ...process.env, CODE_DUNGEON_DATA: dataDir } as Record<string, string>;
+// le conversazioni del test finiscono nel progetto d'esempio: alla fine si tolgono le nuove
+const convDir = path.join(project, ".tour", "conversazioni");
+const convsBefore = new Set(await fs.readdir(convDir).catch(() => [] as string[]));
 
 let failures = 0;
 const check = (cond: unknown, label: string) => {
@@ -112,6 +115,25 @@ await client.callTool({ name: "show_dialog", arguments: { text: "Perché lo dice
 r = await client.callTool({ name: "get_user_questions", arguments: {} });
 check(/Nessuna domanda/.test(text(r)), "show_dialog con question_id segna la domanda come risposta");
 
+// conversazioni: domanda e risposte salvate in .tour/conversazioni/, un seguito porta con sé le precedenti
+const convId = ev?.meta.conversation;
+await new Promise((res) => setTimeout(res, 150));
+r = await client.callTool({ name: "get_conversation", arguments: { id: convId } });
+check(convId && /Perché big-endian\?/.test(text(r)) && /lo dice il protocollo/.test(text(r)), "get_conversation restituisce domanda e risposta");
+game.send(JSON.stringify({ type: "question", text: "E little-endian?", context: { level: "medio" }, conversation: convId }));
+await new Promise((res) => setTimeout(res, 150));
+const ev2 = pushed.at(-1);
+check(ev2?.meta.conversation === convId && /E little-endian\?/.test(ev2.content) && /lo dice il protocollo/.test(ev2.content), "il seguito arriva all'agente con le risposte precedenti");
+await client.callTool({ name: "show_dialog", arguments: { text: "Sarebbe al contrario.", question_id: ev2?.meta.question_id } });
+await new Promise((res) => setTimeout(res, 150));
+check(received.some((m) => m.type === "conversation" && m.summary.id === convId && m.summary.turns === 2), "il gioco viene avvisato della conversazione aggiornata");
+game.send(JSON.stringify({ type: "request", reqId: "c1", op: "load_conversation", id: convId }));
+game.send(JSON.stringify({ type: "request", reqId: "c2", op: "load_conversation", id: "../../package" }));
+await new Promise((res) => setTimeout(res, 150));
+const loaded = received.find((m) => m.reqId === "c1")?.data;
+check(loaded?.turns?.[1]?.answers?.[0]?.text === "Sarebbe al contrario." && loaded.turns[0].code === undefined, "il gioco rilegge la conversazione");
+check(received.find((m) => m.reqId === "c2")?.ok === false, "id della conversazione fuori dal progetto rifiutato");
+
 // agente in ascolto: wait_for_question si sblocca alla domanda, che non viene anche spinta
 const before = pushed.length;
 const waiting = client.callTool({ name: "wait_for_question", arguments: { timeout_seconds: 30 } });
@@ -131,7 +153,7 @@ const lateGame = async (): Promise<any[]> => {
   ws.on("message", (d) => got.push(JSON.parse(String(d))));
   await new Promise((res) => setTimeout(res, 250));
   ws.close();
-  return got.map((m) => m.type === "play_tour" ? `play_tour:${m.fromStep ?? ""}` : m.type);
+  return got.filter((m) => m.type !== "conversation").map((m) => m.type === "play_tour" ? `play_tour:${m.fromStep ?? ""}` : m.type);
 };
 await client.callTool({ name: "highlight_lines", arguments: { path: "protocol.py", start: 27, end: 35 } });
 await client.callTool({ name: "show_dialog", arguments: { text: "Risposta dal vivo." } });
@@ -222,6 +244,10 @@ check(/prova-schema/.test(text(r)), "set_step_diagram collega lo schema al passo
 await fs.rm(path.join(project, ".tour", "schemi", `${SCHEMA}.json`), { force: true });
 
 await fs.rm(path.join(project, ".tour", `${TOUR}.json`), { force: true });
+for (const name of await fs.readdir(convDir).catch(() => [] as string[])) {
+  if (!convsBefore.has(name)) await fs.rm(path.join(convDir, name), { force: true });
+}
+if (convsBefore.size === 0) await fs.rm(convDir, { recursive: true, force: true });
 game.close();
 evil.close();
 await client.close();

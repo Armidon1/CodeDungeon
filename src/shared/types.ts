@@ -162,6 +162,45 @@ export interface UserQuestion {
   text: string;
   askedAt: string;
   context: GameContext;
+  /** Conversazione a cui appartiene la domanda (id in .tour/conversazioni/). */
+  conversation?: string;
+  /** Domande e risposte precedenti della stessa conversazione: la domanda è un seguito di queste. */
+  previous?: { question: string; answers: string[] }[];
+}
+
+// ---------- Conversazioni (cronologia delle domande) ----------
+
+export interface ConversationAnswer {
+  text: string;
+  expression?: Expression;
+  at: string;
+}
+
+/** Una domanda e ciò che l'agente ha mostrato per rispondere. */
+export interface ConversationTurn {
+  question: { id: string; text: string; askedAt: string; context: GameContext };
+  answers: ConversationAnswer[];
+  /** Ultimo codice mostrato nella risposta. */
+  code?: { file: string; lines?: [number, number] };
+  /** Ultimo schema mostrato nella risposta. */
+  diagram?: StepDiagram;
+}
+
+/** Conversazione salvata in .tour/conversazioni/<id>.json: l'id è quello della prima domanda. */
+export interface Conversation {
+  version: 1;
+  id: string;
+  title: string;
+  startedAt: string;
+  updatedAt: string;
+  turns: ConversationTurn[];
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+  turns: number;
 }
 
 // ---------- Protocollo WebSocket tra ponte e gioco ----------
@@ -176,6 +215,8 @@ export type ServerMessage =
   | { type: "dialog"; text: string; expression?: Expression; speaker?: string }
   | { type: "play_tour"; tour: Tour; fromStep?: string }
   | { type: "diagram"; diagram: Diagram; upto?: number }
+  /** Una conversazione è stata salvata (nuova domanda o risposta). */
+  | { type: "conversation"; summary: ConversationSummary }
   | { type: "response"; reqId: string; ok: true; data: unknown }
   | { type: "response"; reqId: string; ok: false; error: string };
 
@@ -186,6 +227,9 @@ export type ClientMessage =
   | { type: "request"; reqId: string; op: "load_tour"; id: string }
   | { type: "request"; reqId: string; op: "list_diagrams" }
   | { type: "request"; reqId: string; op: "load_diagram"; id: string }
-  | { type: "question"; text: string; context: GameContext }
+  | { type: "request"; reqId: string; op: "list_conversations" }
+  | { type: "request"; reqId: string; op: "load_conversation"; id: string }
+  /** conversation: id della conversazione che la domanda continua; assente per una nuova. */
+  | { type: "question"; text: string; context: GameContext; conversation?: string }
   | { type: "state"; context: GameContext }
   | { type: "save_prefs"; prefs: StoredPrefs };

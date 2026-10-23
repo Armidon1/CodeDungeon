@@ -1,7 +1,7 @@
 // Sorgente demo: il progetto d'esempio incorporato nella build, senza agente.
 // Importato solo nella build demo (vedi main.ts), così non pesa sulla build normale.
 
-import type { Diagram, DiagramSummary, Tour, TourSummary } from "../shared/types";
+import type { Conversation, ConversationSummary, Diagram, DiagramSummary, Tour, TourSummary } from "../shared/types";
 import { t } from "./i18n";
 import type { ConnectionState, GameSource } from "./source";
 
@@ -54,6 +54,12 @@ export class DemoSource implements GameSource {
     const d = Object.values(demoDiagrams).find((x) => x.id === id);
     if (!d) throw new Error(t().msg.notFound(id));
     return structuredClone(d);
+  }
+  async listConversations(): Promise<ConversationSummary[]> {
+    return [];
+  }
+  async loadConversation(id: string): Promise<Conversation> {
+    throw new Error(t().msg.notFound(id));
   }
   ask(): boolean {
     return false;

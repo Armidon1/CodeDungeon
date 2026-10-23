@@ -4,6 +4,7 @@ import {
   AIDS,
   LEVELS,
   READER_NOTE_MAX,
+  type ConversationTurn,
   type Diagram,
   type Expression,
   type GameContext,
@@ -35,6 +36,8 @@ interface DialogLine {
   /** Scelte con un'azione propria (es. "Ricomincia il tour"). */
   actions?: Choice[];
   note?: string;
+  /** Da fare quando il fumetto compare (es. riaprire il codice di una vecchia risposta). */
+  before?: () => void;
 }
 
 interface Choice {
@@ -79,6 +82,8 @@ export class App {
   private liveAnswer = false;
   /** Altri fumetti dell'agente arrivati mentre l'utente leggeva una risposta: si leggono con "Avanti". */
   private liveQueue: DialogLine[] = [];
+  /** Conversazione delle risposte sul fumetto: una domanda fatta mentre le leggi la continua. */
+  private conversation: string | undefined;
   /** Passo del tour da riprendere dopo le risposte dal vivo. */
   private resumeStep: number | undefined;
   /** Suggerimento se l'agente tarda a rispondere a una domanda. */
@@ -144,7 +149,7 @@ export class App {
     else if (stored) this.persist();
     $("project-name").textContent = this.source.projectName;
     this.renderFileList();
-    await Promise.all([this.renderTourList(), this.renderDiagramList()]);
+    await Promise.all([this.renderTourList(), this.renderDiagramList(), this.renderConversationList()]);
     this.renderTitleSource();
   }
 
@@ -240,7 +245,7 @@ export class App {
     this.foldPop($("board-pop").classList.contains("is-folded"));
     this.renderTabs();
     this.updateNav();
-    if (this.loaded) void Promise.all([this.renderTourList(), this.renderDiagramList()]);
+    if (this.loaded) void Promise.all([this.renderTourList(), this.renderDiagramList(), this.renderConversationList()]);
     if (this.currentFile) $("status-lang").textContent = langLabel(langOf(this.currentFile));
   }
 
@@ -427,7 +432,7 @@ export class App {
   private renderGuide(): void {
     const name = this.settings.guide.name;
     $("tagline").textContent = t().msg.tagline(name);
-    $<HTMLInputElement>("ask-input").placeholder = t().msg.askPlaceholder(name);
+    this.renderAskHint();
     if (this.speakerIsGuide) $("speaker").textContent = name;
     drawMiniGuide($<HTMLCanvasElement>("walker"), 0);
   }
@@ -503,6 +508,29 @@ export class App {
       btn.querySelector(".tour-title")!.textContent = d.title;
       btn.querySelector(".tour-meta")!.textContent = t().kinds[d.kind];
       btn.addEventListener("click", () => void this.openDiagramTab(d.id));
+      li.append(btn);
+      list.append(li);
+    }
+  }
+
+  private async renderConversationList(): Promise<void> {
+    const list = $("conversation-list");
+    const convs = await this.source.listConversations().catch(() => []);
+    list.innerHTML = "";
+    if (convs.length === 0) {
+      list.innerHTML = `<li class="muted small">${t().msg.noConversations}</li>`;
+      return;
+    }
+    const date = new Intl.DateTimeFormat(this.settings.lang, { day: "numeric", month: "short" });
+    for (const c of convs) {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tour-item";
+      btn.innerHTML = `<span class="tour-title"></span><span class="tour-meta"></span>`;
+      btn.querySelector(".tour-title")!.textContent = c.title;
+      btn.querySelector(".tour-meta")!.textContent = `${t().msg.questions(c.turns)} · ${date.format(new Date(c.updatedAt))}`;
+      btn.addEventListener("click", () => void this.openConversation(c.id));
       li.append(btn);
       list.append(li);
     }
@@ -810,6 +838,7 @@ export class App {
     this.afterLine = undefined;
     this.liveAnswer = false;
     this.liveQueue = [];
+    this.renderAskHint();
     this.speakerIsGuide = !line.speaker;
     $("speaker").textContent = line.speaker ?? this.settings.guide.name;
     // chi usa un lettore di schermo riceve il testo intero, non le pagine
@@ -1089,7 +1118,8 @@ export class App {
   private ask(text: string): void {
     const q = text.trim();
     if (!q) return;
-    const sent = this.source.ask(q, this.context());
+    // chi chiede mentre legge una risposta continua quella conversazione
+    const sent = this.source.ask(q, this.context(), this.liveAnswer ? this.conversation : undefined);
     sound.play(sent ? "ask" : "error");
     if (sent) {
       this.say({ text: t().msg.asked, expression: "pensieroso" });
@@ -1150,13 +1180,68 @@ export class App {
         await this.playTour(cmd.tour.id, cmd.fromStep, cmd.tour);
         await this.renderTourList();
         break;
+      case "conversation":
+        this.conversation = cmd.summary.id;
+        void this.renderConversationList();
+        break;
     }
+  }
+
+  /** Rilegge una conversazione salvata: ogni domanda col suo codice, poi le risposte, con "Avanti". */
+  private async openConversation(id: string): Promise<void> {
+    let turns: ConversationTurn[];
+    try {
+      turns = (await this.source.loadConversation(id)).turns;
+    } catch (e) {
+      this.say({ text: t().msg.cantLoadConversation(e instanceof Error ? e.message : String(e)), expression: "preoccupato" });
+      return;
+    }
+    const lines = turns.flatMap((turn): DialogLine[] => {
+      const { file, lines } = turn.question.context;
+      const question: DialogLine = {
+        text: turn.question.text,
+        expression: "pensieroso",
+        speaker: t().msg.you,
+        before: file ? () => void this.goToFile(file, lines) : undefined,
+      };
+      const answers = turn.answers.map((a, i): DialogLine => ({
+        text: a.text,
+        expression: a.expression ?? "neutro",
+        before: i === 0 ? () => void this.showAnswerScene(turn) : undefined,
+      }));
+      return [question, ...answers];
+    });
+    const [first, ...rest] = lines;
+    if (!first) return;
+    if (!$("title-screen").hidden) this.closeTitle();
+    this.conversation = id;
+    if (!this.liveAnswer) this.resumeStep = this.tour && this.stepIndex >= 0 ? this.stepIndex : undefined;
+    this.showLive(first, rest);
+  }
+
+  /** Il codice e lo schema che l'agente aveva mostrato rispondendo. */
+  private async showAnswerScene(turn: ConversationTurn): Promise<void> {
+    if (turn.code) await this.goToFile(turn.code.file, turn.code.lines);
+    if (!turn.diagram) return;
+    try {
+      await this.openPop(await this.loadDiagram(turn.diagram.id), turn.diagram.upto);
+    } catch (e) {
+      this.say({ text: t().msg.cantLoadDiagram(turn.diagram.id, e instanceof Error ? e.message : String(e)), expression: "preoccupato" });
+    }
+  }
+
+  /** Il campo delle domande dice se la prossima continua la conversazione. */
+  private renderAskHint(): void {
+    const name = this.settings.guide.name;
+    $<HTMLInputElement>("ask-input").placeholder = this.liveAnswer && this.conversation ? t().msg.followUp : t().msg.askPlaceholder(name);
   }
 
   private showLive(line: DialogLine, queue: DialogLine[]): void {
     this.say(line);
+    line.before?.();
     this.liveQueue = queue;
     this.liveAnswer = true;
+    this.renderAskHint();
     $("step-title").textContent = t().msg.answer;
     if (queue.length || this.resumeStep !== undefined) this.afterLine = () => this.nextLive();
     this.renderLiveNote();

@@ -7,7 +7,7 @@ Il gioco è un **server MCP**: non contiene un agente proprio, lo pilota quello 
 ```
 agente (Claude Code / Codex / Gemini CLI) ──MCP stdio──▶ server Code Dungeon ──WebSocket──▶ gioco nel browser
                                                           │
-                                                          └─ .tour/*.json nel tuo progetto (finiscono su Git)
+                                                          └─ .tour/ nel tuo progetto: tour, schemi e conversazioni
 ```
 
 ## Stato: tappa 9 di 10
@@ -21,6 +21,7 @@ Funziona già:
 - tour JSON con diramazioni (scelte nel dialogo), avanti e indietro;
 - menu iniziale con 4 livelli (facile, medio, difficile, arduo) e modalità di generazione, livello cambiabile durante il tour;
 - domande dal vivo: le scrivi nel gioco, l'agente le legge e risponde nel fumetto;
+- cronologia delle domande: ogni conversazione si salva in `.tour/conversazioni/` e resta nell'elenco "Domande". Un clic la rilegge con il codice e gli schemi della risposta; se scrivi mentre leggi una risposta, la domanda continua quella conversazione e l'agente riceve anche le domande e risposte precedenti;
 - questionario "Cosa ti aiuta a capire" nel menu: frasi brevi, poco testo per volta (fumetto a pagine), più schemi, esempi, termini spiegati, font ad alta leggibilità (Atkinson Hyperlegible), testo più grande, meno animazioni. Il gioco si adatta subito, l'agente riceve le richieste e adatta le spiegazioni;
 - musica e suoni in stile videogame: quattro colonne sonore chiptune a scelta, effetti dell'interfaccia e la voce della guida a bip mentre parla, con un timbro diverso per ogni ritratto. Tutto generato dal gioco, senza file audio; volumi separati e tasto M per togliere l'audio;
 - impostazioni salvate in SQLite sul tuo computer, uguali in tutti i progetti;
@@ -126,7 +127,16 @@ Il server parla MCP su stdio. Comando `node`, argomenti `["/percorso/code-dungeo
 3. L'agente legge il codice, scrive il tour e ti dà l'indirizzo del gioco: di solito http://127.0.0.1:7337. Se la porta è occupata usa la prima libera dopo, quindi apri quello che ti dice lui.
 4. Nel gioco scegli il livello e segui la guida. Le domande le scrivi direttamente nel gioco: la risposta arriva nel fumetto.
 
-I tour e gli schemi vengono salvati in `.tour/` nel tuo progetto. Puoi metterli su Git e chi clona il progetto li ritrova.
+Tour, schemi e conversazioni vengono salvati in `.tour/` nel tuo progetto.
+
+> **Consiglio: aggiungi `.tour/` al `.gitignore` del tuo progetto.** La cartella è generata da Code Dungeon e contiene anche le tue domande all'agente, che sono personali. Se vuoi condividere un tour con chi clona il progetto, escludi almeno le conversazioni:
+>
+> ```gitignore
+> # tutto ciò che genera Code Dungeon
+> .tour/
+> # oppure solo le conversazioni
+> .tour/conversazioni/
+> ```
 
 ### Se qualcosa non va
 
@@ -177,6 +187,7 @@ e conferma l'avviso iniziale (serve perché i canali fatti in casa non sono anco
 | `get_game_state` | livello, file, righe e passo correnti |
 | `get_user_questions` | legge e svuota le domande scritte nel gioco |
 | `wait_for_question` | resta in ascolto e restituisce la prossima domanda appena viene scritta |
+| `get_conversation` | rilegge una conversazione salvata in `.tour/conversazioni/` (senza id, le elenca) |
 | `create_tour`, `add_step`, `set_step_text` | costruiscono il copione in `.tour/` |
 | `list_tours`, `get_tour`, `play_tour` | elencano, leggono e avviano i tour |
 | `draw_diagram` | disegna e salva uno schema in `.tour/schemi/` |

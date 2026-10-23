@@ -92,11 +92,16 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     if (q.context.tourId) meta.tour = q.context.tourId;
     if (q.context.stepId) meta.step = q.context.stepId;
     if (q.context.lang) meta.lang = q.context.lang;
+    if (q.conversation) meta.conversation = q.conversation;
     const asks = readerAsks();
     if (asks.length) meta.aiuti = asks.join("; ");
     // se il client non ha attivato il canale la notifica viene ignorata e la domanda resta per get_user_questions
+    // un seguito porta con sé le domande e risposte precedenti della conversazione
+    const content = q.previous?.length
+      ? `${q.text}\n\n(Seguito di una conversazione. Prima:\n${q.previous.map((p) => `D: ${p.question}\nR: ${p.answers.join(" ") || "(nessuna risposta)"}`).join("\n")})`
+      : q.text;
     server.server
-      .notification({ method: "notifications/claude/channel", params: { content: q.text, meta } })
+      .notification({ method: "notifications/claude/channel", params: { content, meta } })
       .catch((e: unknown) => log(`notifica della domanda non inviata: ${String(e)}`));
   };
 
@@ -258,6 +263,26 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       const q = bridge.takeQuestions();
       if (q.length === 0) return ok("Nessuna domanda in attesa.");
       return ok(`${q.length === 1 ? "1 domanda in attesa." : `${q.length} domande in attesa.`}${readerNote()}`, q);
+    },
+  );
+
+  server.registerTool(
+    "get_conversation",
+    {
+      title: "Leggi una conversazione",
+      description:
+        "Restituisce una conversazione salvata in .tour/conversazioni/: le domande dell'utente, le tue risposte e il codice e gli schemi mostrati. " +
+        "Le domande che continuano una conversazione hanno il campo conversation e già le domande precedenti (previous); usalo se ti serve tutto. " +
+        "Senza id elenca le conversazioni, dalla più recente.",
+      inputSchema: { id: z.string().max(64).optional() },
+    },
+    async ({ id }) => {
+      try {
+        if (!id) return ok("Conversazioni salvate:", await project.listConversations());
+        return ok(`Conversazione ${id}:`, await bridge.conversation(id));
+      } catch (e) {
+        return fail(e);
+      }
     },
   );
 

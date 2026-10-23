@@ -4,7 +4,7 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { Diagram, DiagramSummary, Tour, TourSummary } from "../shared/types.js";
+import type { Conversation, ConversationSummary, Diagram, DiagramSummary, Tour, TourSummary } from "../shared/types.js";
 
 const IGNORED_DIRS = new Set([
   ".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", ".idea", ".vscode", "target",
@@ -13,6 +13,7 @@ const MAX_FILE_BYTES = 512 * 1024;
 const MAX_FILES = 2000;
 const TOUR_DIR = ".tour";
 const DIAGRAM_DIR = "schemi"; // dentro .tour/
+const CONVERSATION_DIR = "conversazioni"; // dentro .tour/
 const TOUR_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 export class Project {
@@ -195,6 +196,53 @@ export class Project {
     }
     return out;
   }
+
+  // ---------- Conversazioni con l'agente (.tour/conversazioni/) ----------
+
+  private async conversationPath(id: string): Promise<string> {
+    if (!TOUR_ID.test(id)) throw new Error("Id della conversazione non valido.");
+    const dir = path.join(await this.getRealRoot(), TOUR_DIR, CONVERSATION_DIR);
+    await fs.mkdir(dir, { recursive: true });
+    return path.join(dir, `${id}.json`);
+  }
+
+  async loadConversation(id: string): Promise<Conversation> {
+    const raw = await fs.readFile(await this.conversationPath(id), "utf8").catch(() => {
+      throw new Error(`Conversazione non trovata: ${id}`);
+    });
+    return JSON.parse(raw) as Conversation;
+  }
+
+  async saveConversation(c: Conversation): Promise<void> {
+    const file = await this.conversationPath(c.id);
+    const tmp = `${file}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(c, null, 2) + "\n", "utf8");
+    await fs.rename(tmp, file);
+  }
+
+  /** Dalla più recente. */
+  async listConversations(): Promise<ConversationSummary[]> {
+    const dir = path.join(await this.getRealRoot(), TOUR_DIR, CONVERSATION_DIR);
+    let names: string[];
+    try {
+      names = await fs.readdir(dir);
+    } catch {
+      return [];
+    }
+    const out: ConversationSummary[] = [];
+    for (const name of names.filter((n) => n.endsWith(".json"))) {
+      try {
+        out.push(conversationSummary(await this.loadConversation(name.slice(0, -5))));
+      } catch {
+        // file non valido: lo ignoriamo nell'elenco
+      }
+    }
+    return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+}
+
+export function conversationSummary(c: Conversation): ConversationSummary {
+  return { id: c.id, title: c.title, updatedAt: c.updatedAt, turns: c.turns.length };
 }
 
 function isWithin(root: string, target: string): boolean {

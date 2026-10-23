@@ -53,7 +53,7 @@ Pubblico: dal non programmatore che ha generato uno script e non sa cosa fa, fin
 | App desktop | Tauri (tappa futura; oggi gira nel browser) |
 | Grafica | DOM + canvas per sprite ed effetti; PixiJS o Phaser se servirà un motore |
 | Server MCP | SDK ufficiale MCP per TypeScript |
-| Tour | JSON in `.tour/` nel progetto spiegato, versionati su Git |
+| Tour | JSON in `.tour/` nel progetto spiegato (cartella da mettere nel `.gitignore`) |
 | Audio | Web Audio API, suoni sintetizzati nel gioco (nessun file audio) |
 | Impostazioni | SQLite (`node:sqlite`) nella cartella dati dell'utente; copia in localStorage per la demo |
 
@@ -61,7 +61,7 @@ Pubblico: dal non programmatore che ha generato uno script e non sa cosa fa, fin
 
 1. **Versione minima** ✅ editor pixelato, fumetto con ritratto, server MCP con `open_file`, `highlight_lines`, `show_dialog`.
 2. **Tour** ✅ formato JSON, `.tour/`, riproduzione con animazioni, `create_tour`, `add_step`, diramazioni.
-3. **Domande dal vivo** ✅ base: domanda nel gioco → `get_user_questions` → `show_dialog`. Notifica all'agente: canale di Claude Code (domande spinte nella sessione) e `wait_for_question` per gli altri agenti; coda dei fumetti. Da fare: cronologia della conversazione nel gioco.
+3. **Domande dal vivo** ✅ base: domanda nel gioco → `get_user_questions` → `show_dialog`. Notifica all'agente: canale di Claude Code (domande spinte nella sessione) e `wait_for_question` per gli altri agenti; coda dei fumetti. Cronologia: conversazioni salvate in `.tour/conversazioni/`, elenco "Domande" nel gioco per rileggerle, seguiti con le domande e risposte precedenti, strumento `get_conversation`.
 4. **Difficoltà** ✅ base: menu, cambio durante il tour, `set_step_text` per la modalità su richiesta. Da fare: preparazione in background del passo successivo.
 5. **Lavagna** ✅ schemi JSON in `.tour/schemi/`, `draw_diagram`, `reveal_diagram`, `set_step_diagram`, rendering pixel con disegno progressivo, finestra a comparsa, scheda nell'editor, nodi che aprono il codice.
 6. **Personalizzazione** ✅ ritratti predefiniti (Lumen, Aria, Patrizio, Nilo), nome della guida, upload convertito in pixel art nel browser (ritaglio, riduzione, k-means) con tre livelli di compressione affiancati e slider, espressioni automatiche (fumetto e colori) o caricate una per una. Il nome arriva all'agente nel contesto (`guide`). Da fare: bordi del fumetto alternativi.

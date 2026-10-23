@@ -8,10 +8,13 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { ClientMessage, GameContext, ReaderProfile, ServerMessage, UserQuestion } from "../shared/types.js";
-import type { Project } from "./project.js";
+import type { ClientMessage, Conversation, ConversationTurn, GameContext, ReaderProfile, ServerMessage, UserQuestion } from "../shared/types.js";
+import { conversationSummary, type Project } from "./project.js";
 import type { Store } from "./store.js";
 import { log } from "./log.js";
+
+/** Quante domande precedenti della conversazione arrivano all'agente insieme a un seguito. */
+const PREVIOUS_TURNS = 6;
 
 /** Quante porte provare a partire da quella preferita (più sessioni aperte insieme). */
 const PORT_TRIES = 20;
@@ -71,6 +74,18 @@ export class Bridge {
    * Un nuovo tour azzera il resto.
    */
   private scene: ServerMessage[] = [];
+  /** Conversazioni toccate in questa sessione, per id. Sul disco in .tour/conversazioni/. */
+  private conversations = new Map<string, Conversation>();
+  /** Id della domanda → id della sua conversazione. */
+  private questionConversation = new Map<string, string>();
+  /**
+   * Domanda a cui si sta rispondendo: fumetti, codice e schemi inviati finché ne arriva un'altra
+   * (o un tour) finiscono nella sua conversazione. Parte dall'ultima domanda arrivata;
+   * show_dialog con question_id la sposta su quella indicata.
+   */
+  private answering: { conversation: Conversation; turn: ConversationTurn } | undefined;
+  /** Scritture delle conversazioni, una dopo l'altra. */
+  private saving = Promise.resolve();
   private port: number;
   listening = false;
 
@@ -151,9 +166,66 @@ export class Bridge {
   /** Invia un messaggio a tutte le finestre del gioco. Ritorna quante lo hanno ricevuto. */
   send(msg: ServerMessage): number {
     this.remember(msg);
+    this.record(msg);
+    return this.broadcast(msg);
+  }
+
+  private broadcast(msg: ServerMessage): number {
     const data = JSON.stringify(msg);
     for (const ws of this.clients) ws.send(data);
     return this.clients.size;
+  }
+
+  /** Aggiunge alla conversazione aperta ciò che l'agente mostra per rispondere. */
+  private record(msg: ServerMessage): void {
+    if (msg.type === "play_tour") this.answering = undefined;
+    const a = this.answering;
+    if (!a) return;
+    if (msg.type === "dialog") a.turn.answers.push({ text: msg.text, expression: msg.expression, at: new Date().toISOString() });
+    else if (msg.type === "highlight") a.turn.code = { file: msg.path, lines: [msg.start, msg.end] };
+    else if (msg.type === "open_file") a.turn.code = { file: msg.path };
+    else if (msg.type === "diagram") a.turn.diagram = msg.upto === undefined ? { id: msg.diagram.id } : { id: msg.diagram.id, upto: msg.upto };
+    else return;
+    this.saveConversation(a.conversation);
+  }
+
+  private saveConversation(c: Conversation): void {
+    c.updatedAt = new Date().toISOString();
+    const copy = structuredClone(c);
+    this.saving = this.saving
+      .then(() => this.opts.project.saveConversation(copy))
+      .then(
+        () => void this.broadcast({ type: "conversation", summary: conversationSummary(copy) }),
+        (e: unknown) => log(`conversazione non salvata: ${String(e)}`),
+      );
+  }
+
+  /** La conversazione con questo id: quella in memoria se è già stata toccata, altrimenti dal disco. */
+  async conversation(id: string): Promise<Conversation> {
+    const known = this.conversations.get(id);
+    if (known) return known;
+    const c = await this.opts.project.loadConversation(id);
+    this.conversations.set(id, c);
+    return c;
+  }
+
+  /** Aggiunge la domanda alla conversazione che continua (o a una nuova) e la segna come quella a cui si risponde. */
+  private async addTurn(q: UserQuestion, continues: string | undefined): Promise<void> {
+    let c: Conversation | undefined;
+    if (continues) c = await this.conversation(continues).catch(() => undefined);
+    if (c?.turns.length) {
+      q.previous = c.turns.slice(-PREVIOUS_TURNS).map((t) => ({ question: t.question.text, answers: t.answers.map((a) => a.text) }));
+    } else {
+      const now = new Date().toISOString();
+      c = { version: 1, id: q.id, title: q.text.slice(0, 80), startedAt: now, updatedAt: now, turns: [] };
+      this.conversations.set(c.id, c);
+    }
+    const turn: ConversationTurn = { question: { id: q.id, text: q.text, askedAt: q.askedAt, context: q.context }, answers: [] };
+    c.turns.push(turn);
+    q.conversation = c.id;
+    this.questionConversation.set(q.id, c.id);
+    this.answering = { conversation: c, turn };
+    this.saveConversation(c);
   }
 
   private remember(msg: ServerMessage): void {
@@ -191,6 +263,9 @@ export class Bridge {
 
   /** Toglie dalla coda una domanda a cui l'agente ha risposto. */
   answer(id: string): boolean {
+    const c = this.conversations.get(this.questionConversation.get(id) ?? "");
+    const turn = c?.turns.find((t) => t.question.id === id);
+    if (c && turn) this.answering = { conversation: c, turn };
     const before = this.questions.length;
     this.questions = this.questions.filter((q) => q.id !== id);
     this.delivered.delete(id);
@@ -259,6 +334,7 @@ export class Bridge {
       const text = String(msg.text ?? "").slice(0, 2000).trim();
       if (!text) return;
       const q: UserQuestion = { id: randomUUID().slice(0, 8), text, askedAt: new Date().toISOString(), context: msg.context };
+      await this.addTurn(q, typeof msg.conversation === "string" ? msg.conversation : undefined);
       this.questions.push(q);
       this.lastContext = msg.context;
       log(`domanda dall'utente: ${text}`);
@@ -279,6 +355,8 @@ export class Bridge {
         else if (msg.op === "load_tour") data = await p.loadTour(msg.id);
         else if (msg.op === "list_diagrams") data = await p.listDiagrams();
         else if (msg.op === "load_diagram") data = await p.loadDiagram(msg.id);
+        else if (msg.op === "list_conversations") data = await p.listConversations();
+        else if (msg.op === "load_conversation") data = await this.conversation(msg.id);
         else throw new Error("Operazione sconosciuta");
         reply({ type: "response", reqId: msg.reqId, ok: true, data });
       } catch (e) {
