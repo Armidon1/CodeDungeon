@@ -63,8 +63,15 @@ const LUMEN = {
 
 // ---------- Viso ed espressioni ----------
 
+/** Un ritratto può disegnare a modo suo bocca e sopracciglia (Patrizio: baffi e pizzetto). */
+interface FaceStyle {
+  mouth?: (px: Px, expr: Expression, frame: Frame) => void;
+  ownBrows?: boolean;
+}
+
 /** Occhi, bocca ed effetti dell'espressione. Le coordinate valgono per tutti i ritratti 32×32. */
-function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal): void {
+function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal, style: FaceStyle = {}): void {
+  const mouth = !style.mouth;
   const eyes = (lx: number, rx: number, y: number, w: number, h: number) => {
     if (frame.blink) {
       for (let i = 0; i < w; i++) {
@@ -97,8 +104,10 @@ function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal): void {
       }
       blush();
       // sorriso aperto
-      for (const [x, y] of [[14, 21], [18, 21], [15, 22], [16, 22], [17, 22]]) px(x, y, c.eye);
-      if (frame.mouthOpen) for (const [x, y] of [[15, 21], [16, 21], [17, 21]]) px(x, y, c.blush);
+      if (mouth) {
+        for (const [x, y] of [[14, 21], [18, 21], [15, 22], [16, 22], [17, 22]]) px(x, y, c.eye);
+        if (frame.mouthOpen) for (const [x, y] of [[15, 21], [16, 21], [17, 21]]) px(x, y, c.blush);
+      }
       break;
     }
     case "pensieroso": {
@@ -111,10 +120,10 @@ function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal): void {
         px(20, 15, c.light);
       }
       // bocca storta di lato; parlando si apre in una piccola o
-      if (frame.mouthOpen) {
+      if (mouth && frame.mouthOpen) {
         for (const [x, y] of [[17, 22], [18, 22], [19, 22], [17, 23], [19, 23]]) px(x, y, c.eye);
         px(18, 23, c.blush);
-      } else for (const x of [17, 18, 19]) px(x, 22, c.eye);
+      } else if (mouth) for (const x of [17, 18, 19]) px(x, 22, c.eye);
       // nuvoletta del pensiero
       const pulse = Math.floor(frame.t / 400) % 3;
       px(25, 9, c.think);
@@ -124,14 +133,14 @@ function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal): void {
     }
     case "preoccupato": {
       // sopracciglia inclinate
-      for (const [x, y] of [[10, 14], [11, 14], [12, 15], [21, 14], [22, 14], [20, 15]]) px(x, y, c.eye);
+      if (!style.ownBrows) for (const [x, y] of [[10, 14], [11, 14], [12, 15], [21, 14], [22, 14], [20, 15]]) px(x, y, c.eye);
       eyes(11, 20, 17, 2, 3);
       // bocca ondulata; parlando si apre in una smorfia
-      if (frame.mouthOpen) {
+      if (mouth && frame.mouthOpen) {
         for (let x = 14; x <= 18; x++) px(x, 22, c.eye);
         for (const x of [14, 18]) px(x, 23, c.eye);
         for (const x of [15, 16, 17]) px(x, 23, c.blush);
-      } else for (const [x, y] of [[13, 23], [14, 22], [15, 23], [16, 22], [17, 23], [18, 22], [19, 23]]) px(x, y, c.eye);
+      } else if (mouth) for (const [x, y] of [[13, 23], [14, 22], [15, 23], [16, 22], [17, 23], [18, 22], [19, 23]]) px(x, y, c.eye);
       // goccia di sudore
       const drip = Math.floor(frame.t / 500) % 2;
       for (const [x, y] of [[25, 12], [24, 13], [25, 13], [26, 13], [24, 14], [25, 14], [26, 14], [25, 15]]) px(x, y + drip, c.sweat);
@@ -141,10 +150,10 @@ function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal): void {
     case "sorpreso": {
       eyes(10, 19, 16, 3, 3);
       // bocca a O; parlando si stringe e si riapre
-      if (frame.mouthOpen) {
+      if (mouth && frame.mouthOpen) {
         for (const [x, y] of [[15, 21], [16, 21], [14, 22], [17, 22], [15, 23], [16, 23]]) px(x, y, c.eye);
         for (const x of [15, 16]) px(x, 22, c.blush);
-      } else {
+      } else if (mouth) {
         for (const [x, y] of [[15, 21], [16, 21], [14, 22], [17, 22], [14, 23], [17, 23], [15, 24], [16, 24]]) px(x, y, c.eye);
         for (const [x, y] of [[15, 22], [16, 22], [15, 23], [16, 23]]) px(x, y, c.blush);
       }
@@ -152,11 +161,12 @@ function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal): void {
     }
     default: {
       eyes(11, 20, 17, 2, 3);
-      if (frame.mouthOpen) for (const [x, y] of [[15, 22], [16, 22], [15, 23], [16, 23]]) px(x, y, c.eye);
-      else for (const x of [15, 16]) px(x, 22, c.eye);
+      if (mouth && frame.mouthOpen) for (const [x, y] of [[15, 22], [16, 22], [15, 23], [16, 23]]) px(x, y, c.eye);
+      else if (mouth) for (const x of [15, 16]) px(x, 22, c.eye);
       blush();
     }
   }
+  style.mouth?.(px, expr, frame);
 }
 
 // ---------- Lumen ----------
@@ -228,8 +238,10 @@ interface Human {
   under?: (px: Px) => void;
   /** Vestito con un motivo; altrimenti tinta unita con l'ombra. */
   cloth?: (x: number, y: number) => string;
-  /** Dettagli sotto il viso e le sue espressioni: fiore, pon pon, sciarpa, barba. */
+  /** Dettagli sotto il viso e le sue espressioni: fiore, pon pon, sciarpa, sopracciglia folte. */
   extras?: (px: Px, frame: Frame, expr: Expression) => void;
+  /** Bocca e sopracciglia proprie al posto di quelle comuni. */
+  face?: FaceStyle;
 }
 
 const head = ellipse(16, 17.5, 8.6, 9.3);
@@ -246,7 +258,7 @@ function drawHuman(px: Px, h: Human, expr: Expression, frame: Frame): void {
   shape(px, head, (x, y) => (x - 16 + (y - 17.5) > 9 ? p.shade : p.body), p.outline);
   shape(px, h.front, hairFill, p.outline);
   h.extras?.(px, frame, expr);
-  drawFace(px, expr, frame, p);
+  drawFace(px, expr, frame, p, h.face);
 }
 
 const ARIA: Human = {
@@ -308,15 +320,67 @@ const PATRIZIO: Human = {
   cloth: (x, y) => (x % 4 === 1 || y % 4 === 2 ? (x % 4 === 1 && y % 4 === 2 ? "#e8dccb" : "#7d95c4") : x + y > 42 ? "#2b3858" : "#3d4f7c"),
   extras: (px, _frame, expr) => {
     for (const [x, y] of [[12, 27], [13, 27], [13, 28], [19, 27], [18, 27], [18, 28]]) px(x, y, "#e8dccb");
-    // sopracciglia folte: si alzano con la sorpresa e i pensieri (preoccupato ha le sue)
-    if (expr !== "preoccupato") {
-      const y = expr === "sorpreso" || expr === "pensieroso" ? 13 : 15;
-      for (const x of [10, 11, 12, 13, 19, 20, 21, 22]) px(x, y, "#2f2019");
-      for (const x of [11, 12, 20, 21]) px(x, y - 1, "#2f2019");
-    }
-    // baffi e pizzetto
-    for (const x of [13, 14, 15, 16, 17, 18]) px(x, 20, "#6b4a36");
-    for (const [x, y] of [[15, 24], [16, 24], [14, 25], [15, 25], [16, 25], [17, 25]]) px(x, y, "#4a3326");
+    // sopracciglia folte che seguono l'espressione
+    const brow = (pts: number[][]) => {
+      for (const [x, y] of pts) {
+        px(x, y, "#2f2019");
+        px(31 - x, y, "#2f2019");
+      }
+    };
+    if (expr === "pensieroso") {
+      // una alzata e una bassa
+      for (const [x, y] of [[10, 13], [11, 12], [12, 12], [13, 13], [11, 13], [12, 13]]) px(x, y, "#2f2019");
+      for (const x of [18, 19, 20, 21]) px(x, 14, "#2f2019");
+      for (const x of [19, 20]) px(x, 13, "#2f2019");
+    } else if (expr === "preoccupato") brow([[10, 15], [11, 15], [12, 14], [13, 13], [11, 14], [12, 13]]);
+    else if (expr === "sorpreso") brow([[10, 13], [11, 12], [12, 12], [13, 13], [11, 13], [12, 13]]);
+    else brow([[10, 15], [11, 15], [12, 15], [13, 15], [11, 14], [12, 14]]);
+    // pizzetto sotto il labbro e sul mento, staccato dalla bocca
+    for (const [x, y] of [[15, 25], [16, 25], [15, 26], [16, 26]]) px(x, y, "#6b4a36");
+    for (const x of [15, 16]) px(x, 26, "#4a3326");
+  },
+  face: {
+    ownBrows: true,
+    // baffi a manubrio con le punte che scendono; la bocca spunta sotto, una forma per espressione
+    mouth: (px, expr, frame) => {
+      const ink = "#2a1c15";
+      const pink = "#e8977f";
+      const open = frame.mouthOpen;
+      const dark = (pts: number[][]) => pts.forEach(([x, y]) => px(x, y, ink));
+      const lip = (pts: number[][]) => pts.forEach(([x, y]) => px(x, y, pink));
+      switch (expr) {
+        case "felice":
+          dark([[13, 22], [18, 22], [14, 23], [15, 23], [16, 23], [17, 23]]);
+          if (open) lip([[14, 22], [15, 22], [16, 22], [17, 22]]);
+          break;
+        case "pensieroso":
+          if (open) {
+            dark([[16, 22], [18, 22], [17, 23]]);
+            lip([[17, 22]]);
+          } else dark([[16, 22], [17, 22], [18, 22]]);
+          break;
+        case "preoccupato":
+          dark([[15, 22], [16, 22], [14, 23], [17, 23]]);
+          if (open) lip([[15, 23], [16, 23]]);
+          break;
+        case "sorpreso":
+          if (open) dark([[15, 22], [16, 22], [15, 23], [16, 23]]);
+          else {
+            dark([[15, 22], [16, 22], [14, 23], [17, 23], [15, 24], [16, 24]]);
+            lip([[15, 23], [16, 23]]);
+          }
+          break;
+        default:
+          if (open) {
+            dark([[14, 22], [17, 22], [15, 23], [16, 23]]);
+            lip([[15, 22], [16, 22]]);
+          } else dark([[15, 22], [16, 22]]);
+      }
+      // baffi sopra la bocca, più chiari di lei, con le punte in giù ai lati
+      for (let x = 13; x <= 18; x++) px(x, 20, "#6b4a36");
+      for (const x of [12, 19]) px(x, 21, "#6b4a36");
+      for (const x of [15, 16]) px(x, 20, "#4a3326");
+    },
   },
 };
 
