@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Nessun comando nativo: il gioco parla solo col ponte via WebSocket.",
+  "windows": ["main"],
+  "permissions": []
+}

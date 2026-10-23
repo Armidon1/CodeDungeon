@@ -5,7 +5,7 @@ Un gioco cozy in pixel art che spiega il codice generato dagli LLM. Una guida (L
 Il gioco è un **server MCP**: non contiene un agente proprio, lo pilota quello che usi già (Claude Code, Codex, Gemini CLI o qualsiasi client MCP). L'agente costruisce il tour con gli strumenti del gioco e risponde dal vivo alle tue domande.
 
 ```
-agente (Claude Code / Codex / Gemini CLI) ──MCP stdio──▶ server Code Dungeon ──WebSocket──▶ gioco nel browser
+agente (Claude Code / Codex / Gemini CLI) ──MCP stdio──▶ server Code Dungeon ──WebSocket──▶ gioco nel browser o nell'app
                                                           │
                                                           └─ .tour/ nel tuo progetto: tour, schemi e conversazioni
 ```
@@ -27,6 +27,7 @@ Funziona già:
 - impostazioni salvate in SQLite sul tuo computer, uguali in tutti i progetti;
 - lavagna degli schemi: l'agente disegna flussi e sequenze in pixel art, pezzo per pezzo mentre spiega; lo schema compare in una finestra e resta come scheda dell'editor (e nell'elenco "Schemi");
 - layout per telefono;
+- app desktop facoltativa (Tauri): il gioco in una finestra sua, che trova da sola la sessione aperta;
 - progetto d'esempio `examples/packet-server` (server TCP in Python) con un tour di 11 passi, inclusa una vera falla DoS.
 
 La roadmap completa è in [docs/progetto.md](docs/progetto.md).
@@ -164,6 +165,18 @@ npm run play -- --project examples/packet-server
 
 Apri http://127.0.0.1:7337 e scegli il livello. In questa modalità puoi riprodurre i tour salvati ma non fare domande.
 
+## App desktop (facoltativa)
+
+Il gioco può stare in una finestra sua invece che in una scheda del browser. L'app contiene solo il gioco: il server lo avvia sempre l'agente (o `npm run play`). All'apertura cerca da sola la sessione aperta sulle porte 127.0.0.1:7337-7356 e, se non ce n'è, aspetta che ne parta una. Con più sessioni aperte sceglie quella sulla porta più bassa.
+
+Per compilarla servono [Rust](https://rustup.rs) e, su Linux, le librerie di WebKitGTK (Fedora: `sudo dnf install webkit2gtk4.1-devel openssl-devel`; Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev libssl-dev build-essential`). Poi, dalla cartella di Code Dungeon:
+
+```bash
+npm run app:build
+```
+
+Trovi l'eseguibile in `src-tauri/target/release/code-dungeon` e i pacchetti da installare (`.deb`, `.rpm`, AppImage su Linux; `.exe` su Windows; `.dmg` su macOS) in `src-tauri/target/release/bundle/`. Pesa pochi MB perché usa il motore web del sistema.
+
 ## Domande senza tornare al terminale
 
 Dopo aver avviato un tour o risposto a una domanda, l'agente resta in ascolto da solo (`wait_for_question`): scrivi nel gioco e la risposta arriva nel fumetto, con qualsiasi agente. Per parlargli di altro nel terminale, interrompilo (in Claude Code con Esc). Alcuni agenti (es. Codex) a volte chiudono il turno invece di aspettare: la domanda non si perde, il gioco dopo 30 secondi ti ricorda di scrivere all'agente *"rispondi alle domande nel gioco"*.
@@ -204,6 +217,8 @@ npm run play -- --project examples/packet-server    # in un altro terminale
 npm run typecheck
 npm run test:mcp     # prova end-to-end: agente finto + gioco finto
 npm run build:demo   # un unico file HTML con l'esempio incorporato, senza ponte
+npm run app:dev      # app desktop (Tauri) collegata a `npm run dev`
+npm run app:build    # app desktop compilata e pacchetti in src-tauri/target/release/bundle/
 ```
 
 ## Sicurezza

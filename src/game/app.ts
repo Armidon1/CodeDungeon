@@ -23,7 +23,7 @@ import { DEFAULT_GUIDE_NAMES, LANGS, LANG_INFO, setLang, t, type Lang } from "./
 import { Portrait, drawMiniGuide, setGuideLook } from "./portrait";
 import { applyReader, pages, reducedMotion } from "./reader";
 import { fromStored, isEmpty, loadSettings, saveSettings, toStored, type Settings } from "./settings";
-import type { AgentCommand, ConnectionState, GameSource } from "./source";
+import { isDesktopApp, type AgentCommand, type ConnectionState, type GameSource } from "./source";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -424,7 +424,7 @@ export class App {
     } else if (this.connection === "connected") {
       el.textContent = t().msg.sourceProject(this.source.projectName, this.source.agent);
     } else {
-      el.textContent = t().msg.sourceWaiting;
+      el.textContent = isDesktopApp() ? t().msg.sourceSearching : t().msg.sourceWaiting;
     }
   }
 

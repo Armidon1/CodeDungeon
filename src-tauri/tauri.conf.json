@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Code Dungeon",
+  "version": "0.1.0",
+  "identifier": "io.github.armidon1.codedungeon",
+  "build": {
+    "frontendDist": "../dist/game",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build:game"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Code Dungeon",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 390,
+        "minHeight": 560
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ws://127.0.0.1:*; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "rpm", "appimage", "nsis", "dmg"],
+    "category": "DeveloperTool",
+    "shortDescription": "Il codice spiegato in un dungeon in pixel art",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+  }
+}

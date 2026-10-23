@@ -39,6 +39,34 @@ export interface GameSource {
 
 // ---------- Ponte WebSocket ----------
 
+/** true nell'app desktop (Tauri), che non è servita dal ponte. */
+export function isDesktopApp(): boolean {
+  return "__TAURI_INTERNALS__" in window;
+}
+
+/** Porte che il ponte prova in ordine (PORT_TRIES in bridge.ts). */
+const BRIDGE_PORTS = Array.from({ length: 20 }, (_, i) => 7337 + i);
+
+/** Cerca un ponte aperto su 127.0.0.1 e restituisce quello con la porta più bassa. */
+export async function findBridge(timeoutMs = 1500): Promise<string | undefined> {
+  const probe = (port: number) =>
+    new Promise<number | undefined>((resolve) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+      const done = (ok: boolean) => {
+        clearTimeout(timer);
+        ws.onopen = ws.onerror = ws.onclose = null;
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
+        resolve(ok ? port : undefined);
+      };
+      const timer = setTimeout(() => done(false), timeoutMs);
+      ws.onopen = () => done(true);
+      ws.onerror = () => done(false);
+      ws.onclose = () => done(false);
+    });
+  const open = (await Promise.all(BRIDGE_PORTS.map(probe))).filter((p) => p !== undefined);
+  return open.length ? `ws://127.0.0.1:${open[0]}/ws` : undefined;
+}
+
 export class BridgeSource implements GameSource {
   readonly kind = "bridge" as const;
   projectName = "";
@@ -55,17 +83,29 @@ export class BridgeSource implements GameSource {
   private retry = 0;
   private seq = 0;
 
-  constructor(private url: string) {
-    this.connect();
+  /** url: indirizzo fisso, oppure funzione che lo cerca a ogni tentativo (undefined = niente ponte). */
+  constructor(private url: string | (() => Promise<string | undefined>)) {
+    void this.connect();
   }
 
   private setStatus(s: ConnectionState): void {
     for (const cb of this.statusCbs) cb(s);
   }
 
-  private connect(): void {
+  private retryLater(): void {
+    const delay = Math.min(10_000, 500 * 2 ** this.retry++);
+    setTimeout(() => void this.connect(), delay);
+  }
+
+  private async connect(): Promise<void> {
     this.setStatus("connecting");
-    const ws = new WebSocket(this.url);
+    const url = typeof this.url === "string" ? this.url : await this.url();
+    if (!url) {
+      this.setStatus("offline");
+      this.retryLater();
+      return;
+    }
+    const ws = new WebSocket(url);
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;
@@ -101,8 +141,7 @@ export class BridgeSource implements GameSource {
       this.setStatus("offline");
       for (const p of this.pending.values()) p.reject(new Error(t().msg.bridgeClosed));
       this.pending.clear();
-      const delay = Math.min(10_000, 500 * 2 ** this.retry++);
-      setTimeout(() => this.connect(), delay);
+      this.retryLater();
     };
   }
 

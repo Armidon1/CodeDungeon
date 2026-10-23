@@ -35,7 +35,8 @@ function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return true; // client non-browser (test, Tauri in alcuni casi)
   try {
     const u = new URL(origin);
-    if (u.protocol === "tauri:") return true;
+    // app desktop: tauri://localhost (Linux, macOS), http://tauri.localhost (Windows)
+    if (u.protocol === "tauri:" || u.hostname === "tauri.localhost") return true;
     return (u.protocol === "http:" || u.protocol === "https:") && (u.hostname === "localhost" || u.hostname === "127.0.0.1");
   } catch {
     return false;

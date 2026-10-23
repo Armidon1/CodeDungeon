@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.tmp
 __pycache__/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
