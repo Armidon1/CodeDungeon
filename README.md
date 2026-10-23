@@ -26,28 +26,52 @@ Funziona già:
 
 La roadmap completa è in [docs/progetto.md](docs/progetto.md).
 
-## Requisiti
+## Installazione da zero
 
-Node.js 20 o superiore.
+Questa guida parte da un computer senza niente. Il server MCP si installa una volta sola e poi vale in tutti i tuoi progetti. Servono una decina di minuti.
 
-## Installazione
+### 1. Cosa ti serve
+
+- **Node.js 20 o superiore.** Controlla con `node --version`. Se manca o è vecchio, installalo da [nodejs.org](https://nodejs.org) (versione LTS) oppure con il gestore di pacchetti del sistema (`brew install node`, `sudo dnf install nodejs`, `sudo apt install nodejs npm`, `winget install OpenJS.NodeJS.LTS`).
+- **Git**, per scaricare il repository (`git --version`).
+- **Un agente da terminale** già installato e funzionante: [Claude Code](https://docs.claude.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex) o [Gemini CLI](https://github.com/google-gemini/gemini-cli). Va bene anche qualsiasi altro client MCP.
+- **Un browser**, dove si gioca.
+
+### 2. Scarica e compila Code Dungeon
+
+Scegli una cartella dove tenerlo, ad esempio la home, e lascialo lì: l'agente lo avvia da quel percorso.
 
 ```bash
+cd ~
+git clone https://github.com/Armidon1/CodeDungeon.git code-dungeon
+cd code-dungeon
 npm install
-npm run build        # compila server (dist/server) e gioco (dist/game)
+npm run build
 ```
 
-## Provalo subito, senza agente
+`npm run build` crea `dist/server` (il server MCP) e `dist/game` (il gioco). Se finisce senza errori, è pronto.
+
+### 3. Annota il percorso del server
+
+Il comando da dare all'agente è `node <percorso>/dist/server/cli.js mcp`. Stampa il percorso completo con:
+
+```bash
+echo "$(pwd)/dist/server/cli.js"      # macOS e Linux
+```
+
+Su Windows (PowerShell) usa `"$PWD\dist\server\cli.js"`. Negli esempi qui sotto sostituisci `/percorso/code-dungeon` con la tua cartella: deve essere un **percorso assoluto**, non `~/…` né relativo.
+
+Prova che il server parta da solo (facoltativo):
 
 ```bash
 npm run play -- --project examples/packet-server
 ```
 
-Apri http://127.0.0.1:7337 e scegli il livello. In questa modalità puoi riprodurre i tour salvati ma non fare domande.
+Apri http://127.0.0.1:7337: vedi il menu del gioco e puoi riprodurre il tour d'esempio. Chiudi con Ctrl+C.
 
-## Collegalo al tuo agente
+### 4. Registra il server nel tuo agente
 
-Il server parte nella cartella in cui lavora l'agente e la usa come progetto. Per indicarne un'altra aggiungi `--project /percorso/del/progetto`. Sostituisci `/percorso/code-dungeon` con la cartella di questo repository.
+Fallo per l'agente che usi. Il server lavora sulla cartella in cui avvii l'agente: non devi indicare nessun progetto.
 
 **Claude Code**
 
@@ -55,9 +79,11 @@ Il server parte nella cartella in cui lavora l'agente e la usa come progetto. Pe
 claude mcp add --scope user code-dungeon -- node /percorso/code-dungeon/dist/server/cli.js mcp
 ```
 
-Con `--scope user` vale in tutte le cartelle: non serve spostare nulla, basta avviare `claude` nel progetto da spiegare. I tour e gli schemi finiscono in `.tour/` di quel progetto. Con più sessioni aperte (anche di agenti diversi) ognuna prende la prima porta libera da 7337 in su: l'agente ti dice l'indirizzo del suo gioco.
+`--scope user` lo rende disponibile in tutte le cartelle. Controlla con `claude mcp list`: deve comparire `code-dungeon` con `✓ Connected`. Dentro una sessione, il comando `/mcp` mostra lo stesso stato.
 
-**Codex CLI** (`~/.codex/config.toml`)
+**Codex CLI**
+
+Aggiungi a `~/.codex/config.toml` (crealo se non esiste):
 
 ```toml
 [mcp_servers.code-dungeon]
@@ -66,9 +92,11 @@ args = ["/percorso/code-dungeon/dist/server/cli.js", "mcp"]
 tool_timeout_sec = 1800   # wait_for_question resta in ascolto più dei 60 secondi predefiniti
 ```
 
-Oppure `codex mcp add code-dungeon -- node /percorso/code-dungeon/dist/server/cli.js mcp` e poi aggiungi a mano `tool_timeout_sec`.
+In alternativa `codex mcp add code-dungeon -- node /percorso/code-dungeon/dist/server/cli.js mcp`, poi aggiungi a mano la riga `tool_timeout_sec`. Controlla con `codex mcp list`, oppure con `/mcp` dentro Codex.
 
-**Gemini CLI** (`~/.gemini/settings.json` oppure `.gemini/settings.json` nel progetto)
+**Gemini CLI**
+
+Aggiungi a `~/.gemini/settings.json` (per tutti i progetti) oppure a `.gemini/settings.json` dentro un progetto:
 
 ```json
 {
@@ -81,13 +109,48 @@ Oppure `codex mcp add code-dungeon -- node /percorso/code-dungeon/dist/server/cl
 }
 ```
 
-Poi, dal tuo agente nella cartella del progetto da spiegare:
+Se il file ha già altre impostazioni, aggiungi solo la voce `code-dungeon` dentro `mcpServers`. Controlla con `/mcp` dentro Gemini CLI.
 
-1. apri il gioco: di solito http://127.0.0.1:7337 (se è occupata, l'agente ti dà l'indirizzo giusto);
-2. chiedi: *"Crea un tour Code Dungeon di come questo server gestisce un pacchetto"* (in Claude Code c'è anche il comando `/mcp__code-dungeon__crea_tour`);
-3. fai le domande direttamente nel gioco: la risposta arriva nel fumetto della guida.
+**Altri client MCP**
 
-### Domande senza tornare al terminale
+Il server parla MCP su stdio. Comando `node`, argomenti `["/percorso/code-dungeon/dist/server/cli.js", "mcp"]`. Per un progetto diverso dalla cartella di lavoro aggiungi `"--project", "/percorso/del/progetto"`.
+
+### 5. Il primo tour
+
+1. Nel terminale entra nel progetto che vuoi farti spiegare e avvia l'agente (`claude`, `codex` o `gemini`).
+2. Chiedi: *"Crea un tour Code Dungeon di come questo programma gestisce una richiesta"*. In Claude Code c'è anche il comando `/mcp__code-dungeon__crea_tour`.
+3. L'agente legge il codice, scrive il tour e ti dà l'indirizzo del gioco: di solito http://127.0.0.1:7337. Se la porta è occupata usa la prima libera dopo, quindi apri quello che ti dice lui.
+4. Nel gioco scegli il livello e segui la guida. Le domande le scrivi direttamente nel gioco: la risposta arriva nel fumetto.
+
+I tour e gli schemi vengono salvati in `.tour/` nel tuo progetto. Puoi metterli su Git e chi clona il progetto li ritrova.
+
+### Se qualcosa non va
+
+- **L'agente non vede gli strumenti di Code Dungeon.** Riavvia l'agente dopo averlo registrato e controlla con `/mcp` o `mcp list`. Se risulta non connesso, di solito il percorso di `cli.js` è sbagliato o non hai lanciato `npm run build`.
+- **`node: command not found` oppure un errore di sintassi all'avvio.** Node manca o è più vecchio della versione 20.
+- **Il gioco non si apre.** Il server si avvia insieme all'agente, quindi l'agente deve essere aperto. Chiedigli l'indirizzo esatto (strumento `get_game_state`).
+- **Scrivi una domanda nel gioco e non succede niente.** Vedi [Domande senza tornare al terminale](#domande-senza-tornare-al-terminale). Se l'agente ha chiuso il turno, scrivigli nel terminale *"rispondi alle domande nel gioco"*.
+
+### Aggiornare
+
+```bash
+cd /percorso/code-dungeon
+git pull
+npm install
+npm run build
+```
+
+Poi riavvia l'agente. Non serve registrare di nuovo il server.
+
+## Provalo subito, senza agente
+
+```bash
+npm run play -- --project examples/packet-server
+```
+
+Apri http://127.0.0.1:7337 e scegli il livello. In questa modalità puoi riprodurre i tour salvati ma non fare domande.
+
+## Domande senza tornare al terminale
 
 Dopo aver avviato un tour o risposto a una domanda, l'agente resta in ascolto da solo (`wait_for_question`): scrivi nel gioco e la risposta arriva nel fumetto, con qualsiasi agente. Per parlargli di altro nel terminale, interrompilo (in Claude Code con Esc). Alcuni agenti (es. Codex) a volte chiudono il turno invece di aspettare: la domanda non si perde, il gioco dopo 30 secondi ti ricorda di scrivere all'agente *"rispondi alle domande nel gioco"*.
 
