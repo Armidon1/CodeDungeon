@@ -150,7 +150,7 @@ The server speaks MCP over stdio. Command `node`, arguments `["/path/to/code-dun
 
 1. In the terminal, go into the project you want explained and start the agent (`claude`, `codex` or `gemini`).
 2. Ask: *"Create a Code Dungeon tour of how this program handles a request"*. In Claude Code there is also the `/mcp__code-dungeon__crea_tour` command.
-3. The agent reads the code, writes the tour and gives you the game's address: usually http://127.0.0.1:7337. If the port is taken it uses the next free one, so open the address it gives you.
+3. The agent reads the code, writes the tour and gives you the game's address: usually http://127.0.0.1:7337. If the port is taken it uses the next free one, so open the address it gives you. With several agents open at once, click the project name in the game's title bar to switch session.
 4. In the game, pick the level and follow the guide. Type your questions directly in the game: the answer arrives in the speech bubble.
 
 Tours, diagrams and conversations are saved in `.tour/` in your project.
@@ -192,7 +192,7 @@ Open http://127.0.0.1:7337 and pick the level. In this mode you can play saved t
 
 ## Desktop app (optional)
 
-The game can live in its own window instead of a browser tab. The app contains only the game: the server is still started by the agent (or by `npm run play`). When it opens, it looks for the open session on ports 127.0.0.1:7337-7356 and, if there is none, waits for one to start. With several sessions open, it picks the one on the lowest port.
+The game can live in its own window instead of a browser tab. The app contains only the game: the server is still started by the agent (or by `npm run play`). When it opens, it looks for open sessions on ports 127.0.0.1:7337-7356 and, if there is none, waits for one to start. With one session it connects straight away; with several it lists them (project, port, agent) and you choose. Click the project name in the title bar to switch session at any time.
 
 ### 1. Build it
 
@@ -292,7 +292,7 @@ Prompt: `crea_tour` (full guide in [docs/come-fare-un-tour.md](docs/come-fare-un
 ## Development
 
 ```bash
-npm run dev          # game with hot reload on http://localhost:5173 (connected to the bridge on :7337)
+npm run dev          # game with hot reload on http://localhost:5173 (finds the open sessions like the desktop app)
 npm run play -- --project examples/packet-server    # in another terminal
 npm run typecheck
 npm run test:mcp     # end-to-end test: fake agent + fake game

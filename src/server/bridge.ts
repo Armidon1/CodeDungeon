@@ -3,12 +3,12 @@
 // - inoltra al gioco i comandi dell'agente;
 // - raccoglie le domande dell'utente e lo stato del gioco per l'agente.
 
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { ClientMessage, Conversation, ConversationTurn, GameContext, ReaderProfile, ServerMessage, UserQuestion } from "../shared/types.js";
+import type { ClientMessage, Conversation, ConversationTurn, GameContext, ReaderProfile, ServerMessage, SessionInfo, UserQuestion } from "../shared/types.js";
 import { conversationSummary, type Project } from "./project.js";
 import type { Store } from "./store.js";
 import { log } from "./log.js";
@@ -93,6 +93,10 @@ export class Bridge {
   constructor(private opts: BridgeOptions) {
     this.port = opts.port;
     this.http = createServer((req, res) => {
+      if ((req.url ?? "").split("?")[0] === "/session") {
+        this.serveSession(req, res);
+        return;
+      }
       this.serveStatic(req).then(
         (r) => {
           res.writeHead(r.status, { "content-type": r.type, "x-content-type-options": "nosniff" });
@@ -364,6 +368,23 @@ export class Bridge {
         reply({ type: "response", reqId: msg.reqId, ok: false, error: e instanceof Error ? e.message : String(e) });
       }
     }
+  }
+
+  /** Nome del progetto e porta, letti dal gioco aperto altrove (altra porta, app desktop): CORS solo per origini locali. */
+  private serveSession(req: IncomingMessage, res: ServerResponse): void {
+    const origin = req.headers.origin;
+    if (!isAllowedOrigin(origin)) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+    const info: SessionInfo = { project: this.opts.project.name, agent: this.opts.agent, port: this.port };
+    res.writeHead(200, {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+      ...(origin ? { "access-control-allow-origin": origin, vary: "origin" } : {}),
+    });
+    res.end(JSON.stringify(info));
   }
 
   private async serveStatic(req: IncomingMessage): Promise<{ status: number; type: string; body: string | Buffer }> {

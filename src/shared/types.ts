@@ -205,6 +205,13 @@ export interface ConversationSummary {
 
 // ---------- Protocollo WebSocket tra ponte e gioco ----------
 
+/** GET /session: chi c'è su una porta del ponte. Serve al gioco per scegliere tra più sessioni aperte. */
+export interface SessionInfo {
+  project: string;
+  agent: boolean;
+  port: number;
+}
+
 /** Dal ponte (server) al gioco. */
 export type ServerMessage =
   | { type: "hello"; project: string; files: string[]; agent: boolean; prefs: StoredPrefs }

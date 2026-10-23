@@ -24,6 +24,7 @@ import { Portrait, drawMiniGuide, setGuideLook } from "./portrait";
 import { applyReader, pages, reducedMotion } from "./reader";
 import { fromStored, isEmpty, loadSettings, saveSettings, toStored, type Settings } from "./settings";
 import { isDesktopApp, type AgentCommand, type ConnectionState, type GameSource } from "./source";
+import { pickSession, switchSession } from "./sessions";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -426,6 +427,15 @@ export class App {
     } else {
       el.textContent = isDesktopApp() ? t().msg.sourceSearching : t().msg.sourceWaiting;
     }
+    $("session-btn").hidden = this.source.kind !== "bridge";
+  }
+
+  /** Elenco delle sessioni aperte; scegliendone un'altra la pagina si ricollega a lei. */
+  private async chooseSession(): Promise<void> {
+    if (this.source.kind !== "bridge") return;
+    sound.play("menu");
+    const s = await pickSession(undefined, this.source.port);
+    if (s && s.port !== this.source.port) switchSession(s.port);
   }
 
   /** Nome e mini-guida ovunque compaiano. */
@@ -1360,6 +1370,8 @@ export class App {
     $("prev-btn").addEventListener("click", () => this.prev());
     $("dialog-text").addEventListener("click", () => this.next());
     $("menu-btn").addEventListener("click", () => this.openTitle());
+    $("project-name").addEventListener("click", () => void this.chooseSession());
+    $("session-btn").addEventListener("click", () => void this.chooseSession());
     $("board-pop-close").addEventListener("click", () => this.closePop());
     $("board-pop-fold").addEventListener("click", () => this.foldPop(!$("board-pop").classList.contains("is-folded")));
     $("board-pop-tab").addEventListener("click", () => {

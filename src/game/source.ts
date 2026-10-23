@@ -12,6 +12,8 @@ export type ConnectionState = "demo" | "connecting" | "connected" | "offline";
 export interface GameSource {
   readonly kind: "bridge" | "demo";
   projectName: string;
+  /** Porta del ponte collegato; undefined nella demo o prima di collegarsi. */
+  port?: number;
   files: string[];
   /** true se dall'altra parte c'è un agente che può rispondere alle domande. */
   agent: boolean;
@@ -44,32 +46,10 @@ export function isDesktopApp(): boolean {
   return "__TAURI_INTERNALS__" in window;
 }
 
-/** Porte che il ponte prova in ordine (PORT_TRIES in bridge.ts). */
-const BRIDGE_PORTS = Array.from({ length: 20 }, (_, i) => 7337 + i);
-
-/** Cerca un ponte aperto su 127.0.0.1 e restituisce quello con la porta più bassa. */
-export async function findBridge(timeoutMs = 1500): Promise<string | undefined> {
-  const probe = (port: number) =>
-    new Promise<number | undefined>((resolve) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
-      const done = (ok: boolean) => {
-        clearTimeout(timer);
-        ws.onopen = ws.onerror = ws.onclose = null;
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
-        resolve(ok ? port : undefined);
-      };
-      const timer = setTimeout(() => done(false), timeoutMs);
-      ws.onopen = () => done(true);
-      ws.onerror = () => done(false);
-      ws.onclose = () => done(false);
-    });
-  const open = (await Promise.all(BRIDGE_PORTS.map(probe))).filter((p) => p !== undefined);
-  return open.length ? `ws://127.0.0.1:${open[0]}/ws` : undefined;
-}
-
 export class BridgeSource implements GameSource {
   readonly kind = "bridge" as const;
   projectName = "";
+  port: number | undefined;
   files: string[] = [];
   agent = false;
   prefs: StoredPrefs | undefined;
@@ -107,6 +87,7 @@ export class BridgeSource implements GameSource {
     }
     const ws = new WebSocket(url);
     this.ws = ws;
+    this.port = Number(new URL(url).port) || undefined;
     ws.onopen = () => {
       this.retry = 0;
     };

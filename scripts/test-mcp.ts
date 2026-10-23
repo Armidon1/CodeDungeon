@@ -65,6 +65,18 @@ const evilResult = await new Promise<string>((r) => {
 });
 check(evilResult === "rifiutata", "origine esterna rifiutata");
 
+// /session: il gioco elenca le sessioni aperte; un sito estraneo non le vede
+const sessionUrl = `http://127.0.0.1:${PORT}/session`;
+const session = await fetch(sessionUrl, { headers: { origin: "http://tauri.localhost" } });
+const info = (await session.json()) as { project?: string; agent?: boolean; port?: number };
+check(
+  session.ok && info.project === "packet-server" && info.agent === true && info.port === PORT &&
+    session.headers.get("access-control-allow-origin") === "http://tauri.localhost",
+  "/session descrive la sessione all'app",
+);
+const evilSession = await fetch(sessionUrl, { headers: { origin: "https://sito-malevolo.example" } });
+check(evilSession.status === 403, "/session rifiuta le origini esterne");
+
 let r = await client.callTool({ name: "highlight_lines", arguments: { path: "protocol.py", start: 27, end: 35 } });
 await new Promise((res) => setTimeout(res, 150));
 check(!r.isError && received.some((m) => m.type === "highlight" && m.start === 27), "highlight_lines arriva al gioco");

@@ -13,7 +13,7 @@
       <header class="titlebar">
         <span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="titlebar-name">Code Dungeon</span>
-        <span class="titlebar-project" id="project-name"></span>
+        <button type="button" class="titlebar-project" id="project-name" title="Switch session" data-i18n-title="ui.switchSession"></button>
         <button type="button" class="chip-btn" id="sound-btn" aria-pressed="false" title="Audio (M key)" data-i18n="ui.audio" data-i18n-title="ui.audioTitle">♪ Audio</button>
         <button type="button" class="chip-btn" id="menu-btn" aria-label="Open the menu" data-i18n="ui.menu" data-i18n-aria-label="ui.openMenu">Menu</button>
       </header>
@@ -202,13 +202,19 @@
         </fieldset>
 
         <div class="title-actions">
-          <p class="title-source" id="title-source"></p>
+          <p class="title-source"><span id="title-source"></span> <button type="button" class="link-btn" id="session-btn" data-i18n="ui.switchSession" hidden>Switch session</button></p>
           <button type="button" class="pix-btn big" id="start-btn">Enter the dungeon ▶</button>
         </div>
         <p class="title-keys" data-i18n="menu.keys">Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · M audio</p>
       </div>
     </div>
 
+    <dialog class="session-picker" id="session-picker" aria-labelledby="session-title">
+      <h2 class="session-title" id="session-title" data-i18n="ui.sessions">Open sessions</h2>
+      <p class="small muted" id="session-msg"></p>
+      <ul class="session-list" id="session-list"></ul>
+      <button type="button" class="chip-btn" id="session-close" data-i18n="ui.closeSessions">Close</button>
+    </dialog>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
