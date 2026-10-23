@@ -60,6 +60,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         "Code Dungeon è un gioco in pixel art che spiega il codice seguendo il flusso reale del programma. " +
         "Costruisci un tour con create_tour e add_step (un passo per ogni punto del flusso, nell'ordine di esecuzione), " +
         "poi avvialo con play_tour. Il prompt crea_tour contiene la guida completa. " +
+        (bridge.listening ? `Il gioco è su ${bridge.url}: dai questo indirizzo all'utente. ` : "") +
         'Le domande che l\'utente scrive nel gioco possono arrivare da sole come <channel source="code-dungeon" question_id="..." ...>: ' +
         "rispondi subito nel gioco con show_dialog passando question_id (highlight_lines prima, se parli di altro codice). " +
         "L'utente legge la risposta nel gioco, non nel terminale. " +
@@ -215,7 +216,8 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     },
     async () =>
       ok(
-        bridge.connected ? "Stato attuale del gioco:" : "Nessuna finestra del gioco collegata. Ultimo stato noto:",
+        (bridge.listening ? `Gioco su ${bridge.url}. ` : "Ponte verso il gioco non attivo. ") +
+          (bridge.connected ? "Stato attuale del gioco:" : "Nessuna finestra del gioco collegata. Ultimo stato noto:"),
         bridge.context ?? null,
       ),
   );

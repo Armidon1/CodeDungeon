@@ -2,6 +2,7 @@
 // Punto d'ingresso.
 //   code-dungeon mcp  [--project <cartella>] [--port 7337]   server MCP (stdio) + ponte verso il gioco
 //   code-dungeon play [--project <cartella>] [--port 7337]   solo il ponte: riproduci i tour salvati senza agente
+// Se la porta è occupata (un'altra sessione) si usa la prima libera dopo di lei: l'indirizzo è nel log e negli strumenti.
 
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -49,7 +50,7 @@ async function main(): Promise<void> {
     log(`gioco su ${bridge.url} · progetto: ${project.root}`);
   } catch (e) {
     const busy = (e as NodeJS.ErrnoException).code === "EADDRINUSE";
-    log(busy ? `porta ${port} occupata: il ponte verso il gioco è disattivato` : `ponte non avviato: ${String(e)}`);
+    log(busy ? `porte ${port}-${port + 19} occupate: il ponte verso il gioco è disattivato` : `ponte non avviato: ${String(e)}`);
     if (mode === "play") process.exit(1);
   }
 

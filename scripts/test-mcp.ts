@@ -136,6 +136,18 @@ await new Promise((res) => setTimeout(res, 150));
 late = await lateGame();
 check(late.join(",") === "hello,play_tour:fine", "la risposta già chiusa non viene ripetuta");
 
+// porta occupata: un secondo server sceglie la successiva libera
+const second = new StdioClientTransport({
+  command: "npx",
+  args: ["tsx", "src/server/cli.ts", "mcp", "--project", project, "--port", String(PORT)],
+  stderr: "pipe",
+});
+const client2 = new Client({ name: "test-agente-2", version: "0.0.1" });
+await client2.connect(second);
+r = await client2.callTool({ name: "get_game_state", arguments: {} });
+check(text(r).includes(`127.0.0.1:${PORT + 1}`), "con la porta occupata il secondo server usa la successiva");
+await client2.close();
+
 // lavagna degli schemi
 const SCHEMA = "prova-schema";
 const nodes = [

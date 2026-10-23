@@ -54,7 +54,7 @@ Il server parte nella cartella in cui lavora l'agente e la usa come progetto. Pe
 claude mcp add --scope user code-dungeon -- node /percorso/code-dungeon/dist/server/cli.js mcp
 ```
 
-Con `--scope user` vale in tutte le cartelle: non serve spostare nulla, basta avviare `claude` nel progetto da spiegare. I tour e gli schemi finiscono in `.tour/` di quel progetto. Una sessione alla volta: la seconda trova la porta 7337 occupata.
+Con `--scope user` vale in tutte le cartelle: non serve spostare nulla, basta avviare `claude` nel progetto da spiegare. I tour e gli schemi finiscono in `.tour/` di quel progetto. Con più sessioni aperte (anche di agenti diversi) ognuna prende la prima porta libera da 7337 in su: l'agente ti dice l'indirizzo del suo gioco.
 
 **Codex CLI** (`~/.codex/config.toml`)
 
@@ -79,7 +79,7 @@ args = ["/percorso/code-dungeon/dist/server/cli.js", "mcp"]
 
 Poi, dal tuo agente nella cartella del progetto da spiegare:
 
-1. apri http://127.0.0.1:7337;
+1. apri il gioco: di solito http://127.0.0.1:7337 (se è occupata, l'agente ti dà l'indirizzo giusto);
 2. chiedi: *"Crea un tour Code Dungeon di come questo server gestisce un pacchetto"* (in Claude Code c'è anche il comando `/mcp__code-dungeon__crea_tour`);
 3. fai le domande direttamente nel gioco: la risposta arriva nel fumetto di Lumen.
 

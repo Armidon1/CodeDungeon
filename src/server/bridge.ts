@@ -12,6 +12,9 @@ import type { ClientMessage, GameContext, ServerMessage, UserQuestion } from "..
 import type { Project } from "./project.js";
 import { log } from "./log.js";
 
+/** Quante porte provare a partire da quella preferita (più sessioni aperte insieme). */
+const PORT_TRIES = 20;
+
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -37,6 +40,7 @@ function isAllowedOrigin(origin: string | undefined): boolean {
 
 export interface BridgeOptions {
   project: Project;
+  /** Porta preferita: se è occupata si prova la successiva (vedi PORT_TRIES). */
   port: number;
   staticDir?: string;
   agent: boolean;
@@ -58,11 +62,11 @@ export class Bridge {
    * Un nuovo tour azzera il resto.
    */
   private scene: ServerMessage[] = [];
-  readonly url: string;
+  private port: number;
   listening = false;
 
   constructor(private opts: BridgeOptions) {
-    this.url = `http://127.0.0.1:${opts.port}`;
+    this.port = opts.port;
     this.http = createServer((req, res) => {
       this.serveStatic(req).then(
         (r) => {
@@ -86,11 +90,32 @@ export class Bridge {
     });
   }
 
-  start(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.http.once("error", reject);
-      this.http.listen(this.opts.port, "127.0.0.1", () => {
+  /** Indirizzo del gioco servito da questo ponte. */
+  get url(): string {
+    return `http://127.0.0.1:${this.port}`;
+  }
+
+  /** Ascolta sulla porta preferita o sulla prima libera dopo di lei. */
+  async start(): Promise<void> {
+    for (let port = this.opts.port; ; port++) {
+      try {
+        await this.listen(port);
+        this.port = port;
         this.listening = true;
+        return;
+      } catch (e) {
+        const busy = (e as NodeJS.ErrnoException).code === "EADDRINUSE";
+        if (!busy || port >= this.opts.port + PORT_TRIES - 1) throw e;
+      }
+    }
+  }
+
+  private listen(port: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const onError = (e: Error) => reject(e);
+      this.http.once("error", onError);
+      this.http.listen(port, "127.0.0.1", () => {
+        this.http.off("error", onError);
         resolve();
       });
     });
