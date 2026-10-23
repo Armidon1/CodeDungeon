@@ -1,51 +1,51 @@
 # Code Dungeon
 
-Un gioco cozy in pixel art che spiega il codice generato dagli LLM. Una guida (Lumen, una piccola lanterna, o quella che scegli tu) ti accompagna dentro una versione pixelata di VS Code e segue il **flusso reale del programma**: dal pacchetto che arriva fino alla funzione che risponde.
+A cozy pixel-art game that explains code written by LLMs. A guide (Lumen, a little lantern, or one you pick) walks you through a pixelated VS Code and follows the **real flow of the program**: from the packet that arrives to the function that answers it.
 
-Il gioco è un **server MCP**: non contiene un agente proprio, lo pilota quello che usi già (Claude Code, Codex, Gemini CLI o qualsiasi client MCP). L'agente costruisce il tour con gli strumenti del gioco e risponde dal vivo alle tue domande.
+The game is an **MCP server**: it has no agent of its own and is driven by the one you already use (Claude Code, Codex, Gemini CLI or any MCP client). The agent builds the tour with the game's tools and answers your questions live.
 
 ```
-agente (Claude Code / Codex / Gemini CLI) ──MCP stdio──▶ server Code Dungeon ──WebSocket──▶ gioco nel browser o nell'app
-                                                          │
-                                                          └─ .tour/ nel tuo progetto: tour, schemi e conversazioni
+agent (Claude Code / Codex / Gemini CLI) ──MCP stdio──▶ Code Dungeon server ──WebSocket──▶ game in the browser or the app
+                                                         │
+                                                         └─ .tour/ in your project: tours, diagrams and conversations
 ```
 
-## Stato: tappa 10 di 10 in corso
+## Status: stage 10 of 10 in progress
 
-Funziona già:
+Already working:
 
-- interfaccia in inglese (predefinita) o in italiano, a scelta nel menu. L'agente riceve la lingua scelta e scrive tour e risposte in quella lingua;
-- editor VS Code pixelato con evidenziazione della sintassi (Python, JS/TS) e delle righe;
-- la guida con 5 espressioni animate e la mini-guida che cammina tra i file, con dissolvenza a pixel nel cambio file;
-- guida a scelta nel menu: Lumen, Aria, Patrizio, Nilo, oppure una tua foto o un disegno convertito in pixel art (tre livelli di compressione affiancati e uno slider), con le espressioni automatiche o caricate una per una; il nome lo scegli tu. L'immagine resta nel browser;
-- tour JSON con diramazioni (scelte nel dialogo), avanti e indietro;
-- menu iniziale con 4 livelli (facile, medio, difficile, arduo) e modalità di generazione, livello cambiabile durante il tour;
-- domande dal vivo: le scrivi nel gioco, l'agente le legge e risponde nel fumetto;
-- cronologia delle domande: ogni conversazione si salva in `.tour/conversazioni/` e resta nell'elenco "Domande". Un clic la rilegge con il codice e gli schemi della risposta; se scrivi mentre leggi una risposta, la domanda continua quella conversazione e l'agente riceve anche le domande e risposte precedenti;
-- questionario "Cosa ti aiuta a capire" nel menu: frasi brevi, poco testo per volta (fumetto a pagine), più schemi, esempi, termini spiegati, font ad alta leggibilità (Atkinson Hyperlegible), testo più grande, meno animazioni. Il gioco si adatta subito, l'agente riceve le richieste e adatta le spiegazioni;
-- musica e suoni in stile videogame: quattro colonne sonore chiptune a scelta, effetti dell'interfaccia e la voce della guida a bip mentre parla, con un timbro diverso per ogni ritratto. Tutto generato dal gioco, senza file audio; volumi separati e tasto M per togliere l'audio;
-- impostazioni salvate in SQLite sul tuo computer, uguali in tutti i progetti;
-- lavagna degli schemi: l'agente disegna flussi e sequenze in pixel art, pezzo per pezzo mentre spiega; lo schema compare in una finestra e resta come scheda dell'editor (e nell'elenco "Schemi");
-- layout per telefono;
-- app desktop facoltativa (Tauri): il gioco in una finestra sua, che trova da sola la sessione aperta;
-- progetto d'esempio `examples/packet-server` (server TCP in Python) con un tour di 11 passi, inclusa una vera falla DoS.
+- interface in English (default) or Italian, chosen in the menu. The agent receives the chosen language and writes tours and answers in it;
+- pixelated VS Code editor with syntax highlighting (Python, JS/TS) and line highlighting;
+- the guide with 5 animated expressions and a mini guide that walks between files, with a pixel dissolve when the file changes;
+- guide chosen in the menu: Lumen, Aria, Patrizio, Nilo, or your own photo or drawing turned into pixel art (three compression levels side by side and a slider), with automatic expressions or one uploaded per expression; you pick the name. The image stays in the browser;
+- JSON tours with branches (choices in the dialog), forward and back;
+- start menu with 4 levels (Easy, Medium, Hard, Expert) and a generation mode; the level can be changed during the tour;
+- live questions: you type them in the game, the agent reads them and answers in the speech bubble;
+- question history: every conversation is saved in `.tour/conversazioni/` and stays in the "Questions" list. One click replays it with the code and diagrams of the answer; if you type while reading an answer, the question continues that conversation and the agent also receives the previous questions and answers;
+- "What helps you understand" questionnaire in the menu: short sentences, little text at a time (paged bubble), more diagrams, examples, explained terms, a highly legible font (Atkinson Hyperlegible), larger text, fewer animations. The game adapts at once; the agent receives the requests and adapts its explanations;
+- video-game music and sounds: four chiptune soundtracks to choose from, interface effects and the guide's beeping voice while it talks, with a different timbre for each portrait. All generated by the game, no audio files; separate volumes and the M key to mute;
+- settings saved in SQLite on your computer, the same across all projects;
+- diagram board: the agent draws flows and sequences in pixel art, piece by piece while it explains; the diagram pops up in a window and stays as an editor tab (and in the "Diagrams" list);
+- phone layout;
+- optional desktop app (Tauri): the game in its own window, which finds the open session by itself;
+- sample project `examples/packet-server` (a TCP server in Python) with an 11-step tour, including a real DoS flaw.
 
-La roadmap completa è in [docs/progetto.md](docs/progetto.md).
+The full roadmap is in [docs/progetto.md](docs/progetto.md) (in Italian).
 
-## Installazione da zero
+## Installing from scratch
 
-Questa guida parte da un computer senza niente. Il server MCP si installa una volta sola e poi vale in tutti i tuoi progetti. Servono una decina di minuti.
+This guide starts from a computer with nothing installed. The MCP server is installed once and then works in all your projects. It takes about ten minutes.
 
-### 1. Cosa ti serve
+### 1. What you need
 
-- **Node.js 22.13 o superiore** (serve il modulo SQLite integrato). Controlla con `node --version`. Se manca o è vecchio, installalo da [nodejs.org](https://nodejs.org) (versione LTS) oppure con il gestore di pacchetti del sistema (`brew install node`, `sudo dnf install nodejs`, `sudo apt install nodejs npm`, `winget install OpenJS.NodeJS.LTS`).
-- **Git**, per scaricare il repository (`git --version`).
-- **Un agente da terminale** già installato e funzionante: [Claude Code](https://docs.claude.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex) o [Gemini CLI](https://github.com/google-gemini/gemini-cli). Va bene anche qualsiasi altro client MCP.
-- **Un browser**, dove si gioca.
+- **Node.js 22.13 or later** (it needs the built-in SQLite module). Check with `node --version`. If it's missing or old, install it from [nodejs.org](https://nodejs.org) (LTS version) or with your system's package manager (`brew install node`, `sudo dnf install nodejs`, `sudo apt install nodejs npm`, `winget install OpenJS.NodeJS.LTS`).
+- **Git**, to download the repository (`git --version`).
+- **A terminal agent**, installed and working: [Claude Code](https://docs.claude.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex) or [Gemini CLI](https://github.com/google-gemini/gemini-cli). Any other MCP client works too.
+- **A browser**, where you play (or the [desktop app](#desktop-app-optional)).
 
-### 2. Scarica e compila Code Dungeon
+### 2. Download and build Code Dungeon
 
-Scegli una cartella dove tenerlo, ad esempio la home, e lascialo lì: l'agente lo avvia da quel percorso.
+Pick a folder to keep it in, for example your home, and leave it there: the agent starts it from that path.
 
 ```bash
 cd ~
@@ -55,232 +55,232 @@ npm install
 npm run build
 ```
 
-`npm run build` crea `dist/server` (il server MCP) e `dist/game` (il gioco). Se finisce senza errori, è pronto.
+`npm run build` creates `dist/server` (the MCP server) and `dist/game` (the game). If it finishes without errors, you're ready.
 
-### 3. Annota il percorso del server
+### 3. Note the server path
 
-Il comando da dare all'agente è `node <percorso>/dist/server/cli.js mcp`. Stampa il percorso completo con:
+The command to give the agent is `node <path>/dist/server/cli.js mcp`. Print the full path with:
 
 ```bash
-echo "$(pwd)/dist/server/cli.js"      # macOS e Linux
+echo "$(pwd)/dist/server/cli.js"      # macOS and Linux
 ```
 
-Su Windows (PowerShell) usa `"$PWD\dist\server\cli.js"`. Negli esempi qui sotto sostituisci `/percorso/code-dungeon` con la tua cartella: deve essere un **percorso assoluto**, non `~/…` né relativo.
+On Windows (PowerShell) use `"$PWD\dist\server\cli.js"`. In the examples below, replace `/path/to/code-dungeon` with your folder: it must be an **absolute path**, not `~/…` or relative.
 
-Prova che il server parta da solo (facoltativo):
+Check that the server starts on its own (optional):
 
 ```bash
 npm run play -- --project examples/packet-server
 ```
 
-Apri http://127.0.0.1:7337: vedi il menu del gioco e puoi riprodurre il tour d'esempio. Chiudi con Ctrl+C.
+Open http://127.0.0.1:7337: you see the game menu and can play the sample tour. Stop it with Ctrl+C.
 
-### 4. Registra il server nel tuo agente
+### 4. Register the server with your agent
 
-Fallo per l'agente che usi. Il server lavora sulla cartella in cui avvii l'agente: non devi indicare nessun progetto.
+Do it for the agent you use. The server works on the folder where you start the agent: you don't need to point it at a project.
 
 **Claude Code**
 
 ```bash
-claude mcp add --scope user code-dungeon -- node /percorso/code-dungeon/dist/server/cli.js mcp
+claude mcp add --scope user code-dungeon -- node /path/to/code-dungeon/dist/server/cli.js mcp
 ```
 
-`--scope user` lo rende disponibile in tutte le cartelle. Controlla con `claude mcp list`: deve comparire `code-dungeon` con `✓ Connected`. Dentro una sessione, il comando `/mcp` mostra lo stesso stato.
+`--scope user` makes it available in every folder. Check with `claude mcp list`: `code-dungeon` must show `✓ Connected`. Inside a session, the `/mcp` command shows the same status.
 
 **Codex CLI**
 
-Aggiungi a `~/.codex/config.toml` (crealo se non esiste):
+Add to `~/.codex/config.toml` (create it if it doesn't exist):
 
 ```toml
 [mcp_servers.code-dungeon]
 command = "node"
-args = ["/percorso/code-dungeon/dist/server/cli.js", "mcp"]
-tool_timeout_sec = 1800   # wait_for_question resta in ascolto più dei 60 secondi predefiniti
+args = ["/path/to/code-dungeon/dist/server/cli.js", "mcp"]
+tool_timeout_sec = 1800   # wait_for_question listens longer than the default 60 seconds
 ```
 
-In alternativa `codex mcp add code-dungeon -- node /percorso/code-dungeon/dist/server/cli.js mcp`, poi aggiungi a mano la riga `tool_timeout_sec`. Controlla con `codex mcp list`, oppure con `/mcp` dentro Codex. Codex chiede il permesso prima di usare uno strumento: approvalo (anche "sempre" per questa sessione).
+Alternatively run `codex mcp add code-dungeon -- node /path/to/code-dungeon/dist/server/cli.js mcp`, then add the `tool_timeout_sec` line by hand. Check with `codex mcp list`, or with `/mcp` inside Codex. Codex asks for permission before using a tool: approve it (you can choose "always" for the session).
 
 **Gemini CLI**
 
-Aggiungi a `~/.gemini/settings.json` (per tutti i progetti) oppure a `.gemini/settings.json` dentro un progetto:
+Add to `~/.gemini/settings.json` (for all projects) or to `.gemini/settings.json` inside a project:
 
 ```json
 {
   "mcpServers": {
     "code-dungeon": {
       "command": "node",
-      "args": ["/percorso/code-dungeon/dist/server/cli.js", "mcp"]
+      "args": ["/path/to/code-dungeon/dist/server/cli.js", "mcp"]
     }
   }
 }
 ```
 
-Se il file ha già altre impostazioni, aggiungi solo la voce `code-dungeon` dentro `mcpServers`. Controlla con `/mcp` dentro Gemini CLI.
+If the file already has other settings, add only the `code-dungeon` entry inside `mcpServers`. Check with `/mcp` inside Gemini CLI.
 
-**Altri client MCP**
+**Other MCP clients**
 
-Il server parla MCP su stdio. Comando `node`, argomenti `["/percorso/code-dungeon/dist/server/cli.js", "mcp"]`. Per un progetto diverso dalla cartella di lavoro aggiungi `"--project", "/percorso/del/progetto"`.
+The server speaks MCP over stdio. Command `node`, arguments `["/path/to/code-dungeon/dist/server/cli.js", "mcp"]`. For a project other than the working folder, add `"--project", "/path/to/the/project"`.
 
-### 5. Il primo tour
+### 5. Your first tour
 
-1. Nel terminale entra nel progetto che vuoi farti spiegare e avvia l'agente (`claude`, `codex` o `gemini`).
-2. Chiedi: *"Crea un tour Code Dungeon di come questo programma gestisce una richiesta"*. In Claude Code c'è anche il comando `/mcp__code-dungeon__crea_tour`.
-3. L'agente legge il codice, scrive il tour e ti dà l'indirizzo del gioco: di solito http://127.0.0.1:7337. Se la porta è occupata usa la prima libera dopo, quindi apri quello che ti dice lui.
-4. Nel gioco scegli il livello e segui la guida. Le domande le scrivi direttamente nel gioco: la risposta arriva nel fumetto.
+1. In the terminal, go into the project you want explained and start the agent (`claude`, `codex` or `gemini`).
+2. Ask: *"Create a Code Dungeon tour of how this program handles a request"*. In Claude Code there is also the `/mcp__code-dungeon__crea_tour` command.
+3. The agent reads the code, writes the tour and gives you the game's address: usually http://127.0.0.1:7337. If the port is taken it uses the next free one, so open the address it gives you.
+4. In the game, pick the level and follow the guide. Type your questions directly in the game: the answer arrives in the speech bubble.
 
-Tour, schemi e conversazioni vengono salvati in `.tour/` nel tuo progetto.
+Tours, diagrams and conversations are saved in `.tour/` in your project.
 
-> **Consiglio: aggiungi `.tour/` al `.gitignore` del tuo progetto.** La cartella è generata da Code Dungeon e contiene anche le tue domande all'agente, che sono personali. Se vuoi condividere un tour con chi clona il progetto, escludi almeno le conversazioni:
+> **Tip: add `.tour/` to your project's `.gitignore`.** The folder is generated by Code Dungeon and also holds your questions to the agent, which are personal. If you want to share a tour with whoever clones the project, at least leave out the conversations:
 >
 > ```gitignore
-> # tutto ciò che genera Code Dungeon
+> # everything Code Dungeon generates
 > .tour/
-> # oppure solo le conversazioni
+> # or just the conversations
 > .tour/conversazioni/
 > ```
 
-### Se qualcosa non va
+### Troubleshooting
 
-- **L'agente non vede gli strumenti di Code Dungeon.** Riavvia l'agente dopo averlo registrato e controlla con `/mcp` o `mcp list`. Se risulta non connesso, di solito il percorso di `cli.js` è sbagliato o non hai lanciato `npm run build`.
-- **`node: command not found` oppure un errore di sintassi all'avvio.** Node manca o è più vecchio della versione 22.13.
-- **Il gioco non si apre.** Il server si avvia insieme all'agente, quindi l'agente deve essere aperto. Chiedigli l'indirizzo esatto (strumento `get_game_state`).
-- **Scrivi una domanda nel gioco e non succede niente.** Vedi [Domande senza tornare al terminale](#domande-senza-tornare-al-terminale). Se l'agente ha chiuso il turno, scrivigli nel terminale *"rispondi alle domande nel gioco"*.
+- **The agent doesn't see the Code Dungeon tools.** Restart the agent after registering the server and check with `/mcp` or `mcp list`. If it shows as not connected, the `cli.js` path is usually wrong or you didn't run `npm run build`.
+- **`node: command not found` or a syntax error at startup.** Node is missing or older than 22.13.
+- **The game doesn't open.** The server starts together with the agent, so the agent must be running. Ask it for the exact address (`get_game_state` tool).
+- **You type a question in the game and nothing happens.** See [Questions without going back to the terminal](#questions-without-going-back-to-the-terminal). If the agent ended its turn, write *"answer the questions in the game"* in its terminal.
 
-### Aggiornare
+### Updating
 
 ```bash
-cd /percorso/code-dungeon
+cd /path/to/code-dungeon
 git pull
 npm install
 npm run build
 ```
 
-Poi riavvia l'agente. Non serve registrare di nuovo il server.
+Then restart the agent. You don't need to register the server again.
 
-## Provalo subito, senza agente
+## Try it now, without an agent
 
 ```bash
 npm run play -- --project examples/packet-server
 ```
 
-Apri http://127.0.0.1:7337 e scegli il livello. In questa modalità puoi riprodurre i tour salvati ma non fare domande.
+Open http://127.0.0.1:7337 and pick the level. In this mode you can play saved tours but not ask questions.
 
-## App desktop (facoltativa)
+## Desktop app (optional)
 
-Il gioco può stare in una finestra sua invece che in una scheda del browser. L'app contiene solo il gioco: il server lo avvia sempre l'agente (o `npm run play`). All'apertura cerca da sola la sessione aperta sulle porte 127.0.0.1:7337-7356 e, se non ce n'è, aspetta che ne parta una. Con più sessioni aperte sceglie quella sulla porta più bassa.
+The game can live in its own window instead of a browser tab. The app contains only the game: the server is still started by the agent (or by `npm run play`). When it opens, it looks for the open session on ports 127.0.0.1:7337-7356 and, if there is none, waits for one to start. With several sessions open, it picks the one on the lowest port.
 
-### 1. Compilala
+### 1. Build it
 
-Servono [Rust](https://rustup.rs) e, su Linux, le librerie di WebKitGTK:
+You need [Rust](https://rustup.rs) and, on Linux, the WebKitGTK libraries:
 
 - Fedora: `sudo dnf install webkit2gtk4.1-devel openssl-devel`
 - Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev libssl-dev build-essential`
 
-Su Windows e macOS basta Rust (su macOS anche gli strumenti di Xcode: `xcode-select --install`). Poi, dalla cartella di Code Dungeon:
+On Windows and macOS, Rust is enough (on macOS also the Xcode tools: `xcode-select --install`). Then, from the Code Dungeon folder:
 
 ```bash
-npm run app:build                      # tutti i pacchetti del sistema
-npm run app:build -- --bundles rpm     # solo quello che ti serve (rpm, deb, appimage, nsis, dmg)
+npm run app:build                      # every package for your system
+npm run app:build -- --bundles rpm     # only the one you need (rpm, deb, appimage, nsis, dmg)
 ```
 
-L'app pesa pochi MB perché usa il motore web del sistema.
+The app weighs a few MB because it uses the system's web engine.
 
-### 2. Aprila o installala
+### 2. Open or install it
 
-**Senza installare niente**, su qualsiasi sistema:
+**Without installing anything**, on any system:
 
 ```bash
-./src-tauri/target/release/code-dungeon        # Linux e macOS
+./src-tauri/target/release/code-dungeon        # Linux and macOS
 .\src-tauri\target\release\code-dungeon.exe     # Windows
 ```
 
-**Fedora, openSUSE** (pacchetto `.rpm`):
+**Fedora, openSUSE** (`.rpm` package):
 
 ```bash
 sudo dnf install "./src-tauri/target/release/bundle/rpm/Code Dungeon-0.1.0-1.x86_64.rpm"
 ```
 
-**Debian, Ubuntu, Mint** (pacchetto `.deb`):
+**Debian, Ubuntu, Mint** (`.deb` package):
 
 ```bash
 sudo apt install "./src-tauri/target/release/bundle/deb/Code Dungeon_0.1.0_amd64.deb"
 ```
 
-**Altre distribuzioni** (AppImage, senza installazione):
+**Other distributions** (AppImage, no installation):
 
 ```bash
 chmod +x src-tauri/target/release/bundle/appimage/*.AppImage
 ./src-tauri/target/release/bundle/appimage/*.AppImage
 ```
 
-**Windows**: apri l'installatore in `src-tauri\target\release\bundle\nsis\` (`Code Dungeon_0.1.0_x64-setup.exe`).
+**Windows**: run the installer in `src-tauri\target\release\bundle\nsis\` (`Code Dungeon_0.1.0_x64-setup.exe`).
 
-**macOS**: apri il `.dmg` in `src-tauri/target/release/bundle/dmg/` e trascina Code Dungeon in Applicazioni.
+**macOS**: open the `.dmg` in `src-tauri/target/release/bundle/dmg/` and drag Code Dungeon into Applications.
 
-Una volta installata la trovi nel menu delle applicazioni come "Code Dungeon", con l'icona di Lumen. Su Linux si apre anche dal terminale con `code-dungeon`.
+Once installed, you'll find it in the applications menu as "Code Dungeon", with Lumen's icon. On Linux it also opens from the terminal with `code-dungeon`.
 
-### 3. Usala
+### 3. Use it
 
-Apri prima una sessione: chiedi un tour al tuo agente, oppure `npm run play -- --project <cartella>`. Se apri l'app prima, mostra "Cerco una sessione aperta…" e si collega da sola appena ne parte una.
+Open a session first: ask your agent for a tour, or run `npm run play -- --project <folder>`. If you open the app first, it shows "Looking for an open session…" and connects by itself as soon as one starts.
 
-### Disinstallarla
+### Uninstalling
 
 - Fedora: `sudo dnf remove code-dungeon`
 - Debian/Ubuntu: `sudo apt remove code-dungeon`
-- Windows: da Impostazioni → App
-- macOS: trascina Code Dungeon da Applicazioni al Cestino
+- Windows: from Settings → Apps
+- macOS: drag Code Dungeon from Applications to the Trash
 
-Provata finora su Fedora (rpm e deb generati, eseguibile avviato). Windows, macOS e AppImage non sono ancora stati provati.
+So far tested on Fedora (rpm and deb built, executable launched). Windows, macOS and AppImage have not been tested yet.
 
-## Domande senza tornare al terminale
+## Questions without going back to the terminal
 
-Dopo aver avviato un tour o risposto a una domanda, l'agente resta in ascolto da solo (`wait_for_question`): scrivi nel gioco e la risposta arriva nel fumetto, con qualsiasi agente. Per parlargli di altro nel terminale, interrompilo (in Claude Code con Esc). Alcuni agenti (es. Codex) a volte chiudono il turno invece di aspettare: la domanda non si perde, il gioco dopo 30 secondi ti ricorda di scrivere all'agente *"rispondi alle domande nel gioco"*.
+After starting a tour or answering a question, the agent keeps listening on its own (`wait_for_question`): type in the game and the answer arrives in the speech bubble, with any agent. To talk to it about something else in the terminal, interrupt it (Esc in Claude Code). Some agents (e.g. Codex) sometimes end their turn instead of waiting: the question isn't lost, and after 30 seconds the game reminds you to write *"answer the questions in the game"* to the agent.
 
-**Extra per Claude Code.** Code Dungeon è anche un *canale*: una funzione sperimentale di Claude Code con cui un server può far arrivare un messaggio nella sessione senza essere chiamato. Così le domande arrivano da sole e il terminale resta libero. Gli altri agenti la ignorano. Per attivarla:
+**Extra for Claude Code.** Code Dungeon is also a *channel*: an experimental Claude Code feature that lets a server push a message into the session without being called. Questions then arrive by themselves and the terminal stays free. Other agents ignore it. To turn it on:
 
 ```bash
 claude --dangerously-load-development-channels server:code-dungeon
 ```
 
-e conferma l'avviso iniziale (serve perché i canali fatti in casa non sono ancora nell'elenco approvato).
+and confirm the initial warning (needed because home-made channels aren't on the approved list yet).
 
-## Strumenti MCP
+## MCP tools
 
-| Strumento | Cosa fa |
+| Tool | What it does |
 | --- | --- |
-| `list_project_files` | elenca i file del progetto |
-| `open_file` | apre un file nell'editor, con l'animazione |
-| `highlight_lines` | evidenzia un intervallo di righe |
-| `show_dialog` | fa parlare la guida, con un'espressione |
-| `get_game_state` | livello, file, righe e passo correnti |
-| `get_user_questions` | legge e svuota le domande scritte nel gioco |
-| `wait_for_question` | resta in ascolto e restituisce la prossima domanda appena viene scritta |
-| `get_conversation` | rilegge una conversazione salvata in `.tour/conversazioni/` (senza id, le elenca) |
-| `create_tour`, `add_step`, `set_step_text` | costruiscono il copione in `.tour/` |
-| `list_tours`, `get_tour`, `play_tour` | elencano, leggono e avviano i tour |
-| `draw_diagram` | disegna e salva uno schema in `.tour/schemi/` |
-| `reveal_diagram` | mostra uno schema salvato, anche solo i primi pezzi |
-| `set_step_diagram` | collega uno schema a un passo del tour |
+| `list_project_files` | lists the project files |
+| `open_file` | opens a file in the editor, with the animation |
+| `highlight_lines` | highlights a range of lines |
+| `show_dialog` | makes the guide speak, with an expression |
+| `get_game_state` | current level, file, lines and step |
+| `get_user_questions` | reads and clears the questions typed in the game |
+| `wait_for_question` | listens and returns the next question as soon as it's typed |
+| `get_conversation` | rereads a conversation saved in `.tour/conversazioni/` (without an id, lists them) |
+| `create_tour`, `add_step`, `set_step_text` | build the script in `.tour/` |
+| `list_tours`, `get_tour`, `play_tour` | list, read and start tours |
+| `draw_diagram` | draws and saves a diagram in `.tour/schemi/` |
+| `reveal_diagram` | shows a saved diagram, even just its first pieces |
+| `set_step_diagram` | links a diagram to a tour step |
 
-Prompt: `crea_tour` (guida completa in [docs/come-fare-un-tour.md](docs/come-fare-un-tour.md)).
+Prompt: `crea_tour` (full guide in [docs/come-fare-un-tour.md](docs/come-fare-un-tour.md), in Italian).
 
-## Sviluppo
+## Development
 
 ```bash
-npm run dev          # gioco con ricarica automatica su http://localhost:5173 (collegato al ponte su :7337)
-npm run play -- --project examples/packet-server    # in un altro terminale
+npm run dev          # game with hot reload on http://localhost:5173 (connected to the bridge on :7337)
+npm run play -- --project examples/packet-server    # in another terminal
 npm run typecheck
-npm run test:mcp     # prova end-to-end: agente finto + gioco finto
-npm run build:demo   # un unico file HTML con l'esempio incorporato, senza ponte
-npm run app:dev      # app desktop (Tauri) collegata a `npm run dev`
-npm run app:build    # app desktop compilata e pacchetti in src-tauri/target/release/bundle/
+npm run test:mcp     # end-to-end test: fake agent + fake game
+npm run build:demo   # a single HTML file with the sample embedded, no bridge
+npm run app:dev      # desktop app (Tauri) connected to `npm run dev`
+npm run app:build    # desktop app built, packages in src-tauri/target/release/bundle/
 ```
 
-## Sicurezza
+## Security
 
-- Il ponte ascolta solo su `127.0.0.1` e accetta WebSocket solo da pagine locali, per bloccare il cross-site WebSocket hijacking.
-- Il server legge solo dentro la cartella del progetto: percorsi assoluti, `../` e link simbolici che escono vengono rifiutati.
-- Nel progetto scrive solo in `.tour/`, con id validati e scrittura atomica.
-- Fuori dal progetto scrive un solo file: `code-dungeon.db` (SQLite) con le impostazioni e le risposte al questionario, nella cartella dati dell'utente (`~/.local/share/code-dungeon` su Linux, `~/Library/Application Support/code-dungeon` su macOS, `%APPDATA%\code-dungeon` su Windows; si cambia con `CODE_DUNGEON_DATA`). Non finisce su Git e non esce dal computer, tranne quello che l'agente legge per adattare le spiegazioni. Il gioco non chiede certificati né diagnosi.
-- File oltre 512 KB o binari non vengono aperti.
-- Le domande spinte nella sessione di Claude Code arrivano solo dal gioco aperto in locale (stesso controllo dell'origine).
+- The bridge listens only on `127.0.0.1` and accepts WebSockets only from local pages, to block cross-site WebSocket hijacking.
+- The server reads only inside the project folder: absolute paths, `../` and symbolic links that leave it are rejected.
+- In the project it writes only to `.tour/`, with validated ids and atomic writes.
+- Outside the project it writes a single file: `code-dungeon.db` (SQLite) with your settings and questionnaire answers, in the user data folder (`~/.local/share/code-dungeon` on Linux, `~/Library/Application Support/code-dungeon` on macOS, `%APPDATA%\code-dungeon` on Windows; change it with `CODE_DUNGEON_DATA`). It doesn't end up in Git and doesn't leave your computer, except for what the agent reads to adapt its explanations. The game doesn't ask for certificates or diagnoses.
+- Files over 512 KB or binary files are not opened.
+- Questions pushed into the Claude Code session come only from the game open locally (same origin check).
