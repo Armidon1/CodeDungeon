@@ -41,8 +41,9 @@ function version(): string {
 
 function findStaticDir(): string | undefined {
   const here = path.dirname(fileURLToPath(import.meta.url));
+  // dist/server → dist/game; con tsx src/server → dist/game (src/game sono i sorgenti, senza assets/)
   const candidates = [path.resolve(here, "../game"), path.resolve(here, "../../dist/game")];
-  return candidates.find((d) => existsSync(path.join(d, "index.html")));
+  return candidates.find((d) => existsSync(path.join(d, "index.html")) && existsSync(path.join(d, "assets")));
 }
 
 async function main(): Promise<void> {
