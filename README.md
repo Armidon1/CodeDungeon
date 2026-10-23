@@ -1,6 +1,6 @@
 # Code Dungeon
 
-Un gioco cozy in pixel art che spiega il codice generato dagli LLM. Lumen, una piccola lanterna, ti guida dentro una versione pixelata di VS Code e segue il **flusso reale del programma**: dal pacchetto che arriva fino alla funzione che risponde.
+Un gioco cozy in pixel art che spiega il codice generato dagli LLM. Una guida (Lumen, una piccola lanterna, o quella che scegli tu) ti accompagna dentro una versione pixelata di VS Code e segue il **flusso reale del programma**: dal pacchetto che arriva fino alla funzione che risponde.
 
 Il gioco è un **server MCP**: non contiene un agente proprio, lo pilota quello che usi già (Claude Code, Codex, Gemini CLI o qualsiasi client MCP). L'agente costruisce il tour con gli strumenti del gioco e risponde dal vivo alle tue domande.
 
@@ -10,12 +10,13 @@ agente (Claude Code / Codex / Gemini CLI) ──MCP stdio──▶ server Code D
                                                           └─ .tour/*.json nel tuo progetto (finiscono su Git)
 ```
 
-## Stato: tappa 5 di 8
+## Stato: tappa 6 di 8
 
 Funziona già:
 
 - editor VS Code pixelato con evidenziazione della sintassi (Python, JS/TS) e delle righe;
-- Lumen con 5 espressioni animate e la mini-guida che cammina tra i file, con dissolvenza a pixel nel cambio file;
+- la guida con 5 espressioni animate e la mini-guida che cammina tra i file, con dissolvenza a pixel nel cambio file;
+- guida a scelta nel menu: Lumen, Aria, Bruno, Nilo, oppure una tua foto o un disegno convertito in pixel art (tre livelli di compressione affiancati e uno slider), con le espressioni automatiche o caricate una per una; il nome lo scegli tu. L'immagine resta nel browser;
 - tour JSON con diramazioni (scelte nel dialogo), avanti e indietro;
 - menu iniziale con 4 livelli (facile, medio, difficile, arduo) e modalità di generazione, livello cambiabile durante il tour;
 - domande dal vivo: le scrivi nel gioco, l'agente le legge e risponde nel fumetto;
@@ -84,7 +85,7 @@ Poi, dal tuo agente nella cartella del progetto da spiegare:
 
 1. apri il gioco: di solito http://127.0.0.1:7337 (se è occupata, l'agente ti dà l'indirizzo giusto);
 2. chiedi: *"Crea un tour Code Dungeon di come questo server gestisce un pacchetto"* (in Claude Code c'è anche il comando `/mcp__code-dungeon__crea_tour`);
-3. fai le domande direttamente nel gioco: la risposta arriva nel fumetto di Lumen.
+3. fai le domande direttamente nel gioco: la risposta arriva nel fumetto della guida.
 
 ### Domande senza tornare al terminale
 
@@ -105,7 +106,7 @@ e conferma l'avviso iniziale (serve perché i canali fatti in casa non sono anco
 | `list_project_files` | elenca i file del progetto |
 | `open_file` | apre un file nell'editor, con l'animazione |
 | `highlight_lines` | evidenzia un intervallo di righe |
-| `show_dialog` | fa parlare Lumen, con un'espressione |
+| `show_dialog` | fa parlare la guida, con un'espressione |
 | `get_game_state` | livello, file, righe e passo correnti |
 | `get_user_questions` | legge e svuota le domande scritte nel gioco |
 | `wait_for_question` | resta in ascolto e restituisce la prossima domanda appena viene scritta |

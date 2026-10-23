@@ -12,14 +12,14 @@ import {
 } from "../shared/types";
 import { Board } from "./diagram";
 import { highlightLines, langLabel, langOf } from "./highlight";
-import { Portrait, drawMiniLumen } from "./portrait";
+import { GuidePicker } from "./guide";
+import { Portrait, drawMiniGuide, setGuideLook } from "./portrait";
 import { GENERATION_INFO, LEVEL_INFO, loadSettings, saveSettings, type Settings } from "./settings";
 import type { AgentCommand, ConnectionState, GameSource } from "./source";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const GUIDE = "Lumen";
 
 interface DialogLine {
   text: string;
@@ -40,6 +40,17 @@ export class App {
   private settings: Settings = loadSettings();
   private portrait = new Portrait($<HTMLCanvasElement>("portrait"));
   private titlePortrait = new Portrait($<HTMLCanvasElement>("title-portrait"));
+  private guidePicker = new GuidePicker({
+    choice: () => this.settings.guide,
+    onChange: (choice, look) => {
+      this.settings.guide = choice;
+      saveSettings(this.settings);
+      setGuideLook(look);
+      this.renderGuide();
+    },
+  });
+  /** Il fumetto mostra il nome della guida (e non un `speaker` scelto dall'agente). */
+  private speakerIsGuide = true;
 
   private currentFile: string | undefined;
   private currentLines: string[] = [];
@@ -89,6 +100,11 @@ export class App {
     });
     source.onCommand((cmd) => void this.onAgentCommand(cmd));
     this.titlePortrait.set({ expression: "felice" });
+    this.renderGuide();
+    void this.guidePicker.init().then((look) => {
+      setGuideLook(look);
+      this.renderGuide();
+    });
     this.renderStatus();
     this.renderTitleSource();
     void source.ready().then(() => this.onReady());
@@ -108,6 +124,7 @@ export class App {
     $("title-screen").hidden = false;
     $("app").inert = true;
     this.syncTitleOptions();
+    this.guidePicker.sync();
     ($("title-screen").querySelector<HTMLInputElement>("input:checked") ?? $("start-btn")).focus();
   }
 
@@ -127,12 +144,12 @@ export class App {
       await this.playTour(tours[0].id);
     } else if (this.source.agent) {
       this.say({
-        text: "Ciao, sono Lumen! Questo progetto non ha ancora un tour. Chiedi al tuo agente di crearne uno con gli strumenti di Code Dungeon, oppure scrivimi qui sotto una domanda.",
+        text: `Ciao, sono ${this.settings.guide.name}! Questo progetto non ha ancora un tour. Chiedi al tuo agente di crearne uno con gli strumenti di Code Dungeon, oppure scrivimi qui sotto una domanda.`,
         expression: "felice",
       });
     } else {
       this.say({
-        text: "Ciao, sono Lumen! Non trovo tour salvati in questo progetto. Avvia Code Dungeon dal tuo agente (vedi il README) per crearne uno.",
+        text: `Ciao, sono ${this.settings.guide.name}! Non trovo tour salvati in questo progetto. Avvia Code Dungeon dal tuo agente (vedi il README) per crearne uno.`,
         expression: "pensieroso",
       });
     }
@@ -197,6 +214,15 @@ export class App {
     }
   }
 
+  /** Nome e mini-guida ovunque compaiano. */
+  private renderGuide(): void {
+    const name = this.settings.guide.name;
+    $("tagline").textContent = `${name} ti accompagna dentro il codice, un passo del programma alla volta.`;
+    $<HTMLInputElement>("ask-input").placeholder = `Chiedi a ${name} qualcosa su questo codice…`;
+    if (this.speakerIsGuide) $("speaker").textContent = name;
+    drawMiniGuide($<HTMLCanvasElement>("walker"), 0);
+  }
+
   // ---------- Esplora file ----------
 
   private renderFileList(): void {
@@ -226,7 +252,7 @@ export class App {
       li.append(btn);
       list.append(li);
     }
-    drawMiniLumen($<HTMLCanvasElement>("walker"), 0);
+    drawMiniGuide($<HTMLCanvasElement>("walker"), 0);
   }
 
   private async renderTourList(): Promise<void> {
@@ -299,11 +325,11 @@ export class App {
       return;
     }
     let frame = 0;
-    const tick = setInterval(() => drawMiniLumen(walker, ++frame), 90);
+    const tick = setInterval(() => drawMiniGuide(walker, ++frame), 90);
     walker.style.transform = `translate(${x}px, ${y}px)`;
     await sleep(460);
     clearInterval(tick);
-    drawMiniLumen(walker, 0);
+    drawMiniGuide(walker, 0);
   }
 
   // ---------- Editor ----------
@@ -565,7 +591,8 @@ export class App {
     this.liveAnswer = false;
     this.liveQueue = [];
     const textEl = $("dialog-text");
-    $("speaker").textContent = line.speaker ?? GUIDE;
+    this.speakerIsGuide = !line.speaker;
+    $("speaker").textContent = line.speaker ?? this.settings.guide.name;
     this.portrait.set({ expression: line.expression, talking: true });
     $("dialog-live").textContent = line.text;
     const note = $("dialog-note");
@@ -892,6 +919,7 @@ export class App {
       tourId: this.tour?.id,
       stepId: step?.id,
       live: this.liveAnswer,
+      guide: this.settings.guide.name,
     };
   }
 

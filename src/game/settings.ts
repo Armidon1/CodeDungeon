@@ -1,26 +1,44 @@
 // Impostazioni del giocatore. Per ora in localStorage; nella tappa 7 passeranno a SQLite tramite il ponte.
 
 import { LEVELS, type GenerationMode, type Level } from "../shared/types";
+import { BUILTIN_GUIDES, GUIDE_INFO, type BuiltinGuide } from "./portrait";
+
+export interface GuideChoice {
+  /** Ritratto predefinito o "custom": l'immagine dell'utente (salvata a parte, vedi guide.ts). */
+  id: BuiltinGuide | "custom";
+  name: string;
+}
 
 export interface Settings {
   level: Level;
   generation: GenerationMode;
+  guide: GuideChoice;
 }
 
 const KEY = "code-dungeon:settings";
-const DEFAULTS: Settings = { level: "medio", generation: "istantanea" };
+const DEFAULTS: Settings = { level: "medio", generation: "istantanea", guide: { id: "lumen", name: GUIDE_INFO.lumen.name } };
+
+/** Nome proposto per una guida: quello del ritratto predefinito, "Guida" per un'immagine propria. */
+export const defaultGuideName = (id: GuideChoice["id"]): string => (id === "custom" ? "Guida" : GUIDE_INFO[id].name);
+
+function readGuide(g: Partial<GuideChoice> | undefined): GuideChoice {
+  const id = g?.id === "custom" || BUILTIN_GUIDES.includes(g?.id as BuiltinGuide) ? g!.id! : DEFAULTS.guide.id;
+  const name = typeof g?.name === "string" && g.name.trim() ? g.name.trim().slice(0, 20) : defaultGuideName(id);
+  return { id, name };
+}
 
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { ...DEFAULTS };
+    if (!raw) return { ...DEFAULTS, guide: { ...DEFAULTS.guide } };
     const s = JSON.parse(raw) as Partial<Settings>;
     return {
       level: s.level && LEVELS.includes(s.level) ? s.level : DEFAULTS.level,
       generation: s.generation === "su_richiesta" ? "su_richiesta" : "istantanea",
+      guide: readGuide(s.guide),
     };
   } catch {
-    return { ...DEFAULTS };
+    return { ...DEFAULTS, guide: { ...DEFAULTS.guide } };
   }
 }
 

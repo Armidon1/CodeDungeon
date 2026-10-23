@@ -67,7 +67,7 @@
             </div>
             <div class="dialog-body">
               <div class="dialog-head">
-                <span class="speaker" id="speaker">Lumen</span>
+                <span class="speaker" id="speaker"></span>
                 <span class="step-title" id="step-title"></span>
                 <div class="level-switch" id="level-switch" role="radiogroup" aria-label="Livello della spiegazione"></div>
               </div>
@@ -83,7 +83,7 @@
             </div>
             <form class="ask" id="ask-form" autocomplete="off">
               <label class="sr-only" for="ask-input">Domanda per la guida</label>
-              <input id="ask-input" name="question" type="text" maxlength="500" placeholder="Chiedi a Lumen qualcosa su questo codice…" />
+              <input id="ask-input" name="question" type="text" maxlength="500" placeholder="Chiedi qualcosa su questo codice…" />
               <button type="submit" class="pix-btn">Chiedi</button>
             </form>
           </section>
@@ -107,7 +107,7 @@
           <canvas class="title-portrait" id="title-portrait" aria-hidden="true"></canvas>
           <div>
             <h1 class="logo" id="title-logo">Code<br />Dungeon</h1>
-            <p class="tagline">Lumen ti accompagna dentro il codice, un passo del programma alla volta.</p>
+            <p class="tagline" id="tagline"></p>
           </div>
         </div>
 
@@ -119,6 +119,45 @@
         <fieldset class="menu-group">
           <legend>Generazione dei testi</legend>
           <div class="option-grid gen-grid" id="gen-options"></div>
+        </fieldset>
+
+        <fieldset class="menu-group">
+          <legend>La guida</legend>
+          <div class="option-grid guide-grid" id="guide-options"></div>
+          <div class="guide-bar">
+            <label class="guide-name" for="guide-name">Nome
+              <input id="guide-name" type="text" maxlength="20" autocomplete="off" spellcheck="false" />
+            </label>
+            <button type="button" class="chip-btn" id="guide-edit">Carica la tua immagine</button>
+          </div>
+          <p class="guide-msg" id="guide-msg" role="status" hidden></p>
+
+          <section class="guide-editor" id="guide-editor" aria-labelledby="guide-editor-title" hidden>
+            <h2 class="guide-editor-title" id="guide-editor-title">La tua immagine</h2>
+            <p class="small muted">Una foto o un disegno diventa pixel art. Resta in questo browser: non viene inviata a nessuno.</p>
+            <div class="guide-upload">
+              <button type="button" class="pix-btn" id="guide-pick">Scegli un'immagine</button>
+              <input type="file" id="guide-file" accept="image/*" hidden />
+              <span class="small muted" id="guide-file-name"></span>
+            </div>
+            <div class="guide-tuning" id="guide-tuning" hidden>
+              <div class="option-grid preset-grid" id="guide-presets" role="radiogroup" aria-label="Compressione"></div>
+              <label class="guide-slider" for="guide-detail">Dettaglio
+                <input type="range" id="guide-detail" aria-describedby="guide-detail-out" />
+                <output id="guide-detail-out" for="guide-detail"></output>
+              </label>
+            </div>
+            <p class="small muted" id="guide-retune" hidden>Per cambiare la compressione scegli di nuovo l'immagine.</p>
+            <div class="guide-faces-group" id="guide-faces-group" hidden>
+              <h3 class="guide-sub">Espressioni</h3>
+              <p class="small muted">Quelle automatiche aggiungono un fumetto e cambiano un po' i colori. Puoi caricarne una tua per ciascuna.</p>
+              <div class="face-grid" id="guide-faces"></div>
+            </div>
+            <div class="guide-actions">
+              <button type="button" class="pix-btn ghost" id="guide-cancel">Annulla</button>
+              <button type="button" class="pix-btn" id="guide-save">Usa questa guida</button>
+            </div>
+          </section>
         </fieldset>
 
         <div class="title-actions">

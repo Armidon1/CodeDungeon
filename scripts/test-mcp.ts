@@ -90,10 +90,10 @@ const played = received.find((m) => m.type === "play_tour");
 check(!r.isError && played?.tour.steps.length === 2 && played.tour.steps[1].text.arduo, "play_tour invia il tour completo");
 
 // domanda dall'utente
-game.send(JSON.stringify({ type: "question", text: "Cosa fa recv_exact?", context: { level: "arduo", file: "protocol.py" } }));
+game.send(JSON.stringify({ type: "question", text: "Cosa fa recv_exact?", context: { level: "arduo", file: "protocol.py", guide: "Aria" } }));
 await new Promise((res) => setTimeout(res, 150));
 r = await client.callTool({ name: "get_user_questions", arguments: {} });
-check(/recv_exact/.test(text(r)) && /arduo/.test(text(r)), "get_user_questions restituisce domanda e contesto");
+check(/recv_exact/.test(text(r)) && /arduo/.test(text(r)) && /Aria/.test(text(r)), "get_user_questions restituisce domanda e contesto (con il nome della guida)");
 r = await client.callTool({ name: "get_user_questions", arguments: {} });
 check(/Nessuna domanda/.test(text(r)), "le domande vengono svuotate");
 

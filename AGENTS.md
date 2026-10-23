@@ -10,7 +10,7 @@ Leggi `docs/progetto.md`: specifica completa e roadmap a tappe. Lavora una tappa
 
 - `src/shared/types.ts`: tipi del tour e protocollo WebSocket, condivisi da server e gioco. Si parte sempre da qui quando cambia un formato.
 - `src/server/`: `cli.ts` (modi `mcp` e `play`), `mcp.ts` (strumenti e prompt), `bridge.ts` (HTTP + WebSocket su 127.0.0.1), `project.ts` (accesso ai file confinato nella radice e tour in `.tour/`).
-- `src/game/`: gioco nel browser senza framework. `app.ts` (UI e riproduzione dei tour), `portrait.ts` (Lumen disegnato su griglia 32×32), `diagram.ts` (lavagna degli schemi), `highlight.ts` (sintassi), `source.ts` e `demo-source.ts` (ponte o demo incorporata).
+- `src/game/`: gioco nel browser senza framework. `app.ts` (UI e riproduzione dei tour), `portrait.ts` (ritratti 32×32 delle guide e immagine dell'utente), `guide.ts` (scelta della guida nel menu), `pixelate.ts` (immagine → pixel art), `diagram.ts` (lavagna degli schemi), `highlight.ts` (sintassi), `source.ts` e `demo-source.ts` (ponte o demo incorporata).
 - `examples/packet-server/`: progetto d'esempio con tour in `.tour/` e schemi in `.tour/schemi/`. Tieni allineati i numeri di riga del tour se modifichi i file Python.
 
 ## Comandi

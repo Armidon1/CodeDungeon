@@ -3,7 +3,7 @@
 // Il disegno è progressivo: i pezzi nuovi compaiono uno alla volta e la mini guida percorre le frecce.
 
 import { diagramPieces, type Diagram, type DiagramEdge, type DiagramNode } from "../shared/types";
-import { drawMiniLumen } from "./portrait";
+import { drawMiniGuide } from "./portrait";
 
 type Pt = [number, number];
 
@@ -640,7 +640,7 @@ export class Board {
 
   private moveWalker(x: number, y: number, f: number): void {
     const size = 8 * this.scale;
-    drawMiniLumen(this.walker, Math.floor(f / 6));
+    drawMiniGuide(this.walker, Math.floor(f / 6));
     this.walker.style.width = `${size}px`;
     this.walker.style.height = `${size}px`;
     this.walker.style.transform = `translate(${x * this.scale - size / 2}px, ${y * this.scale - size + 2}px)`;

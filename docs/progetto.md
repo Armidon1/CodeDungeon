@@ -21,7 +21,7 @@ Pubblico: dal non programmatore che ha generato uno script e non sa cosa fa, fin
 ### Livelli e generazione
 - Quattro livelli: facile, medio, difficile, arduo. Si sceglie nel menu iniziale e si cambia durante il tour.
 - Modalità **istantanea**: tutti i livelli generati subito (fluida, più token).
-- Modalità **su richiesta**: solo il livello attivo; al cambio l'agente riscrive passo corrente e successivi usando come contesto il livello di partenza e le domande già fatte. Il passo successivo si prepara in background. Durante l'attesa Lumen è pensieroso: "fammi pensare...".
+- Modalità **su richiesta**: solo il livello attivo; al cambio l'agente riscrive passo corrente e successivi usando come contesto il livello di partenza e le domande già fatte. Il passo successivo si prepara in background. Durante l'attesa la guida è pensierosa: "fammi pensare...".
 
 ### Personalizzazione della guida
 - Ritratto neutro predefinito; ritratti predefiniti alternativi (femminile, maschile, neutro).
@@ -59,7 +59,7 @@ Pubblico: dal non programmatore che ha generato uno script e non sa cosa fa, fin
 3. **Domande dal vivo** ✅ base: domanda nel gioco → `get_user_questions` → `show_dialog`. Notifica all'agente: canale di Claude Code (domande spinte nella sessione) e `wait_for_question` per gli altri agenti; coda dei fumetti. Da fare: cronologia della conversazione nel gioco.
 4. **Difficoltà** ✅ base: menu, cambio durante il tour, `set_step_text` per la modalità su richiesta. Da fare: preparazione in background del passo successivo.
 5. **Lavagna** ✅ schemi JSON in `.tour/schemi/`, `draw_diagram`, `reveal_diagram`, `set_step_diagram`, rendering pixel con disegno progressivo, finestra a comparsa, scheda nell'editor, nodi che aprono il codice.
-6. **Personalizzazione**: ritratti predefiniti, upload con tre livelli di compressione e slider, espressioni.
+6. **Personalizzazione** ✅ ritratti predefiniti (Lumen, Aria, Bruno, Nilo), nome della guida, upload convertito in pixel art nel browser (ritaglio, riduzione, k-means) con tre livelli di compressione affiancati e slider, espressioni automatiche (fumetto e colori) o caricate una per una. Il nome arriva all'agente nel contesto (`guide`). Da fare: bordi del fumetto alternativi.
 7. **Accessibilità**: questionario, salvataggio in SQLite tramite il ponte, adattamento delle spiegazioni.
 8. **Distribuzione**: app Tauri, pacchetto npm (`npx code-dungeon mcp`), test con almeno due agenti diversi.
 

@@ -113,6 +113,8 @@ export interface GameContext {
   stepId?: string;
   /** true mentre l'utente legge una risposta dal vivo (show_dialog) invece del passo del tour. */
   live?: boolean;
+  /** Nome della guida scelto dall'utente nel gioco. */
+  guide?: string;
 }
 
 export interface UserQuestion {
