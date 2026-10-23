@@ -10,7 +10,7 @@ agente (Claude Code / Codex / Gemini CLI) ──MCP stdio──▶ server Code D
                                                           └─ .tour/*.json nel tuo progetto (finiscono su Git)
 ```
 
-## Stato: tappa 1 di 8
+## Stato: tappa 5 di 8
 
 Funziona già:
 
@@ -19,6 +19,7 @@ Funziona già:
 - tour JSON con diramazioni (scelte nel dialogo), avanti e indietro;
 - menu iniziale con 4 livelli (facile, medio, difficile, arduo) e modalità di generazione, livello cambiabile durante il tour;
 - domande dal vivo: le scrivi nel gioco, l'agente le legge e risponde nel fumetto;
+- lavagna degli schemi: l'agente disegna flussi e sequenze in pixel art, pezzo per pezzo mentre spiega; lo schema compare in una finestra e resta come scheda dell'editor (e nell'elenco "Schemi");
 - layout per telefono;
 - progetto d'esempio `examples/packet-server` (server TCP in Python) con un tour di 11 passi, inclusa una vera falla DoS.
 
@@ -92,6 +93,9 @@ Poi, dal tuo agente nella cartella del progetto da spiegare:
 | `get_user_questions` | legge e svuota le domande scritte nel gioco |
 | `create_tour`, `add_step`, `set_step_text` | costruiscono il copione in `.tour/` |
 | `list_tours`, `get_tour`, `play_tour` | elencano, leggono e avviano i tour |
+| `draw_diagram` | disegna e salva uno schema in `.tour/schemi/` |
+| `reveal_diagram` | mostra uno schema salvato, anche solo i primi pezzi |
+| `set_step_diagram` | collega uno schema a un passo del tour |
 
 Prompt: `crea_tour` (guida completa in [docs/come-fare-un-tour.md](docs/come-fare-un-tour.md)).
 

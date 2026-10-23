@@ -30,10 +30,12 @@
           </div>
           <div class="sidebar-title sidebar-tours">Tour salvati</div>
           <ul class="tour-list" id="tour-list"></ul>
+          <div class="sidebar-title sidebar-tours">Schemi</div>
+          <ul class="tour-list" id="diagram-list"></ul>
         </aside>
 
         <main class="main">
-          <div class="tabs" id="tabs" role="presentation"></div>
+          <div class="tabs" id="tabs" role="group" aria-label="Schede aperte"></div>
           <div class="editor-wrap">
             <div class="editor" id="editor" role="region" aria-label="Editor del codice" tabindex="0"></div>
             <div class="editor-empty" id="editor-empty">
@@ -41,6 +43,22 @@
               <p class="muted">Scegli un tour, oppure chiedi all'agente di aprire un file.</p>
             </div>
             <canvas class="wipe" id="wipe" aria-hidden="true"></canvas>
+            <section class="board-view" id="board-view" aria-labelledby="board-view-title" hidden>
+              <div class="board-head">
+                <span class="board-badge">Lavagna</span>
+                <h2 class="board-title" id="board-view-title"></h2>
+              </div>
+              <p class="board-hint">Le stanze con la gemma aprono il loro codice.</p>
+            </section>
+            <section class="board-pop" id="board-pop" aria-labelledby="board-pop-title" hidden>
+              <div class="board-head">
+                <span class="board-badge">Lavagna</span>
+                <h2 class="board-title" id="board-pop-title"></h2>
+                <button type="button" class="chip-btn" id="board-pop-fold" aria-expanded="true">Riduci</button>
+                <button type="button" class="chip-btn" id="board-pop-tab">Scheda</button>
+                <button type="button" class="chip-btn" id="board-pop-close" aria-label="Chiudi la lavagna">✕</button>
+              </div>
+            </section>
           </div>
 
           <section class="dialog" id="dialog" aria-label="Dialogo con la guida">
@@ -107,7 +125,7 @@
           <p class="title-source" id="title-source"></p>
           <button type="button" class="pix-btn big" id="start-btn">Entra nel dungeon ▶</button>
         </div>
-        <p class="title-keys">Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc menu</p>
+        <p class="title-keys">Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu</p>
       </div>
     </div>
 

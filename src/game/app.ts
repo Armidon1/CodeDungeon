@@ -1,6 +1,16 @@
 // Il gioco: editor pixelato, esplora file con la guida che cammina, fumetti e riproduzione dei tour.
 
-import { LEVELS, type Expression, type GameContext, type Level, type StepLink, type Tour, type TourStep } from "../shared/types";
+import {
+  LEVELS,
+  type Diagram,
+  type Expression,
+  type GameContext,
+  type Level,
+  type StepLink,
+  type Tour,
+  type TourStep,
+} from "../shared/types";
+import { Board } from "./diagram";
 import { highlightLines, langLabel, langOf } from "./highlight";
 import { Portrait, drawMiniLumen } from "./portrait";
 import { GENERATION_INFO, LEVEL_INFO, loadSettings, saveSettings, type Settings } from "./settings";
@@ -49,6 +59,17 @@ export class App {
   private connection: ConnectionState = "connecting";
   private loaded = false;
 
+  /** Lavagna: la finestra che si apre durante la spiegazione e la vista nella scheda dell'editor. */
+  private popBoard = new Board({ onOpenCode: (file, lines) => this.openFromBoard(file, lines, true), follow: true });
+  private tabBoard = new Board({ onOpenCode: (file, lines) => this.openFromBoard(file, lines, false) });
+  /** Schemi aperti come schede, nell'ordine di apertura. */
+  private boardTabs: Diagram[] = [];
+  /** Cosa mostra l'editor: il codice o lo schema con questo id. */
+  private view: string | undefined;
+  /** La finestra della lavagna l'ha aperta un passo del tour (si chiude al passo seguente senza schema). */
+  private popFromStep = false;
+  private diagramCache = new Map<string, Diagram>();
+
   constructor(private source: GameSource) {
     this.buildTitleScreen();
     this.buildLevelSwitch();
@@ -73,7 +94,7 @@ export class App {
     this.loaded = true;
     $("project-name").textContent = this.source.projectName;
     this.renderFileList();
-    await this.renderTourList();
+    await Promise.all([this.renderTourList(), this.renderDiagramList()]);
     this.renderTitleSource();
   }
 
@@ -224,6 +245,28 @@ export class App {
     }
   }
 
+  private async renderDiagramList(): Promise<void> {
+    const list = $("diagram-list");
+    list.innerHTML = "";
+    const diagrams = await this.source.listDiagrams().catch(() => []);
+    if (diagrams.length === 0) {
+      list.innerHTML = `<li class="muted small">Nessuno schema in .tour/schemi/</li>`;
+      return;
+    }
+    for (const d of diagrams) {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tour-item";
+      btn.innerHTML = `<span class="tour-title"></span><span class="tour-meta"></span>`;
+      btn.querySelector(".tour-title")!.textContent = d.title;
+      btn.querySelector(".tour-meta")!.textContent = d.kind === "sequenza" ? "Sequenza" : "Flusso";
+      btn.addEventListener("click", () => void this.openDiagramTab(d.id));
+      li.append(btn);
+      list.append(li);
+    }
+  }
+
   private markActiveFile(): void {
     for (const b of document.querySelectorAll<HTMLButtonElement>("#file-list .file")) {
       const on = b.dataset.path === this.currentFile;
@@ -277,6 +320,7 @@ export class App {
 
   private async doGoToFile(path: string, lines?: [number, number], content?: string): Promise<void> {
     if (content !== undefined) this.fileCache.set(path, content);
+    if (this.view !== undefined) this.setView(undefined);
     const text = await this.readFile(path);
     const changing = path !== this.currentFile;
     if (changing) {
@@ -305,8 +349,7 @@ export class App {
       .map((html, i) => `<div class="line" data-n="${i + 1}"><span class="ln">${i + 1}</span><code>${html || " "}</code></div>`)
       .join("");
     $("editor-empty").hidden = true;
-    $("tabs").innerHTML = `<span class="tab is-active"><span class="file-icon ext-${lang}" aria-hidden="true"></span><span class="tab-name"></span></span>`;
-    $("tabs").querySelector(".tab-name")!.textContent = this.currentFile!.split("/").pop()!;
+    this.renderTabs();
     $("status-lang").textContent = langLabel(lang);
     this.applyHighlight();
   }
@@ -373,6 +416,137 @@ export class App {
       await sleep(22);
     }
     if (mode === "reveal") canvas.hidden = true;
+  }
+
+  // ---------- Schede e lavagna ----------
+
+  /** Scheda del file aperto più una scheda per ogni schema mostrato. */
+  private renderTabs(): void {
+    const tabs = $("tabs");
+    tabs.innerHTML = "";
+    const tab = (label: string, icon: string, active: boolean, open: () => void) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `tab${active ? " is-active" : ""}`;
+      btn.innerHTML = `<span class="${icon}" aria-hidden="true"></span><span class="tab-name"></span>`;
+      btn.querySelector(".tab-name")!.textContent = label;
+      if (active) btn.setAttribute("aria-current", "page");
+      btn.addEventListener("click", open);
+      tabs.append(btn);
+      return btn;
+    };
+    if (this.currentFile) {
+      tab(this.currentFile.split("/").pop()!, `file-icon ext-${langOf(this.currentFile)}`, this.view === undefined, () => this.setView(undefined));
+    }
+    for (const d of this.boardTabs) {
+      const btn = tab(d.title, "tab-board-icon", this.view === d.id, () => this.setView(d.id));
+      btn.title = `Schema: ${d.title}`;
+      const close = document.createElement("span");
+      close.className = "tab-close";
+      close.textContent = "×";
+      close.title = "Chiudi la scheda";
+      close.setAttribute("aria-hidden", "true");
+      close.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.closeBoardTab(d.id);
+      });
+      btn.append(close);
+    }
+  }
+
+  /** Mostra il codice (undefined) o lo schema di una scheda. */
+  private setView(id: string | undefined): void {
+    const d = id === undefined ? undefined : this.boardTabs.find((t) => t.id === id);
+    this.view = d?.id;
+    const view = $("board-view");
+    view.hidden = !d;
+    if (d) {
+      // la scheda mostra lo stesso schema della finestra: la finestra non serve più
+      if (this.popBoard.current?.id === d.id) this.closePop();
+      $("board-view-title").textContent = d.title;
+      if (!view.contains(this.tabBoard.el)) view.append(this.tabBoard.el);
+      void this.tabBoard.show(d, undefined, false);
+    }
+    this.renderTabs();
+  }
+
+  private addBoardTab(d: Diagram): void {
+    const i = this.boardTabs.findIndex((t) => t.id === d.id);
+    if (i === -1) this.boardTabs.push(d);
+    else this.boardTabs[i] = d;
+    this.diagramCache.set(d.id, d);
+    if (this.view === d.id) this.setView(d.id);
+    else this.renderTabs();
+  }
+
+  private closeBoardTab(id: string): void {
+    this.boardTabs = this.boardTabs.filter((t) => t.id !== id);
+    if (this.view === id) this.setView(undefined);
+    else this.renderTabs();
+  }
+
+  private async loadDiagram(id: string): Promise<Diagram> {
+    const cached = this.diagramCache.get(id);
+    if (cached) return cached;
+    const d = await this.source.loadDiagram(id);
+    this.diagramCache.set(id, d);
+    return d;
+  }
+
+  private async openDiagramTab(id: string): Promise<void> {
+    try {
+      this.addBoardTab(await this.loadDiagram(id));
+      this.setView(id);
+    } catch (e) {
+      this.say({ text: `Non riesco ad aprire lo schema: ${e instanceof Error ? e.message : String(e)}`, expression: "preoccupato" });
+    }
+  }
+
+  /** Apre la finestra della lavagna sopra il codice e salva lo schema in una scheda. */
+  private async openPop(d: Diagram, upto: number | undefined, fromStep: boolean): Promise<void> {
+    this.addBoardTab(d);
+    this.popFromStep = fromStep;
+    const pop = $("board-pop");
+    // se lo stesso schema è già aperto, resta ridotto come l'ha lasciato l'utente
+    if (pop.hidden || this.popBoard.current?.id !== d.id) this.foldPop(false);
+    $("board-pop-title").textContent = d.title;
+    if (!pop.contains(this.popBoard.el)) pop.append(this.popBoard.el);
+    pop.hidden = false;
+    await this.popBoard.show(d, upto);
+  }
+
+  private closePop(): void {
+    $("board-pop").hidden = true;
+    this.popFromStep = false;
+  }
+
+  private foldPop(folded: boolean): void {
+    $("board-pop").classList.toggle("is-folded", folded);
+    const btn = $("board-pop-fold");
+    btn.textContent = folded ? "Apri" : "Riduci";
+    btn.setAttribute("aria-expanded", String(!folded));
+  }
+
+  /** Clic su una stanza della lavagna: apre il suo codice. */
+  private openFromBoard(file: string, lines: [number, number], fromPop: boolean): void {
+    if (fromPop) this.foldPop(true);
+    void this.goToFile(file, lines);
+  }
+
+  /** Lo schema del passo: si apre nella finestra; senza schema, chiude quella aperta da un passo. */
+  private async showStepDiagram(step: TourStep): Promise<void> {
+    if (!step.diagram) {
+      if (this.popFromStep) this.closePop();
+      return;
+    }
+    try {
+      const d = await this.loadDiagram(step.diagram.id);
+      // l'utente può essere già andato avanti
+      if (this.tour?.steps[this.stepIndex] !== step) return;
+      await this.openPop(d, step.diagram.upto, true);
+    } catch (e) {
+      this.say({ text: `Non riesco a caricare lo schema «${step.diagram.id}»: ${e instanceof Error ? e.message : String(e)}`, expression: "preoccupato" });
+    }
   }
 
   // ---------- Dialogo ----------
@@ -501,6 +675,7 @@ export class App {
     }
     $("step-title").textContent = step.title ?? "";
     void this.goToFile(step.file, step.lines);
+    void this.showStepDiagram(step);
     this.say({ text, expression: step.expression ?? "neutro", choices: step.next, note: fullNote });
     this.renderStatus();
     this.reportState();
@@ -647,8 +822,14 @@ export class App {
         this.reportState();
         break;
       }
+      case "diagram":
+        this.diagramCache.set(cmd.diagram.id, cmd.diagram);
+        await this.openPop(cmd.diagram, cmd.upto, false);
+        void this.renderDiagramList();
+        break;
       case "play_tour":
         this.fileCache.clear();
+        this.diagramCache.clear();
         await this.playTour(cmd.tour.id, cmd.fromStep, cmd.tour);
         await this.renderTourList();
         break;
@@ -702,6 +883,13 @@ export class App {
     $("prev-btn").addEventListener("click", () => this.prev());
     $("dialog-text").addEventListener("click", () => this.next());
     $("menu-btn").addEventListener("click", () => this.openTitle());
+    $("board-pop-close").addEventListener("click", () => this.closePop());
+    $("board-pop-fold").addEventListener("click", () => this.foldPop(!$("board-pop").classList.contains("is-folded")));
+    $("board-pop-tab").addEventListener("click", () => {
+      const d = this.popBoard.current;
+      this.closePop();
+      if (d) this.setView(d.id);
+    });
     $("ask-form").addEventListener("submit", (e) => {
       e.preventDefault();
       const input = $<HTMLInputElement>("ask-input");
@@ -711,7 +899,8 @@ export class App {
     document.addEventListener("keydown", (e) => {
       const inField = (e.target as HTMLElement).closest("input, textarea");
       if (e.key === "Escape") {
-        if ($("title-screen").hidden) this.openTitle();
+        if ($("title-screen").hidden && !$("board-pop").hidden) this.closePop();
+        else if ($("title-screen").hidden) this.openTitle();
         else if (this.source.files.length) void this.start();
         return;
       }
@@ -732,6 +921,8 @@ export class App {
     });
     window.addEventListener("resize", () => {
       if (this.currentFile) void this.walkTo(this.currentFile);
+      if (!$("board-pop").hidden) this.popBoard.refresh();
+      if (this.view !== undefined) this.tabBoard.refresh();
     });
     this.updateNav();
   }

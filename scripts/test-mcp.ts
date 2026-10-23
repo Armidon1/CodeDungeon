@@ -112,6 +112,40 @@ await new Promise((res) => setTimeout(res, 150));
 late = await lateGame();
 check(late.join(",") === "hello,play_tour:fine", "la risposta già chiusa non viene ripetuta");
 
+// lavagna degli schemi
+const SCHEMA = "prova-schema";
+const nodes = [
+  { id: "a", label: "Arrivo", code: { file: "server.py", start: 12, end: 22 } },
+  { id: "b", label: "Tipo?", shape: "bivio" },
+  { id: "c", label: "Login" },
+];
+r = await client.callTool({
+  name: "draw_diagram",
+  arguments: { diagram_id: SCHEMA, title: "Prova", kind: "flusso", nodes, edges: [{ from: "a", to: "x" }] },
+});
+check(r.isError && /inesistenti: x/.test(text(r)), "draw_diagram rifiuta archi verso nodi inesistenti");
+r = await client.callTool({
+  name: "draw_diagram",
+  arguments: { diagram_id: SCHEMA, title: "Prova", kind: "flusso", nodes: [{ id: "a", label: "A", code: { file: "server.py", start: 1, end: 999 } }], edges: [] },
+});
+check(r.isError, "draw_diagram controlla le righe del codice");
+r = await client.callTool({
+  name: "draw_diagram",
+  arguments: { diagram_id: SCHEMA, title: "Prova", kind: "flusso", nodes, edges: [{ from: "a", to: "b" }, { from: "b", to: "c", label: "LOGIN" }], upto: 1, overwrite: true },
+});
+await new Promise((res) => setTimeout(res, 150));
+const drawn = received.find((m) => m.type === "diagram");
+check(!r.isError && drawn?.diagram.nodes[0].code.lines[1] === 22 && drawn.upto === 1, "draw_diagram salva e invia lo schema");
+r = await client.callTool({ name: "reveal_diagram", arguments: { diagram_id: SCHEMA, upto: 3 } });
+await new Promise((res) => setTimeout(res, 150));
+check(!r.isError && received.filter((m) => m.type === "diagram").at(-1)?.upto === 3, "reveal_diagram mostra altri pezzi");
+r = await client.callTool({ name: "set_step_diagram", arguments: { tour_id: TOUR, step_id: "fine", diagram_id: SCHEMA, upto: 9 } });
+check(r.isError && /3 pezzi/.test(text(r)), "set_step_diagram controlla upto");
+r = await client.callTool({ name: "set_step_diagram", arguments: { tour_id: TOUR, step_id: "fine", diagram_id: SCHEMA, upto: 2 } });
+r = await client.callTool({ name: "get_tour", arguments: { tour_id: TOUR } });
+check(/prova-schema/.test(text(r)), "set_step_diagram collega lo schema al passo");
+await fs.rm(path.join(project, ".tour", "schemi", `${SCHEMA}.json`), { force: true });
+
 await fs.rm(path.join(project, ".tour", `${TOUR}.json`), { force: true });
 game.close();
 evil.close();

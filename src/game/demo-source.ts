@@ -1,10 +1,15 @@
 // Sorgente demo: il progetto d'esempio incorporato nella build, senza agente.
 // Importato solo nella build demo (vedi main.ts), così non pesa sulla build normale.
 
-import type { Tour, TourSummary } from "../shared/types";
+import type { Diagram, DiagramSummary, Tour, TourSummary } from "../shared/types";
 import type { ConnectionState, GameSource } from "./source";
 
 import demoTour from "../../examples/packet-server/.tour/viaggio-di-un-pacchetto.json";
+
+const demoDiagrams = import.meta.glob("../../examples/packet-server/.tour/schemi/*.json", {
+  import: "default",
+  eager: true,
+}) as Record<string, Diagram>;
 
 const demoFiles = import.meta.glob("../../examples/packet-server/*.py", {
   query: "?raw",
@@ -39,6 +44,14 @@ export class DemoSource implements GameSource {
   async loadTour(id: string): Promise<Tour> {
     if (id !== this.tour.id) throw new Error(`Tour non trovato: ${id}`);
     return structuredClone(this.tour);
+  }
+  async listDiagrams(): Promise<DiagramSummary[]> {
+    return Object.values(demoDiagrams).map((d) => ({ id: d.id, title: d.title, kind: d.kind }));
+  }
+  async loadDiagram(id: string): Promise<Diagram> {
+    const d = Object.values(demoDiagrams).find((x) => x.id === id);
+    if (!d) throw new Error(`Schema non trovato: ${id}`);
+    return structuredClone(d);
   }
   ask(): boolean {
     return false;

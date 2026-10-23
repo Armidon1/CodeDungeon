@@ -2,9 +2,9 @@
 // - BridgeSource: il ponte locale (server MCP o `npm run play`) via WebSocket.
 // - DemoSource (demo-source.ts): il progetto d'esempio incorporato, senza agente.
 
-import type { GameContext, ServerMessage, Tour, TourSummary } from "../shared/types";
+import type { Diagram, DiagramSummary, GameContext, ServerMessage, Tour, TourSummary } from "../shared/types";
 
-export type AgentCommand = Extract<ServerMessage, { type: "open_file" | "highlight" | "dialog" | "play_tour" }>;
+export type AgentCommand = Extract<ServerMessage, { type: "open_file" | "highlight" | "dialog" | "play_tour" | "diagram" }>;
 
 export type ConnectionState = "demo" | "connecting" | "connected" | "offline";
 
@@ -17,6 +17,8 @@ export interface GameSource {
   readFile(path: string): Promise<string>;
   listTours(): Promise<TourSummary[]>;
   loadTour(id: string): Promise<Tour>;
+  listDiagrams(): Promise<DiagramSummary[]>;
+  loadDiagram(id: string): Promise<Diagram>;
   ask(text: string, context: GameContext): boolean;
   sendState(context: GameContext): void;
   onCommand(cb: (cmd: AgentCommand) => void): void;
@@ -108,6 +110,12 @@ export class BridgeSource implements GameSource {
   }
   loadTour(id: string): Promise<Tour> {
     return this.request<Tour>({ op: "load_tour", id });
+  }
+  listDiagrams(): Promise<DiagramSummary[]> {
+    return this.request<DiagramSummary[]>({ op: "list_diagrams" });
+  }
+  loadDiagram(id: string): Promise<Diagram> {
+    return this.request<Diagram>({ op: "load_diagram", id });
   }
   ask(text: string, context: GameContext): boolean {
     if (!this.agent || !this.ws || this.ws.readyState !== WebSocket.OPEN) return false;

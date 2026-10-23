@@ -4,7 +4,17 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { EXPRESSIONS, LEVELS, type Tour, type TourStep } from "../shared/types.js";
+import {
+  DIAGRAM_KINDS,
+  DIAGRAM_SHAPES,
+  EXPRESSIONS,
+  LEVELS,
+  diagramPieces,
+  type Diagram,
+  type StepDiagram,
+  type Tour,
+  type TourStep,
+} from "../shared/types.js";
 import type { Bridge } from "./bridge.js";
 import type { Project } from "./project.js";
 
@@ -14,6 +24,20 @@ const levelText = z
   .object({ facile: z.string(), medio: z.string(), difficile: z.string(), arduo: z.string() })
   .partial()
   .describe("Testo del fumetto per livello. In modalità istantanea compila tutti e quattro i livelli.");
+
+const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
+const upto = z
+  .number()
+  .int()
+  .min(0)
+  .optional()
+  .describe("Quanti pezzi mostrare: nodi in un flusso, messaggi in una sequenza. Ometti per lo schema completo.");
+const stepDiagram = z
+  .object({ id: z.string(), upto })
+  .describe("Schema della lavagna da mostrare durante il passo (creato prima con draw_diagram).");
+
+const MAX_NODES = 30;
+const MAX_EDGES = 60;
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -58,6 +82,26 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       throw new Error(`Righe ${start}-${end} non valide per ${file} (il file ha ${count} righe).`);
     }
     return count;
+  };
+
+  /** Controlla che uno schema sia coerente: id unici, archi tra nodi esistenti, righe di codice valide. */
+  const checkDiagram = async (d: Diagram): Promise<void> => {
+    const ids = new Set<string>();
+    for (const n of d.nodes) {
+      if (ids.has(n.id)) throw new Error(`Nodo ripetuto: ${n.id}`);
+      ids.add(n.id);
+      if (n.code) await checkLines(n.code.file, n.code.lines[0], n.code.lines[1]);
+    }
+    const missing = d.edges.flatMap((e) => [e.from, e.to]).filter((id) => !ids.has(id));
+    if (missing.length) throw new Error(`Archi verso nodi inesistenti: ${[...new Set(missing)].join(", ")}`);
+  };
+
+  const checkStepDiagram = async (sd: StepDiagram | undefined): Promise<void> => {
+    if (!sd) return;
+    const d = await project.loadDiagram(sd.id);
+    if (sd.upto !== undefined && sd.upto > diagramPieces(d)) {
+      throw new Error(`Lo schema ${sd.id} ha ${diagramPieces(d)} pezzi, upto ${sd.upto} è troppo.`);
+    }
   };
 
   // ---------- Esplorazione dal vivo ----------
@@ -230,12 +274,14 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
           .array(z.object({ goto: z.string(), when: z.string().max(80).optional() }))
           .optional()
           .describe("Passi successivi. Ometti per andare al passo seguente; [] per finire il tour qui."),
+        diagram: stepDiagram.optional(),
       },
     },
     async (args) =>
       withTour(args.tour_id, async (tour) => {
         if (!Object.values(args.text).some((t) => t && t.trim())) throw new Error("Serve il testo per almeno un livello.");
         await checkLines(args.file, args.start_line, args.end_line);
+        await checkStepDiagram(args.diagram);
         const id = args.step_id ?? `step-${String(tour.steps.length + 1).padStart(2, "0")}`;
         if (tour.steps.some((s) => s.id === id)) throw new Error(`Esiste già un passo "${id}" in questo tour.`);
         const step: TourStep = {
@@ -246,6 +292,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
           expression: args.expression,
           text: args.text,
           next: args.next,
+          diagram: args.diagram,
         };
         tour.steps.push(step);
         await project.saveTour(tour);
@@ -272,21 +319,142 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
   );
 
   server.registerTool(
+    "set_step_diagram",
+    {
+      title: "Collega uno schema a un passo",
+      description:
+        "Mostra uno schema della lavagna durante un passo del tour, intero o fino a un certo pezzo. " +
+        "Usa lo stesso schema su passi consecutivi con upto crescente per disegnarlo mentre il tour avanza. diagram_id vuoto lo scollega.",
+      inputSchema: { tour_id: z.string(), step_id: z.string(), diagram_id: z.string(), upto },
+    },
+    async ({ tour_id, step_id, diagram_id, upto }) =>
+      withTour(tour_id, async (tour) => {
+        const step = tour.steps.find((s) => s.id === step_id);
+        if (!step) throw new Error(`Passo non trovato: ${step_id}`);
+        if (diagram_id) {
+          await checkStepDiagram({ id: diagram_id, upto });
+          step.diagram = { id: diagram_id, upto };
+        } else {
+          delete step.diagram;
+        }
+        await project.saveTour(tour);
+        return ok(diagram_id ? `Schema ${diagram_id} collegato al passo ${step_id}.` : `Schema scollegato dal passo ${step_id}.`);
+      }),
+  );
+
+  server.registerTool(
     "play_tour",
     {
       title: "Avvia un tour",
-      description: "Controlla i collegamenti tra i passi e avvia il tour nel gioco, dall'inizio o da un passo dato.",
+      description: "Controlla i collegamenti tra i passi e gli schemi, poi avvia il tour nel gioco, dall'inizio o da un passo dato.",
       inputSchema: { tour_id: z.string(), from_step: z.string().optional() },
     },
     async ({ tour_id, from_step }) =>
-      withTour(tour_id, (tour) => {
+      withTour(tour_id, async (tour) => {
         if (tour.steps.length === 0) throw new Error("Il tour non ha passi.");
         const ids = new Set(tour.steps.map((s) => s.id));
         const broken = tour.steps.flatMap((s) => (s.next ?? []).filter((n) => !ids.has(n.goto)).map((n) => `${s.id} → ${n.goto}`));
         if (broken.length) throw new Error(`Collegamenti verso passi inesistenti: ${broken.join(", ")}`);
         if (from_step && !ids.has(from_step)) throw new Error(`Passo non trovato: ${from_step}`);
+        for (const s of tour.steps) await checkStepDiagram(s.diagram).catch((e) => Promise.reject(new Error(`Passo ${s.id}: ${e.message}`)));
         return ok(`Tour "${tour.title}" avviato. ${delivered(bridge.send({ type: "play_tour", tour, fromStep: from_step }))}`);
       }),
+  );
+
+  // ---------- Lavagna degli schemi ----------
+
+  server.registerTool(
+    "draw_diagram",
+    {
+      title: "Disegna uno schema",
+      description:
+        "Disegna uno schema in pixel art sulla lavagna del gioco: si apre in una finestra sopra il codice e resta in una scheda dell'editor. " +
+        "Viene salvato in .tour/schemi/<diagram_id>.json. 'flusso' per diagrammi di flusso e architetture (nodi nell'ordine di esecuzione), " +
+        "'sequenza' per chiamate tra componenti (i nodi sono i partecipanti, gli archi i messaggi in ordine di tempo). " +
+        "Con upto lo schema compare a pezzi: poi aggiungine con reveal_diagram mentre spieghi.",
+      inputSchema: {
+        diagram_id: slug.describe("Es. flusso-login"),
+        title: z.string().min(1).max(80),
+        kind: z.enum(DIAGRAM_KINDS),
+        nodes: z
+          .array(
+            z.object({
+              id: z.string().min(1).max(40),
+              label: z.string().min(1).max(60).describe("Testo breve, 1-4 parole."),
+              shape: z
+                .enum(DIAGRAM_SHAPES)
+                .optional()
+                .describe("stanza: passo o componente (predefinito); bivio: decisione; archivio: dati o file; attore: utente o sistema esterno."),
+              code: z
+                .object({ file: z.string(), start: z.number().int().min(1), end: z.number().int().min(1) })
+                .optional()
+                .describe("Codice del nodo: l'utente lo apre con un clic."),
+            }),
+          )
+          .min(1)
+          .max(MAX_NODES),
+        edges: z
+          .array(
+            z.object({
+              from: z.string(),
+              to: z.string(),
+              label: z.string().max(40).optional(),
+              style: z.enum(["pieno", "tratteggiato"]).optional().describe("tratteggiato: risposta, chiamata asincrona o caso d'errore."),
+            }),
+          )
+          .max(MAX_EDGES),
+        upto,
+        overwrite: z.boolean().optional().describe("Sovrascrive uno schema esistente con lo stesso id."),
+      },
+    },
+    async (args) => {
+      try {
+        if (!args.overwrite && (await project.diagramExists(args.diagram_id))) {
+          throw new Error(`Esiste già uno schema "${args.diagram_id}". Usa overwrite: true oppure un altro id.`);
+        }
+        const diagram: Diagram = {
+          version: 1,
+          id: args.diagram_id,
+          title: args.title,
+          kind: args.kind,
+          nodes: args.nodes.map((n) => ({
+            id: n.id,
+            label: n.label,
+            shape: n.shape,
+            code: n.code ? { file: n.code.file, lines: [n.code.start, n.code.end] } : undefined,
+          })),
+          edges: args.edges,
+        };
+        await checkDiagram(diagram);
+        await project.saveDiagram(diagram);
+        const pieces = diagramPieces(diagram);
+        const shown = args.upto === undefined ? "completo" : `${Math.min(args.upto, pieces)} di ${pieces} pezzi`;
+        return ok(`Schema "${diagram.id}" salvato e mostrato (${shown}). ${delivered(bridge.send({ type: "diagram", diagram, upto: args.upto }))}`);
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "reveal_diagram",
+    {
+      title: "Mostra uno schema",
+      description:
+        "Riapre uno schema salvato nella finestra della lavagna. Con upto più alto di prima disegna i pezzi nuovi con l'animazione: " +
+        "usalo per tracciare lo schema mentre spieghi. Ometti upto per mostrarlo tutto.",
+      inputSchema: { diagram_id: z.string(), upto },
+    },
+    async ({ diagram_id, upto }) => {
+      try {
+        const diagram = await project.loadDiagram(diagram_id);
+        const pieces = diagramPieces(diagram);
+        const shown = upto === undefined ? "completo" : `${Math.min(upto, pieces)} di ${pieces} pezzi`;
+        return ok(`Schema "${diagram_id}" mostrato (${shown}). ${delivered(bridge.send({ type: "diagram", diagram, upto }))}`);
+      } catch (e) {
+        return fail(e);
+      }
+    },
   );
 
   // ---------- Prompt ----------

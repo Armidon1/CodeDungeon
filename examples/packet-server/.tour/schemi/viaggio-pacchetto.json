@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "id": "viaggio-pacchetto",
+  "title": "Il viaggio di un pacchetto",
+  "kind": "flusso",
+  "nodes": [
+    {
+      "id": "client",
+      "label": "Client",
+      "shape": "attore"
+    },
+    {
+      "id": "accept",
+      "label": "accept() nel main",
+      "code": {
+        "file": "server.py",
+        "lines": [25, 33]
+      }
+    },
+    {
+      "id": "thread",
+      "label": "handle_client in un thread",
+      "code": {
+        "file": "server.py",
+        "lines": [12, 22]
+      }
+    },
+    {
+      "id": "header",
+      "label": "Header di 10 byte",
+      "shape": "archivio",
+      "code": {
+        "file": "protocol.py",
+        "lines": [4, 10]
+      }
+    },
+    {
+      "id": "read",
+      "label": "read_packet",
+      "code": {
+        "file": "protocol.py",
+        "lines": [27, 35]
+      }
+    },
+    {
+      "id": "dispatch",
+      "label": "Che tipo è?",
+      "shape": "bivio",
+      "code": {
+        "file": "dispatcher.py",
+        "lines": [12, 16]
+      }
+    },
+    {
+      "id": "ping",
+      "label": "handle_ping",
+      "code": {
+        "file": "handlers.py",
+        "lines": [10, 11]
+      }
+    },
+    {
+      "id": "login",
+      "label": "handle_login",
+      "code": {
+        "file": "handlers.py",
+        "lines": [14, 22]
+      }
+    },
+    {
+      "id": "message",
+      "label": "handle_message",
+      "code": {
+        "file": "handlers.py",
+        "lines": [25, 30]
+      }
+    },
+    {
+      "id": "reply",
+      "label": "sendall(reply)",
+      "code": {
+        "file": "server.py",
+        "lines": [17, 19]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "client",
+      "to": "accept",
+      "label": "connessione"
+    },
+    {
+      "from": "accept",
+      "to": "thread",
+      "label": "nuovo thread"
+    },
+    {
+      "from": "thread",
+      "to": "read"
+    },
+    {
+      "from": "read",
+      "to": "header",
+      "label": "formato",
+      "style": "tratteggiato"
+    },
+    {
+      "from": "read",
+      "to": "dispatch",
+      "label": "tipo, payload"
+    },
+    {
+      "from": "dispatch",
+      "to": "ping",
+      "label": "PING"
+    },
+    {
+      "from": "dispatch",
+      "to": "login",
+      "label": "LOGIN"
+    },
+    {
+      "from": "dispatch",
+      "to": "message",
+      "label": "MESSAGE"
+    },
+    {
+      "from": "ping",
+      "to": "reply"
+    },
+    {
+      "from": "login",
+      "to": "reply"
+    },
+    {
+      "from": "message",
+      "to": "reply"
+    },
+    {
+      "from": "reply",
+      "to": "read",
+      "label": "prossimo pacchetto",
+      "style": "tratteggiato"
+    }
+  ]
+}

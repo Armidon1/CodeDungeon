@@ -4,7 +4,7 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { Tour, TourSummary } from "../shared/types.js";
+import type { Diagram, DiagramSummary, Tour, TourSummary } from "../shared/types.js";
 
 const IGNORED_DIRS = new Set([
   ".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", ".idea", ".vscode", "target",
@@ -12,6 +12,7 @@ const IGNORED_DIRS = new Set([
 const MAX_FILE_BYTES = 512 * 1024;
 const MAX_FILES = 2000;
 const TOUR_DIR = ".tour";
+const DIAGRAM_DIR = "schemi"; // dentro .tour/
 const TOUR_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 export class Project {
@@ -139,6 +140,60 @@ export class Project {
       }
     }
     return tours;
+  }
+
+  // ---------- Schemi della lavagna (.tour/schemi/) ----------
+
+  private async diagramPath(id: string): Promise<string> {
+    if (!TOUR_ID.test(id)) {
+      throw new Error("Id dello schema non valido: usa lettere minuscole, numeri e trattini (max 64).");
+    }
+    const dir = path.join(await this.getRealRoot(), TOUR_DIR, DIAGRAM_DIR);
+    await fs.mkdir(dir, { recursive: true });
+    return path.join(dir, `${id}.json`);
+  }
+
+  async loadDiagram(id: string): Promise<Diagram> {
+    const raw = await fs.readFile(await this.diagramPath(id), "utf8").catch(() => {
+      throw new Error(`Schema non trovato: ${id}`);
+    });
+    return JSON.parse(raw) as Diagram;
+  }
+
+  async saveDiagram(diagram: Diagram): Promise<void> {
+    const file = await this.diagramPath(diagram.id);
+    const tmp = `${file}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(diagram, null, 2) + "\n", "utf8");
+    await fs.rename(tmp, file);
+  }
+
+  async diagramExists(id: string): Promise<boolean> {
+    try {
+      await fs.access(await this.diagramPath(id));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async listDiagrams(): Promise<DiagramSummary[]> {
+    const dir = path.join(await this.getRealRoot(), TOUR_DIR, DIAGRAM_DIR);
+    let names: string[];
+    try {
+      names = await fs.readdir(dir);
+    } catch {
+      return [];
+    }
+    const out: DiagramSummary[] = [];
+    for (const name of names.filter((n) => n.endsWith(".json")).sort()) {
+      try {
+        const d = await this.loadDiagram(name.slice(0, -5));
+        out.push({ id: d.id, title: d.title, kind: d.kind });
+      } catch {
+        // file non valido: lo ignoriamo nell'elenco
+      }
+    }
+    return out;
   }
 }
 

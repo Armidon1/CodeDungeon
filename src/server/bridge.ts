@@ -50,7 +50,7 @@ export class Bridge {
   private lastContext: GameContext | undefined;
   /**
    * Scena corrente, rimandata a chi si collega dopo (gioco aperto in ritardo o ricaricato):
-   * l'ultimo tour, l'ultimo file aperto o evidenziato e l'ultimo fumetto, nell'ordine in cui sono arrivati.
+   * l'ultimo tour, l'ultimo file aperto o evidenziato, l'ultimo fumetto e l'ultimo schema, nell'ordine in cui sono arrivati.
    * Un nuovo tour azzera il resto.
    */
   private scene: ServerMessage[] = [];
@@ -113,14 +113,14 @@ export class Bridge {
       this.scene = [msg];
     } else if (msg.type === "open_file" || msg.type === "highlight") {
       this.scene = [...this.scene.filter((m) => m.type !== "open_file" && m.type !== "highlight"), msg];
-    } else if (msg.type === "dialog") {
-      this.scene = [...this.scene.filter((m) => m.type !== "dialog"), msg];
+    } else if (msg.type === "dialog" || msg.type === "diagram") {
+      this.scene = [...this.scene.filter((m) => m.type !== msg.type), msg];
     }
   }
 
   /**
    * La scena da rimandare: il tour riparte dal passo in cui l'utente era arrivato.
-   * Se era già tornato al tour, la risposta dal vivo non viene ripetuta.
+   * Se era già tornato al tour, la risposta dal vivo (fumetto, codice e schema) non viene ripetuta.
    */
   private replay(): ServerMessage[] {
     const ctx = this.lastContext;
@@ -180,6 +180,8 @@ export class Bridge {
         if (msg.op === "read_file") data = await p.readFile(msg.path);
         else if (msg.op === "list_tours") data = await p.listTours();
         else if (msg.op === "load_tour") data = await p.loadTour(msg.id);
+        else if (msg.op === "list_diagrams") data = await p.listDiagrams();
+        else if (msg.op === "load_diagram") data = await p.loadDiagram(msg.id);
         else throw new Error("Operazione sconosciuta");
         reply({ type: "response", reqId: msg.reqId, ok: true, data });
       } catch (e) {

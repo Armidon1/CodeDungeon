@@ -32,7 +32,9 @@ Pubblico: dal non programmatore che ha generato uno script e non sa cosa fa, fin
 ### Lavagna degli schemi
 - Finestra-lavagna in pixel art dentro il gioco: diagrammi di flusso, architetture, sequenze di chiamate.
 - Schema completo subito, oppure tracciato linea per linea mentre l'agente spiega.
-- L'agente scrive lo schema in un formato testuale (es. Mermaid) e il gioco lo disegna in stile pixel.
+- L'agente scrive lo schema in JSON (`.tour/schemi/<id>.json`: nodi, archi, tipo `flusso` o `sequenza`) e il gioco lo disegna in stile pixel.
+- Durante la spiegazione lo schema compare in una finestra a comparsa; resta salvato e si riapre come scheda dell'editor o dall'elenco "Schemi".
+- I nodi con codice collegato (gemma) aprono il file alle righe giuste.
 
 ### Accessibilità (DSA e altre esigenze)
 - Questionario su cosa aiuta: più schemi, frasi brevi, font ad alta leggibilità, meno testo per volta.
@@ -56,13 +58,13 @@ Pubblico: dal non programmatore che ha generato uno script e non sa cosa fa, fin
 2. **Tour** ✅ formato JSON, `.tour/`, riproduzione con animazioni, `create_tour`, `add_step`, diramazioni.
 3. **Domande dal vivo** ✅ base: domanda nel gioco → `get_user_questions` → `show_dialog`. Da fare: notifica all'agente invece del polling, cronologia della conversazione nel gioco.
 4. **Difficoltà** ✅ base: menu, cambio durante il tour, `set_step_text` per la modalità su richiesta. Da fare: preparazione in background del passo successivo.
-5. **Lavagna**: strumento `draw_diagram`, rendering pixel, disegno progressivo.
+5. **Lavagna** ✅ schemi JSON in `.tour/schemi/`, `draw_diagram`, `reveal_diagram`, `set_step_diagram`, rendering pixel con disegno progressivo, finestra a comparsa, scheda nell'editor, nodi che aprono il codice.
 6. **Personalizzazione**: ritratti predefiniti, upload con tre livelli di compressione e slider, espressioni.
 7. **Accessibilità**: questionario, salvataggio in SQLite tramite il ponte, adattamento delle spiegazioni.
 8. **Distribuzione**: app Tauri, pacchetto npm (`npx code-dungeon mcp`), test con almeno due agenti diversi.
 
 ## Questioni aperte
 
-- Elenco definitivo degli strumenti MCP e dei loro parametri per le tappe 5-7.
+- Elenco definitivo degli strumenti MCP e dei loro parametri per le tappe 6-7.
 - Sprite e palette: disegnati a mano (oggi generati da codice) o con licenza libera.
 - Fonti esterne per le risposte: strumenti di ricerca del client o strumenti del gioco.
