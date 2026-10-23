@@ -21,6 +21,7 @@ export class DemoSource implements GameSource {
   readonly kind = "demo" as const;
   projectName = "packet-server";
   agent = false;
+  prefs = undefined;
   files: string[];
   private contents = new Map<string, string>();
   private tour = demoTour as unknown as Tour;
@@ -57,6 +58,8 @@ export class DemoSource implements GameSource {
     return false;
   }
   sendState(): void {}
+  savePrefs(): void {}
+  onPrefs(): void {}
   onCommand(): void {}
   onStatus(cb: (s: ConnectionState) => void): void {
     cb("demo");

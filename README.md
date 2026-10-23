@@ -10,7 +10,7 @@ agente (Claude Code / Codex / Gemini CLI) ──MCP stdio──▶ server Code D
                                                           └─ .tour/*.json nel tuo progetto (finiscono su Git)
 ```
 
-## Stato: tappa 6 di 8
+## Stato: tappa 7 di 8
 
 Funziona già:
 
@@ -20,6 +20,8 @@ Funziona già:
 - tour JSON con diramazioni (scelte nel dialogo), avanti e indietro;
 - menu iniziale con 4 livelli (facile, medio, difficile, arduo) e modalità di generazione, livello cambiabile durante il tour;
 - domande dal vivo: le scrivi nel gioco, l'agente le legge e risponde nel fumetto;
+- questionario "Cosa ti aiuta a capire" nel menu: frasi brevi, poco testo per volta (fumetto a pagine), più schemi, esempi, termini spiegati, font ad alta leggibilità (Atkinson Hyperlegible), testo più grande, meno animazioni. Il gioco si adatta subito, l'agente riceve le richieste e adatta le spiegazioni;
+- impostazioni salvate in SQLite sul tuo computer, uguali in tutti i progetti;
 - lavagna degli schemi: l'agente disegna flussi e sequenze in pixel art, pezzo per pezzo mentre spiega; lo schema compare in una finestra e resta come scheda dell'editor (e nell'elenco "Schemi");
 - layout per telefono;
 - progetto d'esempio `examples/packet-server` (server TCP in Python) con un tour di 11 passi, inclusa una vera falla DoS.
@@ -32,7 +34,7 @@ Questa guida parte da un computer senza niente. Il server MCP si installa una vo
 
 ### 1. Cosa ti serve
 
-- **Node.js 20 o superiore.** Controlla con `node --version`. Se manca o è vecchio, installalo da [nodejs.org](https://nodejs.org) (versione LTS) oppure con il gestore di pacchetti del sistema (`brew install node`, `sudo dnf install nodejs`, `sudo apt install nodejs npm`, `winget install OpenJS.NodeJS.LTS`).
+- **Node.js 22.13 o superiore** (serve il modulo SQLite integrato). Controlla con `node --version`. Se manca o è vecchio, installalo da [nodejs.org](https://nodejs.org) (versione LTS) oppure con il gestore di pacchetti del sistema (`brew install node`, `sudo dnf install nodejs`, `sudo apt install nodejs npm`, `winget install OpenJS.NodeJS.LTS`).
 - **Git**, per scaricare il repository (`git --version`).
 - **Un agente da terminale** già installato e funzionante: [Claude Code](https://docs.claude.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex) o [Gemini CLI](https://github.com/google-gemini/gemini-cli). Va bene anche qualsiasi altro client MCP.
 - **Un browser**, dove si gioca.
@@ -127,7 +129,7 @@ I tour e gli schemi vengono salvati in `.tour/` nel tuo progetto. Puoi metterli 
 ### Se qualcosa non va
 
 - **L'agente non vede gli strumenti di Code Dungeon.** Riavvia l'agente dopo averlo registrato e controlla con `/mcp` o `mcp list`. Se risulta non connesso, di solito il percorso di `cli.js` è sbagliato o non hai lanciato `npm run build`.
-- **`node: command not found` oppure un errore di sintassi all'avvio.** Node manca o è più vecchio della versione 20.
+- **`node: command not found` oppure un errore di sintassi all'avvio.** Node manca o è più vecchio della versione 22.13.
 - **Il gioco non si apre.** Il server si avvia insieme all'agente, quindi l'agente deve essere aperto. Chiedigli l'indirizzo esatto (strumento `get_game_state`).
 - **Scrivi una domanda nel gioco e non succede niente.** Vedi [Domande senza tornare al terminale](#domande-senza-tornare-al-terminale). Se l'agente ha chiuso il turno, scrivigli nel terminale *"rispondi alle domande nel gioco"*.
 
@@ -195,6 +197,7 @@ npm run build:demo   # un unico file HTML con l'esempio incorporato, senza ponte
 
 - Il ponte ascolta solo su `127.0.0.1` e accetta WebSocket solo da pagine locali, per bloccare il cross-site WebSocket hijacking.
 - Il server legge solo dentro la cartella del progetto: percorsi assoluti, `../` e link simbolici che escono vengono rifiutati.
-- Scrive solo in `.tour/`, con id validati e scrittura atomica.
+- Nel progetto scrive solo in `.tour/`, con id validati e scrittura atomica.
+- Fuori dal progetto scrive un solo file: `code-dungeon.db` (SQLite) con le impostazioni e le risposte al questionario, nella cartella dati dell'utente (`~/.local/share/code-dungeon` su Linux, `~/Library/Application Support/code-dungeon` su macOS, `%APPDATA%\code-dungeon` su Windows; si cambia con `CODE_DUNGEON_DATA`). Non finisce su Git e non esce dal computer, tranne quello che l'agente legge per adattare le spiegazioni. Il gioco non chiede certificati né diagnosi.
 - File oltre 512 KB o binari non vengono aperti.
 - Le domande spinte nella sessione di Claude Code arrivano solo dal gioco aperto in locale (stesso controllo dell'origine).

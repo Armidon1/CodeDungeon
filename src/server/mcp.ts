@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
+  AID_INFO,
   DIAGRAM_KINDS,
   DIAGRAM_SHAPES,
   EXPRESSIONS,
@@ -65,9 +66,21 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         "rispondi subito nel gioco con show_dialog passando question_id (highlight_lines prima, se parli di altro codice). " +
         "L'utente legge la risposta nel gioco, non nel terminale. " +
         "Se le domande non arrivano da sole, dopo play_tour e dopo ogni risposta chiama wait_for_question e resta in ascolto: " +
-        "l'utente non deve tornare al terminale per chiedertelo. Smetti solo se l'utente ti scrive nel terminale.",
+        "l'utente non deve tornare al terminale per chiedertelo. Smetti solo se l'utente ti scrive nel terminale. " +
+        "L'utente può indicare nel gioco cosa lo aiuta a capire (frasi brevi, più schemi...): lo trovi in get_game_state (reader) " +
+        "e insieme alle domande. Rispettalo in ogni testo.",
     },
   );
+
+  /** Le richieste di chi legge (questionario nel gioco), da rispettare in ogni testo. Vuoto se non ce ne sono. */
+  const readerAsks = (): string[] => {
+    const r = bridge.reader;
+    return [...r.aids.flatMap((a) => AID_INFO[a].agent ?? []), ...(r.note ? [`nelle sue parole: «${r.note}»`] : [])];
+  };
+  const readerNote = (): string => {
+    const asks = readerAsks();
+    return asks.length ? ` Chi legge ha chiesto: ${asks.join("; ")}. Adatta così ogni testo (tour, risposte, schemi).` : "";
+  };
 
   bridge.onQuestion = (q) => {
     const meta: Record<string, string> = { question_id: q.id, level: q.context.level };
@@ -75,6 +88,8 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     if (q.context.lines) meta.lines = `${q.context.lines[0]}-${q.context.lines[1]}`;
     if (q.context.tourId) meta.tour = q.context.tourId;
     if (q.context.stepId) meta.step = q.context.stepId;
+    const asks = readerAsks();
+    if (asks.length) meta.aiuti = asks.join("; ");
     // se il client non ha attivato il canale la notifica viene ignorata e la domanda resta per get_user_questions
     server.server
       .notification({ method: "notifications/claude/channel", params: { content: q.text, meta } })
@@ -211,14 +226,17 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     "get_game_state",
     {
       title: "Stato del gioco",
-      description: "Restituisce livello di difficoltà scelto, file e righe visibili, tour e passo correnti.",
+      description:
+        "Restituisce livello di difficoltà scelto, file e righe visibili, tour e passo correnti, " +
+        "e le preferenze di chi legge (reader: aiuti scelti nel questionario e una nota).",
       inputSchema: {},
     },
     async () =>
       ok(
         (bridge.listening ? `Gioco su ${bridge.url}. ` : "Ponte verso il gioco non attivo. ") +
-          (bridge.connected ? "Stato attuale del gioco:" : "Nessuna finestra del gioco collegata. Ultimo stato noto:"),
-        bridge.context ?? null,
+          (bridge.connected ? "Stato attuale del gioco:" : "Nessuna finestra del gioco collegata. Ultimo stato noto:") +
+          readerNote(),
+        { ...bridge.context, reader: bridge.reader },
       ),
   );
 
@@ -233,7 +251,8 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     },
     async () => {
       const q = bridge.takeQuestions();
-      return ok(q.length === 0 ? "Nessuna domanda in attesa." : q.length === 1 ? "1 domanda in attesa:" : `${q.length} domande in attesa:`, q.length ? q : undefined);
+      if (q.length === 0) return ok("Nessuna domanda in attesa.");
+      return ok(`${q.length === 1 ? "1 domanda in attesa." : `${q.length} domande in attesa.`}${readerNote()}`, q);
     },
   );
 
@@ -254,7 +273,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       const q = await bridge.waitQuestions((timeout_seconds ?? 300) * 1000, extra.signal);
       if (q.length === 0) return ok("Nessuna domanda nel frattempo. Richiama subito wait_for_question: l'utente è ancora nel gioco.");
       return ok(
-        `${q.length === 1 ? "1 domanda" : `${q.length} domande`}. Rispondi ora nel gioco con show_dialog passando question_id, poi richiama wait_for_question:`,
+        `${q.length === 1 ? "1 domanda" : `${q.length} domande`}. Rispondi ora nel gioco con show_dialog passando question_id, poi richiama wait_for_question.${readerNote()}`,
         q,
       );
     },
@@ -300,7 +319,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
           throw new Error(`Esiste già un tour "${tour_id}". Usa overwrite: true oppure un altro id.`);
         }
         await project.saveTour({ version: 1, id: tour_id, title, description, generation, steps: [] });
-        return ok(`Tour "${tour_id}" creato. Aggiungi i passi con add_step.`);
+        return ok(`Tour "${tour_id}" creato. Aggiungi i passi con add_step.${readerNote()}`);
       } catch (e) {
         return fail(e);
       }
@@ -530,7 +549,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         flusso ? `Crea un tour di Code Dungeon su questo flusso: ${flusso}.` : "Crea un tour di Code Dungeon sul flusso principale di questo progetto.",
         livelli && livelli !== "istantanea" ? `Scrivi solo il livello «${livelli}».` : "Scrivi il testo per tutti e quattro i livelli.",
         "Alla fine avvialo con play_tour.",
-      ].join(" ");
+      ].join(" ") + readerNote();
       return { messages: [{ role: "user" as const, content: { type: "text" as const, text: `${ask}\n\n${guide}` } }] };
     },
   );

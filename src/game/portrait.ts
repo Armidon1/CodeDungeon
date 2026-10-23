@@ -3,6 +3,7 @@
 // Ogni guida ha cinque espressioni, fluttua e parla; i ritratti predefiniti sbattono anche le palpebre.
 
 import type { Expression } from "../shared/types";
+import { reducedMotion } from "./reader";
 
 export const BUILTIN_GUIDES = ["lumen", "aria", "patrizio", "nilo"] as const;
 export type BuiltinGuide = (typeof BUILTIN_GUIDES)[number];
@@ -499,7 +500,7 @@ export class Portrait {
   private nextBlink = 0;
   private blinkUntil = 0;
   private raf = 0;
-  private reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  private reduced = reducedMotion();
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -526,6 +527,8 @@ export class Portrait {
 
   private render(t: number): void {
     const look = this.look ?? current;
+    // si rilegge a ogni fotogramma: "meno animazioni" si può attivare con il gioco aperto
+    this.reduced = reducedMotion();
     if (!this.reduced && t > this.nextBlink) {
       this.blinkUntil = t + 130;
       this.nextBlink = t + 2500 + Math.random() * 3000;

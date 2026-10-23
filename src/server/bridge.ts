@@ -8,8 +8,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { ClientMessage, GameContext, ServerMessage, UserQuestion } from "../shared/types.js";
+import type { ClientMessage, GameContext, ReaderProfile, ServerMessage, UserQuestion } from "../shared/types.js";
 import type { Project } from "./project.js";
+import type { Store } from "./store.js";
 import { log } from "./log.js";
 
 /** Quante porte provare a partire da quella preferita (più sessioni aperte insieme). */
@@ -44,6 +45,8 @@ export interface BridgeOptions {
   port: number;
   staticDir?: string;
   agent: boolean;
+  /** Preferenze del giocatore (SQLite). */
+  store: Store;
 }
 
 export class Bridge {
@@ -133,6 +136,11 @@ export class Bridge {
 
   get context(): GameContext | undefined {
     return this.lastContext;
+  }
+
+  /** Le risposte al questionario sull'accessibilità. */
+  get reader(): ReaderProfile {
+    return this.opts.store.load().reader ?? { aids: [] };
   }
 
   /** Invia un messaggio a tutte le finestre del gioco. Ritorna quante lo hanno ricevuto. */
@@ -225,12 +233,19 @@ export class Bridge {
       this.onMessage(ws, msg).catch((e) => log(`errore messaggio: ${String(e)}`));
     });
     const files = await this.opts.project.listFiles().catch(() => []);
-    const hello: ServerMessage = { type: "hello", project: this.opts.project.name, files, agent: this.opts.agent };
+    const hello: ServerMessage = { type: "hello", project: this.opts.project.name, files, agent: this.opts.agent, prefs: this.opts.store.load() };
     ws.send(JSON.stringify(hello));
     for (const m of this.replay()) ws.send(JSON.stringify(m));
   }
 
   private async onMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
+    if (msg.type === "save_prefs") {
+      const prefs = this.opts.store.save(msg.prefs ?? {});
+      // le altre finestre del gioco si allineano
+      const data = JSON.stringify({ type: "prefs", prefs } satisfies ServerMessage);
+      for (const other of this.clients) if (other !== ws) other.send(data);
+      return;
+    }
     if (msg.type === "state") {
       this.lastContext = msg.context;
       return;

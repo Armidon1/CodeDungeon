@@ -11,6 +11,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { Bridge } from "./bridge.js";
 import { createMcpServer } from "./mcp.js";
 import { Project } from "./project.js";
+import { Store } from "./store.js";
 import { log } from "./log.js";
 
 function parseArgs(argv: string[]) {
@@ -43,7 +44,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const project = new Project(projectDir);
-  const bridge = new Bridge({ project, port, staticDir: findStaticDir(), agent: mode === "mcp" });
+  const bridge = new Bridge({ project, port, staticDir: findStaticDir(), agent: mode === "mcp", store: new Store() });
 
   try {
     await bridge.start();

@@ -88,6 +88,50 @@ export function diagramPieces(d: Diagram): number {
   return d.kind === "sequenza" ? d.edges.length : d.nodes.length;
 }
 
+// ---------- Accessibilità: cosa aiuta chi legge ----------
+
+/** Aiuti scelti nel questionario. Alcuni cambiano il gioco, altri il modo in cui scrive l'agente (`agent`). */
+export const AIDS = ["frasi_brevi", "poco_testo", "piu_schemi", "esempi", "termini", "font_leggibile", "testo_grande", "meno_movimento"] as const;
+export type Aid = (typeof AIDS)[number];
+
+export const AID_INFO: Record<Aid, { label: string; hint: string; agent?: string }> = {
+  frasi_brevi: { label: "Frasi brevi", hint: "Una idea per frase.", agent: "frasi brevi, una idea per frase" },
+  poco_testo: {
+    label: "Poco testo per volta",
+    hint: "Il fumetto si divide in pagine corte.",
+    agent: "fumetti corti (2-3 frasi): meglio più passi o più show_dialog che un blocco lungo",
+  },
+  piu_schemi: { label: "Più schemi", hint: "La guida disegna più spesso sulla lavagna.", agent: "usa spesso la lavagna (draw_diagram), anche per concetti piccoli" },
+  esempi: { label: "Esempi concreti", hint: "Un esempio o una metafora per ogni concetto.", agent: "un esempio concreto o una metafora per ogni concetto" },
+  termini: { label: "Spiega i termini", hint: "Ogni parola tecnica spiegata la prima volta.", agent: "spiega ogni termine tecnico la prima volta che lo usi" },
+  font_leggibile: { label: "Font ad alta leggibilità", hint: "Atkinson Hyperlegible al posto dei caratteri pixel." },
+  testo_grande: { label: "Testo più grande", hint: "Fumetto, codice e menu più grandi." },
+  meno_movimento: { label: "Meno animazioni", hint: "Niente scrittura lettera per lettera, dissolvenze e camminate." },
+};
+
+export const READER_NOTE_MAX = 300;
+
+/** Le risposte al questionario. Restano sul computer dell'utente; l'agente le riceve per adattare le spiegazioni. */
+export interface ReaderProfile {
+  aids: Aid[];
+  /** Altro, in parole dell'utente. */
+  note?: string;
+}
+
+/** Accetta solo aiuti noti e una nota corta: i dati arrivano dal browser o dal database. */
+export function cleanReader(value: unknown): ReaderProfile {
+  const v = (value ?? {}) as { aids?: unknown; note?: unknown };
+  const aids = Array.isArray(v.aids) ? AIDS.filter((a) => (v.aids as unknown[]).includes(a)) : [];
+  const note = typeof v.note === "string" ? v.note.trim().slice(0, READER_NOTE_MAX) : "";
+  return note ? { aids, note } : { aids };
+}
+
+/** Preferenze salvate dal ponte in SQLite: impostazioni del gioco (formato del gioco) e questionario. */
+export interface StoredPrefs {
+  settings?: Record<string, unknown>;
+  reader?: ReaderProfile;
+}
+
 export interface Tour {
   version: 1;
   id: string;
@@ -128,7 +172,9 @@ export interface UserQuestion {
 
 /** Dal ponte (server) al gioco. */
 export type ServerMessage =
-  | { type: "hello"; project: string; files: string[]; agent: boolean }
+  | { type: "hello"; project: string; files: string[]; agent: boolean; prefs: StoredPrefs }
+  /** Preferenze cambiate da un'altra finestra del gioco. */
+  | { type: "prefs"; prefs: StoredPrefs }
   | { type: "open_file"; path: string; content: string }
   | { type: "highlight"; path: string; content: string; start: number; end: number }
   | { type: "dialog"; text: string; expression?: Expression; speaker?: string }
@@ -145,4 +191,5 @@ export type ClientMessage =
   | { type: "request"; reqId: string; op: "list_diagrams" }
   | { type: "request"; reqId: string; op: "load_diagram"; id: string }
   | { type: "question"; text: string; context: GameContext }
-  | { type: "state"; context: GameContext };
+  | { type: "state"; context: GameContext }
+  | { type: "save_prefs"; prefs: StoredPrefs };

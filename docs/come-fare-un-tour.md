@@ -37,6 +37,7 @@ Ogni testo: 2-4 frasi, massimo ~70 parole, nella lingua dell'utente. Non ripeter
 - Altrimenti, dopo `play_tour` e dopo ogni risposta, chiama `wait_for_question` e resta in ascolto: rispondi a ogni domanda e richiamalo. L'utente non deve tornare al terminale per chiedertelo. Smetti solo se ti scrive nel terminale.
 - Ogni domanda arriva con il contesto (livello, file, righe, passo). Rispondi con `show_dialog` al livello dell'utente; se ti riferisci ad altro codice, prima `highlight_lines`.
 - Il contesto contiene anche `guide`, il nome che l'utente ha dato alla guida. Nei testi dei passi e nelle risposte non usare un altro nome (es. "sono Lumen"): il fumetto mostra già quello giusto.
+- Chi legge può aver indicato nel gioco cosa lo aiuta (frasi brevi, più schemi, esempi, termini spiegati, una nota libera). Lo trovi in `get_game_state` (campo `reader`), nei risultati delle domande e nell'evento del canale (`aiuti`). Rispettalo in ogni testo: passi del tour, risposte e schemi.
 - Una risposta lunga può stare in più `show_dialog` di fila: il gioco li mette in coda e l'utente li legge con "Avanti".
 - Per domande che richiedono fonti esterne (documentazione, RFC, CVE) usa i tuoi strumenti di ricerca e cita la fonte nel fumetto.
 - Le richieste automatiche che iniziano con `[richiesta automatica]` chiedono di scrivere il testo di un livello mancante: usa `set_step_text`, poi `play_tour` con `from_step` sullo stesso passo.

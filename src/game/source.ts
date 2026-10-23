@@ -2,7 +2,7 @@
 // - BridgeSource: il ponte locale (server MCP o `npm run play`) via WebSocket.
 // - DemoSource (demo-source.ts): il progetto d'esempio incorporato, senza agente.
 
-import type { Diagram, DiagramSummary, GameContext, ServerMessage, Tour, TourSummary } from "../shared/types";
+import type { Diagram, DiagramSummary, GameContext, ServerMessage, StoredPrefs, Tour, TourSummary } from "../shared/types";
 
 export type AgentCommand = Extract<ServerMessage, { type: "open_file" | "highlight" | "dialog" | "play_tour" | "diagram" }>;
 
@@ -14,6 +14,8 @@ export interface GameSource {
   files: string[];
   /** true se dall'altra parte c'è un agente che può rispondere alle domande. */
   agent: boolean;
+  /** Impostazioni salvate dal ponte (arrivano con hello); undefined nella demo. */
+  prefs: StoredPrefs | undefined;
   readFile(path: string): Promise<string>;
   listTours(): Promise<TourSummary[]>;
   loadTour(id: string): Promise<Tour>;
@@ -21,6 +23,9 @@ export interface GameSource {
   loadDiagram(id: string): Promise<Diagram>;
   ask(text: string, context: GameContext): boolean;
   sendState(context: GameContext): void;
+  savePrefs(prefs: StoredPrefs): void;
+  /** Impostazioni cambiate da un'altra finestra del gioco. */
+  onPrefs(cb: (prefs: StoredPrefs) => void): void;
   onCommand(cb: (cmd: AgentCommand) => void): void;
   onStatus(cb: (state: ConnectionState) => void): void;
   /** Risolve quando arrivano i primi dati (file del progetto). */
@@ -34,10 +39,12 @@ export class BridgeSource implements GameSource {
   projectName = "";
   files: string[] = [];
   agent = false;
+  prefs: StoredPrefs | undefined;
   private ws: WebSocket | undefined;
   private pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private commandCbs: ((cmd: AgentCommand) => void)[] = [];
   private statusCbs: ((s: ConnectionState) => void)[] = [];
+  private prefsCbs: ((p: StoredPrefs) => void)[] = [];
   private readyResolve!: () => void;
   private readyPromise = new Promise<void>((r) => (this.readyResolve = r));
   private retry = 0;
@@ -69,6 +76,7 @@ export class BridgeSource implements GameSource {
         this.projectName = msg.project;
         this.files = msg.files;
         this.agent = msg.agent;
+        this.prefs = msg.prefs;
         this.setStatus("connected");
         this.readyResolve();
       } else if (msg.type === "response") {
@@ -77,6 +85,9 @@ export class BridgeSource implements GameSource {
         this.pending.delete(msg.reqId);
         if (msg.ok) p.resolve(msg.data);
         else p.reject(new Error(msg.error));
+      } else if (msg.type === "prefs") {
+        this.prefs = msg.prefs;
+        for (const cb of this.prefsCbs) cb(msg.prefs);
       } else {
         for (const cb of this.commandCbs) cb(msg);
       }
@@ -124,6 +135,13 @@ export class BridgeSource implements GameSource {
   }
   sendState(context: GameContext): void {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: "state", context }));
+  }
+  savePrefs(prefs: StoredPrefs): void {
+    this.prefs = prefs;
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: "save_prefs", prefs }));
+  }
+  onPrefs(cb: (prefs: StoredPrefs) => void): void {
+    this.prefsCbs.push(cb);
   }
   onCommand(cb: (cmd: AgentCommand) => void): void {
     this.commandCbs.push(cb);

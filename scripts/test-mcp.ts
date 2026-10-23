@@ -5,12 +5,16 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { WebSocket } from "ws";
 
 const PORT = 7400 + Math.floor(Math.random() * 500); // porta casuale: evita conflitti con esecuzioni precedenti
 const project = path.resolve("examples/packet-server");
 const TOUR = "prova-automatica";
+// preferenze in una cartella temporanea: il test non tocca quelle dell'utente
+const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "code-dungeon-test-"));
+const env = { ...process.env, CODE_DUNGEON_DATA: dataDir } as Record<string, string>;
 
 let failures = 0;
 const check = (cond: unknown, label: string) => {
@@ -23,6 +27,7 @@ const transport = new StdioClientTransport({
   command: "npx",
   args: ["tsx", "src/server/cli.ts", "mcp", "--project", project, "--port", String(PORT)],
   stderr: "pipe",
+  env,
 });
 const client = new Client({ name: "test-agente", version: "0.0.1" });
 const pushed: any[] = [];
@@ -47,6 +52,7 @@ game.on("message", (d) => received.push(JSON.parse(String(d))));
 await new Promise((r) => game.once("open", r));
 await new Promise((r) => setTimeout(r, 200));
 check(received[0]?.type === "hello" && received[0].files.includes("server.py"), "il gioco riceve hello con i file");
+check(received[0]?.prefs && !received[0].prefs.settings && !received[0].prefs.reader, "hello porta le preferenze (vuote al primo avvio)");
 
 // connessione da un'origine estranea: deve essere rifiutata
 const evil = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { origin: "https://sito-malevolo.example" } });
@@ -143,12 +149,42 @@ const second = new StdioClientTransport({
   command: "npx",
   args: ["tsx", "src/server/cli.ts", "mcp", "--project", project, "--port", String(PORT)],
   stderr: "pipe",
+  env,
 });
 const client2 = new Client({ name: "test-agente-2", version: "0.0.1" });
 await client2.connect(second);
 r = await client2.callTool({ name: "get_game_state", arguments: {} });
 check(text(r).includes(`127.0.0.1:${PORT + 1}`), "con la porta occupata il secondo server usa la successiva");
+
+// questionario: salvato in SQLite, condiviso tra server, passato all'agente
+const other = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
+const otherGot: any[] = [];
+other.on("message", (d) => otherGot.push(JSON.parse(String(d))));
+await new Promise((res) => other.once("open", res));
+game.send(
+  JSON.stringify({
+    type: "save_prefs",
+    prefs: { settings: { level: "facile" }, reader: { aids: ["frasi_brevi", "piu_schemi", "inventato"], note: "x".repeat(400) } },
+  }),
+);
+await new Promise((res) => setTimeout(res, 200));
+const synced = otherGot.find((m) => m.type === "prefs");
+check(synced?.prefs.reader.aids.join() === "frasi_brevi,piu_schemi" && synced.prefs.reader.note.length === 300, "save_prefs pulisce le risposte e allinea le altre finestre");
+check(!received.some((m) => m.type === "prefs"), "chi salva non riceve l'eco");
+other.close();
+r = await client.callTool({ name: "get_game_state", arguments: {} });
+check(/Chi legge ha chiesto: frasi brevi/.test(text(r)) && /"piu_schemi"/.test(text(r)), "get_game_state riporta le preferenze di chi legge");
+const ws2 = new WebSocket(`ws://127.0.0.1:${PORT + 1}/ws`);
+const hello2 = await new Promise<any>((res) => ws2.once("message", (d) => res(JSON.parse(String(d)))));
+ws2.close();
+check(hello2.prefs?.settings?.level === "facile" && hello2.prefs.reader?.aids.includes("piu_schemi"), "le preferenze valgono anche per un altro server (stesso database)");
 await client2.close();
+
+game.send(JSON.stringify({ type: "question", text: "Spiegami il login", context: { level: "facile" } }));
+await new Promise((res) => setTimeout(res, 150));
+check(/lavagna/.test(pushed.at(-1)?.meta?.aiuti ?? ""), "la domanda spinta porta gli aiuti di chi legge");
+r = await client.callTool({ name: "get_user_questions", arguments: {} });
+check(/Chi legge ha chiesto/.test(text(r)), "get_user_questions ricorda gli aiuti");
 
 // lavagna degli schemi
 const SCHEMA = "prova-schema";
@@ -188,5 +224,6 @@ await fs.rm(path.join(project, ".tour", `${TOUR}.json`), { force: true });
 game.close();
 evil.close();
 await client.close();
+await fs.rm(dataDir, { recursive: true, force: true });
 console.log(failures ? `\n${failures} controlli falliti` : "\nTutti i controlli passati.");
 process.exit(failures ? 1 : 0);

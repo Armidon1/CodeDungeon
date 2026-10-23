@@ -1,6 +1,7 @@
-// Impostazioni del giocatore. Per ora in localStorage; nella tappa 7 passeranno a SQLite tramite il ponte.
+// Impostazioni del giocatore. Con il ponte stanno in SQLite (vedi src/server/store.ts) e valgono per tutti i progetti;
+// localStorage ne tiene una copia, usata nella demo e finché il ponte non risponde.
 
-import { LEVELS, type GenerationMode, type Level } from "../shared/types";
+import { LEVELS, cleanReader, type GenerationMode, type Level, type ReaderProfile, type StoredPrefs } from "../shared/types";
 import { BUILTIN_GUIDES, GUIDE_INFO, type BuiltinGuide } from "./portrait";
 
 export interface GuideChoice {
@@ -13,10 +14,13 @@ export interface Settings {
   level: Level;
   generation: GenerationMode;
   guide: GuideChoice;
+  /** Risposte al questionario sull'accessibilità. */
+  reader: ReaderProfile;
 }
 
 const KEY = "code-dungeon:settings";
-const DEFAULTS: Settings = { level: "medio", generation: "istantanea", guide: { id: "lumen", name: GUIDE_INFO.lumen.name } };
+const DEFAULTS: Settings = { level: "medio", generation: "istantanea", guide: { id: "lumen", name: GUIDE_INFO.lumen.name }, reader: { aids: [] } };
+const defaults = (): Settings => structuredClone(DEFAULTS);
 
 /** Nome proposto per una guida: quello del ritratto predefinito, "Guida" per un'immagine propria. */
 export const defaultGuideName = (id: GuideChoice["id"]): string => (id === "custom" ? "Guida" : GUIDE_INFO[id].name);
@@ -29,18 +33,23 @@ function readGuide(g: Partial<GuideChoice> | undefined): GuideChoice {
   return { id, name };
 }
 
+/** Impostazioni valide da un oggetto qualsiasi (localStorage, database): i valori sconosciuti tornano predefiniti. */
+function parseSettings(raw: unknown): Settings {
+  const s = (raw ?? {}) as Partial<Settings>;
+  return {
+    level: s.level && LEVELS.includes(s.level) ? s.level : DEFAULTS.level,
+    generation: s.generation === "su_richiesta" ? "su_richiesta" : "istantanea",
+    guide: readGuide(s.guide),
+    reader: cleanReader(s.reader),
+  };
+}
+
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { ...DEFAULTS, guide: { ...DEFAULTS.guide } };
-    const s = JSON.parse(raw) as Partial<Settings>;
-    return {
-      level: s.level && LEVELS.includes(s.level) ? s.level : DEFAULTS.level,
-      generation: s.generation === "su_richiesta" ? "su_richiesta" : "istantanea",
-      guide: readGuide(s.guide),
-    };
+    return raw ? parseSettings(JSON.parse(raw)) : defaults();
   } catch {
-    return { ...DEFAULTS, guide: { ...DEFAULTS.guide } };
+    return defaults();
   }
 }
 
@@ -50,6 +59,18 @@ export function saveSettings(s: Settings): void {
   } catch {
     // archiviazione non disponibile (finestra privata, anteprima): le impostazioni valgono per questa sessione
   }
+}
+
+/** true se il database del ponte non ha ancora niente: si parte da quello che c'è in questo browser. */
+export const isEmpty = (p: StoredPrefs): boolean => !p.settings && !p.reader;
+
+/** Le impostazioni salvate dal ponte. */
+export function fromStored(p: StoredPrefs): Settings {
+  return parseSettings({ ...p.settings, reader: p.reader });
+}
+
+export function toStored(s: Settings): StoredPrefs {
+  return { settings: { level: s.level, generation: s.generation, guide: s.guide }, reader: s.reader };
 }
 
 export const LEVEL_INFO: Record<Level, { label: string; hint: string }> = {

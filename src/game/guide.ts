@@ -97,6 +97,12 @@ export class GuidePicker {
     $("guide-edit").textContent = this.custom ? "Modifica la tua immagine" : "Carica la tua immagine";
   }
 
+  /** Le impostazioni sono cambiate altrove (database, altra finestra): menu allineato e aspetto da mostrare. */
+  refresh(): GuideLook {
+    this.sync();
+    return this.look(this.hooks.choice().id);
+  }
+
   private look(id: GuideChoice["id"]): GuideLook {
     if (id === "custom") return this.custom ? { kind: "custom", image: this.custom } : { kind: "builtin", id: "lumen" };
     return { kind: "builtin", id };

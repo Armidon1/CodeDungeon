@@ -4,6 +4,7 @@
 
 import { diagramPieces, type Diagram, type DiagramEdge, type DiagramNode } from "../shared/types";
 import { drawMiniGuide } from "./portrait";
+import { reducedMotion } from "./reader";
 
 type Pt = [number, number];
 
@@ -46,7 +47,6 @@ interface Shown {
 }
 
 const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 
 let measurer: CanvasRenderingContext2D | undefined;

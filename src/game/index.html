@@ -160,6 +160,19 @@
           </section>
         </fieldset>
 
+        <fieldset class="menu-group" aria-describedby="reader-privacy">
+          <legend>Cosa ti aiuta a capire</legend>
+          <p class="reader-intro">Facoltativo. Scegli quello che ti serve: il gioco cambia subito, l'agente adatta le spiegazioni.</p>
+          <div class="option-grid reader-grid" id="reader-options"></div>
+          <label class="reader-note" for="reader-note">Altro da sapere su come leggi (facoltativo)
+            <textarea id="reader-note" rows="2" maxlength="300" placeholder="Es. «leggo meglio con elenchi puntati»"></textarea>
+          </label>
+          <div class="reader-bar">
+            <p class="small muted" id="reader-privacy">Le risposte restano su questo computer. L'agente le riceve solo per adattare le spiegazioni. Non servono certificati né diagnosi.</p>
+            <button type="button" class="chip-btn" id="reader-clear">Cancella le risposte</button>
+          </div>
+        </fieldset>
+
         <div class="title-actions">
           <p class="title-source" id="title-source"></p>
           <button type="button" class="pix-btn big" id="start-btn">Entra nel dungeon ▶</button>

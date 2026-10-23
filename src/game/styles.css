@@ -552,6 +552,25 @@ button.board-node:hover { color: var(--lantern); }
 .face-kind { font-size: 13px; }
 .face .chip-btn { margin-left: 0; }
 .guide-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+.reader-intro { margin: 0 0 10px; color: var(--ink-dim); font-size: 15px; }
+.reader-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.option.check:has(input:checked) .option-name::before { content: "✓ "; }
+.reader-note { display: grid; gap: 6px; margin-top: 12px; color: var(--ink-dim); }
+.reader-note textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--code-bg);
+  border: 2px solid var(--line);
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  resize: vertical;
+}
+.reader-note textarea:focus { border-color: var(--lantern); outline: none; }
+.reader-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 10px; }
+.reader-bar p { margin: 0; flex: 1 1 30ch; }
+.reader-bar .chip-btn { margin-left: 0; }
+
 .title-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .title-source { margin: 0; color: var(--ink-dim); font-size: 15px; min-width: 0; }
 .title-keys { margin: 0; color: var(--ink-faint); font-size: 14px; }
@@ -600,8 +619,33 @@ button.board-node:hover { color: var(--lantern); }
   .guide-editor { padding: 10px; }
   .guide-actions .pix-btn { flex: 1; }
   .title-actions .pix-btn { width: 100%; }
+  .reader-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .testo-grande .dialog-text { font-size: 21px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before { animation: none !important; transition: none !important; }
 }
+.meno-movimento *, .meno-movimento *::before { animation: none !important; transition: none !important; }
+
+/* ---------- Aiuti alla lettura (questionario) ---------- */
+/* Font ad alta leggibilità: i titoli restano pixel, testo e codice cambiano. */
+.font-leggibile {
+  --font-body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --font-code: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+}
+.font-leggibile body { letter-spacing: 0.01em; }
+.font-leggibile .option-name { font-weight: 700; }
+.font-leggibile .editor { font-size: 17px; line-height: 1.5; }
+.font-leggibile .choice { font-size: 16px; }
+.font-leggibile .dialog-text { line-height: 1.6; }
+
+.testo-grande .dialog-text { font-size: 24px; max-height: 11em; }
+.testo-grande .dialog-note, .testo-grande .option-hint, .testo-grande .step-title { font-size: 17px; }
+.testo-grande .option-name { font-size: 21px; }
+.testo-grande .choice { font-size: 23px; }
+.testo-grande .editor { font-size: 25px; }
+.testo-grande.font-leggibile .editor { font-size: 20px; }
+.testo-grande.font-leggibile .choice { font-size: 19px; }
+.testo-grande .ask input, .testo-grande .reader-note textarea { font-size: 19px; }
+.testo-grande .pix-btn { font-size: 11px; }

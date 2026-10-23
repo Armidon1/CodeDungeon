@@ -1,12 +1,16 @@
 // Il gioco: editor pixelato, esplora file con la guida che cammina, fumetti e riproduzione dei tour.
 
 import {
+  AIDS,
+  AID_INFO,
   LEVELS,
+  READER_NOTE_MAX,
   type Diagram,
   type Expression,
   type GameContext,
   type Level,
   type StepLink,
+  type StoredPrefs,
   type Tour,
   type TourStep,
 } from "../shared/types";
@@ -14,11 +18,11 @@ import { Board } from "./diagram";
 import { highlightLines, langLabel, langOf } from "./highlight";
 import { GuidePicker } from "./guide";
 import { Portrait, drawMiniGuide, setGuideLook } from "./portrait";
-import { GENERATION_INFO, LEVEL_INFO, loadSettings, saveSettings, type Settings } from "./settings";
+import { applyReader, pages, reducedMotion } from "./reader";
+import { GENERATION_INFO, LEVEL_INFO, fromStored, isEmpty, loadSettings, saveSettings, toStored, type Settings } from "./settings";
 import type { AgentCommand, ConnectionState, GameSource } from "./source";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface DialogLine {
@@ -44,7 +48,7 @@ export class App {
     choice: () => this.settings.guide,
     onChange: (choice, look) => {
       this.settings.guide = choice;
-      saveSettings(this.settings);
+      this.persist();
       setGuideLook(look);
       this.renderGuide();
     },
@@ -63,6 +67,10 @@ export class App {
   private history: number[] = [];
 
   private typing: { full: string; timer: number } | undefined;
+  /** Fumetto corrente diviso in pagine ("poco testo per volta"); di solito una sola. */
+  private dialogLine: DialogLine | undefined;
+  private pageList: string[] = [];
+  private page = 0;
   private awaitingChoice = false;
   private afterLine: (() => void) | undefined;
   /** Sul fumetto c'è una risposta dal vivo dell'agente, non il testo di un passo. */
@@ -88,7 +96,9 @@ export class App {
   private diagramCache = new Map<string, Diagram>();
 
   constructor(private source: GameSource) {
+    applyReader(this.settings.reader);
     this.buildTitleScreen();
+    this.buildReaderOptions();
     this.buildLevelSwitch();
     this.bindControls();
     source.onStatus((s) => {
@@ -99,6 +109,7 @@ export class App {
       if (s === "connected" && this.loaded) void this.onReady();
     });
     source.onCommand((cmd) => void this.onAgentCommand(cmd));
+    source.onPrefs((p) => this.applyStored(p));
     this.titlePortrait.set({ expression: "felice" });
     this.renderGuide();
     void this.guidePicker.init().then((look) => {
@@ -114,6 +125,10 @@ export class App {
 
   private async onReady(): Promise<void> {
     this.loaded = true;
+    const stored = this.source.prefs;
+    // il database vale per tutti i progetti; se è vuoto riceve quello che c'era in questo browser
+    if (stored && !isEmpty(stored)) this.applyStored(stored);
+    else if (stored) this.persist();
     $("project-name").textContent = this.source.projectName;
     this.renderFileList();
     await Promise.all([this.renderTourList(), this.renderDiagramList()]);
@@ -155,6 +170,75 @@ export class App {
     }
   }
 
+  // ---------- Impostazioni ----------
+
+  /** Salva in questo browser e, col ponte, nel database. */
+  private persist(): void {
+    saveSettings(this.settings);
+    this.source.savePrefs(toStored(this.settings));
+  }
+
+  /** Impostazioni arrivate dal ponte (all'avvio o da un'altra finestra). */
+  private applyStored(p: StoredPrefs): void {
+    const before = this.settings;
+    this.settings = fromStored(p);
+    saveSettings(this.settings);
+    applyReader(this.settings.reader);
+    setGuideLook(this.guidePicker.refresh());
+    this.renderGuide();
+    this.syncLevelSwitch();
+    this.syncTitleOptions();
+    this.syncReaderOptions();
+    this.renderStatus();
+    // durante un tour il passo si rilegge con il nuovo livello o con le pagine
+    const changed = before.level !== this.settings.level || before.reader.aids.includes("poco_testo") !== this.settings.reader.aids.includes("poco_testo");
+    if (changed && this.tour && this.stepIndex >= 0 && $("title-screen").hidden && !this.liveAnswer) this.showStep(this.stepIndex, false);
+  }
+
+  // ---------- Questionario ----------
+
+  private buildReaderOptions(): void {
+    const box = $("reader-options");
+    for (const aid of AIDS) {
+      const id = `opt-aid-${aid}`;
+      box.insertAdjacentHTML(
+        "beforeend",
+        `<label class="option check" for="${id}">
+          <input type="checkbox" name="aid" id="${id}" value="${aid}">
+          <span class="option-name">${AID_INFO[aid].label}</span>
+          <span class="option-hint">${AID_INFO[aid].hint}</span>
+        </label>`,
+      );
+    }
+    const note = $<HTMLTextAreaElement>("reader-note");
+    note.maxLength = READER_NOTE_MAX;
+    box.addEventListener("change", () => {
+      const aids = AIDS.filter((a) => $<HTMLInputElement>(`opt-aid-${a}`).checked);
+      this.setReader({ ...this.settings.reader, aids });
+    });
+    // la nota si salva quando si esce dal campo, non a ogni tasto
+    note.addEventListener("change", () => {
+      const text = note.value.trim();
+      this.setReader({ aids: this.settings.reader.aids, ...(text ? { note: text } : {}) });
+    });
+    $("reader-clear").addEventListener("click", () => {
+      this.setReader({ aids: [] });
+      this.syncReaderOptions();
+    });
+    this.syncReaderOptions();
+  }
+
+  private syncReaderOptions(): void {
+    for (const aid of AIDS) $<HTMLInputElement>(`opt-aid-${aid}`).checked = this.settings.reader.aids.includes(aid);
+    $<HTMLTextAreaElement>("reader-note").value = this.settings.reader.note ?? "";
+  }
+
+  private setReader(reader: Settings["reader"]): void {
+    this.settings.reader = reader;
+    applyReader(reader);
+    this.persist();
+  }
+
   // ---------- Schermata iniziale ----------
 
   private buildTitleScreen(): void {
@@ -187,7 +271,7 @@ export class App {
       if (input.name === "level") this.setLevel(input.value as Level);
       if (input.name === "generation") {
         this.settings.generation = input.value as Settings["generation"];
-        saveSettings(this.settings);
+        this.persist();
         this.renderStatus();
       }
     });
@@ -590,28 +674,47 @@ export class App {
     this.afterLine = undefined;
     this.liveAnswer = false;
     this.liveQueue = [];
-    const textEl = $("dialog-text");
     this.speakerIsGuide = !line.speaker;
     $("speaker").textContent = line.speaker ?? this.settings.guide.name;
-    this.portrait.set({ expression: line.expression, talking: true });
+    // chi usa un lettore di schermo riceve il testo intero, non le pagine
     $("dialog-live").textContent = line.text;
+    this.dialogLine = line;
+    this.pageList = pages(line.text);
+    this.showPage(0);
+  }
+
+  /** Mostra una pagina del fumetto corrente; scelte e azioni solo sull'ultima. */
+  private showPage(index: number): void {
+    const line = this.dialogLine;
+    if (!line) return;
+    this.stopTyping();
+    this.page = index;
+    const text = this.pageList[index];
+    const last = index === this.pageList.length - 1;
+    const textEl = $("dialog-text");
+    textEl.scrollTop = 0;
+    this.portrait.set({ expression: line.expression, talking: true });
     const note = $("dialog-note");
-    note.hidden = !line.note;
-    note.textContent = line.note ?? "";
+    const pageNote = this.pageList.length > 1 ? `Pagina ${index + 1} di ${this.pageList.length}.` : "";
+    const noteText = [last ? line.note : undefined, pageNote].filter(Boolean).join(" ");
+    note.hidden = !noteText;
+    note.textContent = noteText;
+    if (last) this.renderLiveNote();
     this.renderChoices([]);
     this.awaitingChoice = false;
     $("dialog").classList.add("is-typing");
 
     const finish = () => {
       this.stopTyping();
-      textEl.textContent = line.text;
+      textEl.textContent = text;
       this.portrait.set({ talking: false });
       $("dialog").classList.remove("is-typing");
-      const choices: Choice[] =
-        line.actions ??
-        (line.choices && line.choices.length > 1
-          ? line.choices.map((c) => ({ label: c.when ?? c.goto, run: () => this.followLink(c) }))
-          : []);
+      const choices: Choice[] = !last
+        ? []
+        : (line.actions ??
+          (line.choices && line.choices.length > 1
+            ? line.choices.map((c) => ({ label: c.when ?? c.goto, run: () => this.followLink(c) }))
+            : []));
       if (choices.length) {
         this.awaitingChoice = true;
         this.renderChoices(choices);
@@ -628,13 +731,18 @@ export class App {
     let i = 0;
     textEl.textContent = "";
     const timer = window.setInterval(() => {
-      i = Math.min(line.text.length, i + 2);
-      textEl.textContent = line.text.slice(0, i);
-      if (i >= line.text.length) finish();
+      i = Math.min(text.length, i + 2);
+      textEl.textContent = text.slice(0, i);
+      if (i >= text.length) finish();
     }, 24);
-    this.typing = { full: line.text, timer };
+    this.typing = { full: text, timer };
     this.typingFinish = finish;
     this.updateNav();
+  }
+
+  /** Altre pagine del fumetto corrente da leggere. */
+  private get morePages(): boolean {
+    return this.page < this.pageList.length - 1;
   }
 
   private typingFinish: (() => void) | undefined;
@@ -733,6 +841,7 @@ export class App {
       this.typingFinish?.();
       return;
     }
+    if (this.morePages) return this.showPage(this.page + 1);
     if (this.awaitingChoice) return;
     if (this.afterLine) {
       const fn = this.afterLine;
@@ -753,6 +862,7 @@ export class App {
       this.typingFinish?.();
       return;
     }
+    if (this.page > 0) return this.showPage(this.page - 1);
     const prev = this.history.pop();
     if (prev !== undefined) this.showStep(prev, false);
   }
@@ -807,7 +917,7 @@ export class App {
   setLevel(level: Level): void {
     if (level === this.settings.level) return;
     this.settings.level = level;
-    saveSettings(this.settings);
+    this.persist();
     this.syncLevelSwitch();
     this.syncTitleOptions();
     this.renderStatus();
@@ -903,7 +1013,7 @@ export class App {
   }
 
   private renderLiveNote(): void {
-    if (!this.liveQueue.length) return;
+    if (!this.liveQueue.length || this.morePages) return;
     const n = this.liveQueue.length;
     const note = $("dialog-note");
     note.hidden = false;
@@ -991,8 +1101,8 @@ export class App {
   }
 
   private updateNav(): void {
-    ($("prev-btn") as HTMLButtonElement).disabled = this.history.length === 0;
-    const canNext = !!this.typing || !!this.afterLine || (!this.awaitingChoice && !!this.tour && this.stepIndex >= 0);
+    ($("prev-btn") as HTMLButtonElement).disabled = this.history.length === 0 && this.page === 0;
+    const canNext = !!this.typing || this.morePages || !!this.afterLine || (!this.awaitingChoice && !!this.tour && this.stepIndex >= 0);
     ($("next-btn") as HTMLButtonElement).disabled = !canNext;
     $("next-btn").textContent = this.typing ? "Salta ▶▶" : "Avanti ▶";
     $("advance").hidden = !canNext || !!this.typing;
