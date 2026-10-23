@@ -63,7 +63,7 @@ const LUMEN = {
 
 // ---------- Viso ed espressioni ----------
 
-/** Un ritratto può disegnare a modo suo bocca e sopracciglia (Patrizio: baffi e pizzetto). */
+/** Un ritratto può disegnare a modo suo bocca e sopracciglia (Patrizio: sopracciglia proprie). */
 interface FaceStyle {
   mouth?: (px: Px, expr: Expression, frame: Frame) => void;
   ownBrows?: boolean;
