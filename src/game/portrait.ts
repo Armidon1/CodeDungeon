@@ -110,8 +110,11 @@ function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal): void {
         px(13, 15, c.light);
         px(20, 15, c.light);
       }
-      for (const x of [17, 18, 19]) px(x, 22, c.eye);
-      if (frame.mouthOpen) px(18, 23, c.eye);
+      // bocca storta di lato; parlando si apre in una piccola o
+      if (frame.mouthOpen) {
+        for (const [x, y] of [[17, 22], [18, 22], [19, 22], [17, 23], [19, 23]]) px(x, y, c.eye);
+        px(18, 23, c.blush);
+      } else for (const x of [17, 18, 19]) px(x, 22, c.eye);
       // nuvoletta del pensiero
       const pulse = Math.floor(frame.t / 400) % 3;
       px(25, 9, c.think);
@@ -123,8 +126,12 @@ function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal): void {
       // sopracciglia inclinate
       for (const [x, y] of [[10, 14], [11, 14], [12, 15], [21, 14], [22, 14], [20, 15]]) px(x, y, c.eye);
       eyes(11, 20, 17, 2, 3);
-      // bocca ondulata
-      for (const [x, y] of [[13, 23], [14, 22], [15, 23], [16, 22], [17, 23], [18, 22], [19, 23]]) px(x, y, c.eye);
+      // bocca ondulata; parlando si apre in una smorfia
+      if (frame.mouthOpen) {
+        for (let x = 14; x <= 18; x++) px(x, 22, c.eye);
+        for (const x of [14, 18]) px(x, 23, c.eye);
+        for (const x of [15, 16, 17]) px(x, 23, c.blush);
+      } else for (const [x, y] of [[13, 23], [14, 22], [15, 23], [16, 22], [17, 23], [18, 22], [19, 23]]) px(x, y, c.eye);
       // goccia di sudore
       const drip = Math.floor(frame.t / 500) % 2;
       for (const [x, y] of [[25, 12], [24, 13], [25, 13], [26, 13], [24, 14], [25, 14], [26, 14], [25, 15]]) px(x, y + drip, c.sweat);
@@ -133,8 +140,14 @@ function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal): void {
     }
     case "sorpreso": {
       eyes(10, 19, 16, 3, 3);
-      // bocca a O
-      for (const [x, y] of [[15, 21], [16, 21], [14, 22], [17, 22], [14, 23], [17, 23], [15, 24], [16, 24]]) px(x, y, c.eye);
+      // bocca a O; parlando si stringe e si riapre
+      if (frame.mouthOpen) {
+        for (const [x, y] of [[15, 21], [16, 21], [14, 22], [17, 22], [15, 23], [16, 23]]) px(x, y, c.eye);
+        for (const x of [15, 16]) px(x, 22, c.blush);
+      } else {
+        for (const [x, y] of [[15, 21], [16, 21], [14, 22], [17, 22], [14, 23], [17, 23], [15, 24], [16, 24]]) px(x, y, c.eye);
+        for (const [x, y] of [[15, 22], [16, 22], [15, 23], [16, 23]]) px(x, y, c.blush);
+      }
       break;
     }
     default: {
