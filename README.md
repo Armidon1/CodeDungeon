@@ -62,7 +62,10 @@ Con `--scope user` vale in tutte le cartelle: non serve spostare nulla, basta av
 [mcp_servers.code-dungeon]
 command = "node"
 args = ["/percorso/code-dungeon/dist/server/cli.js", "mcp"]
+tool_timeout_sec = 1800   # wait_for_question resta in ascolto più dei 60 secondi predefiniti
 ```
+
+Oppure `codex mcp add code-dungeon -- node /percorso/code-dungeon/dist/server/cli.js mcp` e poi aggiungi a mano `tool_timeout_sec`.
 
 **Gemini CLI** (`~/.gemini/settings.json` oppure `.gemini/settings.json` nel progetto)
 
