@@ -334,54 +334,13 @@ const PATRIZIO: Human = {
       for (const x of [19, 20]) px(x, 13, "#2f2019");
     } else if (expr === "preoccupato") brow([[10, 15], [11, 15], [12, 14], [13, 13], [11, 14], [12, 13]]);
     else if (expr === "sorpreso") brow([[10, 13], [11, 12], [12, 12], [13, 13], [11, 13], [12, 13]]);
-    else brow([[10, 15], [11, 15], [12, 15], [13, 15], [11, 14], [12, 14]]);
-    // pizzetto sotto il labbro e sul mento, staccato dalla bocca
+    // a riposo arcuate e distese: dritte e basse sembravano aggrottate
+    else brow([[10, 14], [11, 13], [12, 13], [13, 14], [11, 14], [12, 14]]);
+    // pizzetto sul mento, staccato dalla bocca
     for (const [x, y] of [[15, 25], [16, 25], [15, 26], [16, 26]]) px(x, y, "#6b4a36");
     for (const x of [15, 16]) px(x, 26, "#4a3326");
   },
-  face: {
-    ownBrows: true,
-    // baffi a manubrio con le punte che scendono; la bocca spunta sotto, una forma per espressione
-    mouth: (px, expr, frame) => {
-      const ink = "#2a1c15";
-      const pink = "#e8977f";
-      const open = frame.mouthOpen;
-      const dark = (pts: number[][]) => pts.forEach(([x, y]) => px(x, y, ink));
-      const lip = (pts: number[][]) => pts.forEach(([x, y]) => px(x, y, pink));
-      switch (expr) {
-        case "felice":
-          dark([[13, 22], [18, 22], [14, 23], [15, 23], [16, 23], [17, 23]]);
-          if (open) lip([[14, 22], [15, 22], [16, 22], [17, 22]]);
-          break;
-        case "pensieroso":
-          if (open) {
-            dark([[16, 22], [18, 22], [17, 23]]);
-            lip([[17, 22]]);
-          } else dark([[16, 22], [17, 22], [18, 22]]);
-          break;
-        case "preoccupato":
-          dark([[15, 22], [16, 22], [14, 23], [17, 23]]);
-          if (open) lip([[15, 23], [16, 23]]);
-          break;
-        case "sorpreso":
-          if (open) dark([[15, 22], [16, 22], [15, 23], [16, 23]]);
-          else {
-            dark([[15, 22], [16, 22], [14, 23], [17, 23], [15, 24], [16, 24]]);
-            lip([[15, 23], [16, 23]]);
-          }
-          break;
-        default:
-          if (open) {
-            dark([[14, 22], [17, 22], [15, 23], [16, 23]]);
-            lip([[15, 22], [16, 22]]);
-          } else dark([[15, 22], [16, 22]]);
-      }
-      // baffi sopra la bocca, più chiari di lei, con le punte in giù ai lati
-      for (let x = 13; x <= 18; x++) px(x, 20, "#6b4a36");
-      for (const x of [12, 19]) px(x, 21, "#6b4a36");
-      for (const x of [15, 16]) px(x, 20, "#4a3326");
-    },
-  },
+  face: { ownBrows: true },
 };
 
 const NILO: Human = {
