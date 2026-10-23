@@ -50,7 +50,13 @@ export class Bridge {
   private http: Server;
   private wss: WebSocketServer;
   private clients = new Set<WebSocket>();
+  /** Domande senza risposta. Restano qui finché l'agente risponde (show_dialog con question_id) o le legge con get_user_questions. */
   private questions: UserQuestion[] = [];
+  /**
+   * Domande già consegnate a wait_for_question o spinte nella sessione: non si riconsegnano all'ascolto,
+   * ma get_user_questions le restituisce ancora (l'agente può aver chiuso il turno senza rispondere).
+   */
+  private delivered = new Set<string>();
   /** Agente in attesa con wait_for_question: riceve la prossima domanda appena arriva. */
   private waiter: ((q: UserQuestion[]) => void) | undefined;
   /** Chiamata per ogni domanda che nessun agente sta aspettando (es. per spingerla al client MCP). */
@@ -166,6 +172,7 @@ export class Bridge {
   takeQuestions(): UserQuestion[] {
     const q = this.questions;
     this.questions = [];
+    this.delivered.clear();
     return q;
   }
 
@@ -173,12 +180,21 @@ export class Bridge {
   answer(id: string): boolean {
     const before = this.questions.length;
     this.questions = this.questions.filter((q) => q.id !== id);
+    this.delivered.delete(id);
     return this.questions.length < before;
   }
 
-  /** Aspetta la prossima domanda (o quelle già in coda) fino a `ms` millisecondi; le consuma. */
+  /** Domande non ancora consegnate; da qui in poi contano come consegnate. */
+  private deliver(): UserQuestion[] {
+    const fresh = this.questions.filter((q) => !this.delivered.has(q.id));
+    for (const q of fresh) this.delivered.add(q.id);
+    return fresh;
+  }
+
+  /** Aspetta la prossima domanda (o quelle in coda non ancora consegnate) fino a `ms` millisecondi. */
   waitQuestions(ms: number, signal?: AbortSignal): Promise<UserQuestion[]> {
-    if (this.questions.length) return Promise.resolve(this.takeQuestions());
+    const fresh = this.deliver();
+    if (fresh.length) return Promise.resolve(fresh);
     // un solo agente in ascolto: una nuova attesa chiude la precedente
     this.waiter?.([]);
     return new Promise((resolve) => {
@@ -226,8 +242,11 @@ export class Bridge {
       this.questions.push(q);
       this.lastContext = msg.context;
       log(`domanda dall'utente: ${text}`);
-      if (this.waiter) this.waiter(this.takeQuestions());
-      else this.onQuestion?.(q);
+      if (this.waiter) this.waiter(this.deliver());
+      else {
+        this.delivered.add(q.id);
+        this.onQuestion?.(q);
+      }
       return;
     }
     if (msg.type === "request") {

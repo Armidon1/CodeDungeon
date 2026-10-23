@@ -88,7 +88,7 @@ Poi, dal tuo agente nella cartella del progetto da spiegare:
 
 ### Domande senza tornare al terminale
 
-Dopo aver avviato un tour o risposto a una domanda, l'agente resta in ascolto da solo (`wait_for_question`): scrivi nel gioco e la risposta arriva nel fumetto, con qualsiasi agente. Per parlargli di altro nel terminale, interrompilo (in Claude Code con Esc). Se l'agente tarda, il gioco ti ricorda come richiamarlo.
+Dopo aver avviato un tour o risposto a una domanda, l'agente resta in ascolto da solo (`wait_for_question`): scrivi nel gioco e la risposta arriva nel fumetto, con qualsiasi agente. Per parlargli di altro nel terminale, interrompilo (in Claude Code con Esc). Alcuni agenti (es. Codex) a volte chiudono il turno invece di aspettare: la domanda non si perde, il gioco dopo 30 secondi ti ricorda di scrivere all'agente *"rispondi alle domande nel gioco"*.
 
 **Extra per Claude Code.** Code Dungeon è anche un *canale*: una funzione sperimentale di Claude Code con cui un server può far arrivare un messaggio nella sessione senza essere chiamato. Così le domande arrivano da sole e il terminale resta libero. Gli altri agenti la ignorano. Per attivarla:
 

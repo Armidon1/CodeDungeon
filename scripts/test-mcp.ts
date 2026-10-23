@@ -115,6 +115,8 @@ r = await waiting;
 check(/E il timeout\?/.test(text(r)) && pushed.length === before, "wait_for_question riceve la domanda appena scritta");
 r = await client.callTool({ name: "wait_for_question", arguments: { timeout_seconds: 5 } });
 check(/Nessuna domanda nel frattempo/.test(text(r)), "wait_for_question finisce allo scadere del tempo");
+r = await client.callTool({ name: "get_user_questions", arguments: {} });
+check(/E il timeout\?/.test(text(r)), "una domanda consegnata ma senza risposta resta per get_user_questions");
 
 // gioco aperto o ricaricato in ritardo: riceve la scena, non solo l'ultimo comando
 const lateGame = async (): Promise<any[]> => {

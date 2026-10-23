@@ -90,7 +90,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
 
   /** Dopo un tour o una risposta l'agente torna in ascolto da solo: l'utente non deve chiederlo dal terminale. */
   const LISTEN =
-    " Ora resta in ascolto delle domande dell'utente: chiama wait_for_question" +
+    " Ora resta in ascolto delle domande dell'utente: chiama wait_for_question e aspettane il risultato senza chiudere il turno" +
     ' (non serve se le domande ti arrivano da sole come <channel source="code-dungeon">).';
 
   const withTour = async (id: string, fn: (t: Tour) => Promise<ToolResult> | ToolResult): Promise<ToolResult> => {
@@ -227,7 +227,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     {
       title: "Leggi le domande dell'utente",
       description:
-        "Restituisce (e svuota) le domande che l'utente ha scritto nel gioco, ognuna con il contesto: livello, file, righe e passo. " +
+        "Restituisce (e svuota) le domande senza risposta che l'utente ha scritto nel gioco, ognuna con il contesto: livello, file, righe e passo. " +
         "Rispondi a ciascuna con show_dialog, eventualmente usando highlight_lines.",
       inputSchema: {},
     },
@@ -243,15 +243,20 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       title: "Resta in ascolto delle domande",
       description:
         "Aspetta che l'utente scriva una domanda nel gioco e la restituisce con il contesto (anche quelle già in coda). " +
-        "Rispondi con show_dialog, poi richiamalo per restare in ascolto. Utile quando le domande non arrivano da sole nella sessione.",
+        "Aspetta il risultato senza chiudere il turno: l'utente sta usando il gioco e legge le risposte lì. " +
+        "Rispondi con show_dialog passando question_id, poi richiamalo per restare in ascolto. " +
+        "Utile quando le domande non arrivano da sole nella sessione.",
       inputSchema: {
         timeout_seconds: z.number().int().min(5).max(1800).optional().describe("Quanto aspettare al massimo. Predefinito: 300."),
       },
     },
     async ({ timeout_seconds }, extra) => {
       const q = await bridge.waitQuestions((timeout_seconds ?? 300) * 1000, extra.signal);
-      if (q.length === 0) return ok("Nessuna domanda nel frattempo. Richiama wait_for_question per continuare ad ascoltare.");
-      return ok(q.length === 1 ? "1 domanda:" : `${q.length} domande:`, q);
+      if (q.length === 0) return ok("Nessuna domanda nel frattempo. Richiama subito wait_for_question: l'utente è ancora nel gioco.");
+      return ok(
+        `${q.length === 1 ? "1 domanda" : `${q.length} domande`}. Rispondi ora nel gioco con show_dialog passando question_id, poi richiama wait_for_question:`,
+        q,
+      );
     },
   );
 
