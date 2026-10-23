@@ -93,8 +93,8 @@ export class App {
   private boardTabs: Diagram[] = [];
   /** Cosa mostra l'editor: il codice o lo schema con questo id. */
   private view: string | undefined;
-  /** La finestra della lavagna l'ha aperta un passo del tour (si chiude al passo seguente senza schema). */
-  private popFromStep = false;
+  /** Finestra della lavagna nascosta mentre una scheda mostra lo stesso schema: torna quando si lascia la scheda. */
+  private popParked = false;
   private diagramCache = new Map<string, Diagram>();
 
   constructor(private source: GameSource) {
@@ -702,9 +702,17 @@ export class App {
     this.view = d?.id;
     const view = $("board-view");
     view.hidden = !d;
+    const pop = $("board-pop");
+    if (d && this.popBoard.current?.id === d.id) {
+      // la scheda mostra lo stesso schema della finestra: la finestra si mette da parte, non si chiude
+      if (!pop.hidden) this.popParked = true;
+      pop.hidden = true;
+    } else if (this.popParked) {
+      this.popParked = false;
+      pop.hidden = false;
+      this.popBoard.refresh();
+    }
     if (d) {
-      // la scheda mostra lo stesso schema della finestra: la finestra non serve più
-      if (this.popBoard.current?.id === d.id) this.closePop();
       $("board-view-title").textContent = d.title;
       if (!view.contains(this.tabBoard.el)) view.append(this.tabBoard.el);
       void this.tabBoard.show(d, undefined, false);
@@ -722,6 +730,8 @@ export class App {
   }
 
   private closeBoardTab(id: string): void {
+    // chiudere la scheda chiude anche la finestra messa da parte con lo stesso schema
+    if (this.popParked && this.popBoard.current?.id === id) this.closePop();
     this.boardTabs = this.boardTabs.filter((t) => t.id !== id);
     if (this.view === id) this.setView(undefined);
     else this.renderTabs();
@@ -745,9 +755,9 @@ export class App {
   }
 
   /** Apre la finestra della lavagna sopra il codice e salva lo schema in una scheda. */
-  private async openPop(d: Diagram, upto: number | undefined, fromStep: boolean): Promise<void> {
+  private async openPop(d: Diagram, upto: number | undefined): Promise<void> {
     this.addBoardTab(d);
-    this.popFromStep = fromStep;
+    this.popParked = false;
     const pop = $("board-pop");
     // se lo stesso schema è già aperto, resta ridotto come l'ha lasciato l'utente
     if (pop.hidden || this.popBoard.current?.id !== d.id) {
@@ -762,7 +772,7 @@ export class App {
 
   private closePop(): void {
     $("board-pop").hidden = true;
-    this.popFromStep = false;
+    this.popParked = false;
   }
 
   private foldPop(folded: boolean): void {
@@ -778,17 +788,14 @@ export class App {
     void this.goToFile(file, lines);
   }
 
-  /** Lo schema del passo: si apre nella finestra; senza schema, chiude quella aperta da un passo. */
+  /** Lo schema del passo si apre nella finestra; un passo senza schema lascia com'è quella già aperta. */
   private async showStepDiagram(step: TourStep): Promise<void> {
-    if (!step.diagram) {
-      if (this.popFromStep) this.closePop();
-      return;
-    }
+    if (!step.diagram) return;
     try {
       const d = await this.loadDiagram(step.diagram.id);
       // l'utente può essere già andato avanti
       if (this.tour?.steps[this.stepIndex] !== step) return;
-      await this.openPop(d, step.diagram.upto, true);
+      await this.openPop(d, step.diagram.upto);
     } catch (e) {
       this.say({ text: t().msg.cantLoadDiagram(step.diagram.id, e instanceof Error ? e.message : String(e)), expression: "preoccupato" });
     }
@@ -910,6 +917,7 @@ export class App {
   // ---------- Tour ----------
 
   async playTour(id: string, fromStep?: string, tourData?: Tour): Promise<void> {
+    const before = this.tour?.id;
     try {
       this.tour = tourData ?? (await this.source.loadTour(id));
     } catch (e) {
@@ -917,6 +925,8 @@ export class App {
       return;
     }
     this.history = [];
+    // la lavagna resta per tutto il tour: si chiude solo cambiando tour
+    if (before !== this.tour.id) this.closePop();
     const start = fromStep ? Math.max(0, this.tour.steps.findIndex((s) => s.id === fromStep)) : 0;
     this.closeTitle();
     this.showStep(start, false);
@@ -1131,7 +1141,7 @@ export class App {
       }
       case "diagram":
         this.diagramCache.set(cmd.diagram.id, cmd.diagram);
-        await this.openPop(cmd.diagram, cmd.upto, false);
+        await this.openPop(cmd.diagram, cmd.upto);
         void this.renderDiagramList();
         break;
       case "play_tour":
@@ -1269,7 +1279,6 @@ export class App {
     $("board-pop-fold").addEventListener("click", () => this.foldPop(!$("board-pop").classList.contains("is-folded")));
     $("board-pop-tab").addEventListener("click", () => {
       const d = this.popBoard.current;
-      this.closePop();
       if (d) this.setView(d.id);
     });
     $("ask-form").addEventListener("submit", (e) => {
