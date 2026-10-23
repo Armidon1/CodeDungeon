@@ -47,6 +47,10 @@ export class Bridge {
   private wss: WebSocketServer;
   private clients = new Set<WebSocket>();
   private questions: UserQuestion[] = [];
+  /** Agente in attesa con wait_for_question: riceve la prossima domanda appena arriva. */
+  private waiter: ((q: UserQuestion[]) => void) | undefined;
+  /** Chiamata per ogni domanda che nessun agente sta aspettando (es. per spingerla al client MCP). */
+  onQuestion: ((q: UserQuestion) => void) | undefined;
   private lastContext: GameContext | undefined;
   /**
    * Scena corrente, rimandata a chi si collega dopo (gioco aperto in ritardo o ricaricato):
@@ -140,6 +144,32 @@ export class Bridge {
     return q;
   }
 
+  /** Toglie dalla coda una domanda a cui l'agente ha risposto. */
+  answer(id: string): boolean {
+    const before = this.questions.length;
+    this.questions = this.questions.filter((q) => q.id !== id);
+    return this.questions.length < before;
+  }
+
+  /** Aspetta la prossima domanda (o quelle già in coda) fino a `ms` millisecondi; le consuma. */
+  waitQuestions(ms: number, signal?: AbortSignal): Promise<UserQuestion[]> {
+    if (this.questions.length) return Promise.resolve(this.takeQuestions());
+    // un solo agente in ascolto: una nuova attesa chiude la precedente
+    this.waiter?.([]);
+    return new Promise((resolve) => {
+      const done = (q: UserQuestion[]) => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", stop);
+        if (this.waiter === done) this.waiter = undefined;
+        resolve(q);
+      };
+      const stop = () => done([]);
+      const timer = setTimeout(stop, ms);
+      signal?.addEventListener("abort", stop);
+      this.waiter = done;
+    });
+  }
+
   private async onConnection(ws: WebSocket): Promise<void> {
     this.clients.add(ws);
     log(`gioco collegato (${this.clients.size} finestre)`);
@@ -167,9 +197,12 @@ export class Bridge {
     if (msg.type === "question") {
       const text = String(msg.text ?? "").slice(0, 2000).trim();
       if (!text) return;
-      this.questions.push({ id: randomUUID(), text, askedAt: new Date().toISOString(), context: msg.context });
+      const q: UserQuestion = { id: randomUUID().slice(0, 8), text, askedAt: new Date().toISOString(), context: msg.context };
+      this.questions.push(q);
       this.lastContext = msg.context;
       log(`domanda dall'utente: ${text}`);
+      if (this.waiter) this.waiter(this.takeQuestions());
+      else this.onQuestion?.(q);
       return;
     }
     if (msg.type === "request") {

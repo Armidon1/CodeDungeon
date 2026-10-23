@@ -79,7 +79,19 @@ Poi, dal tuo agente nella cartella del progetto da spiegare:
 
 1. apri http://127.0.0.1:7337;
 2. chiedi: *"Crea un tour Code Dungeon di come questo server gestisce un pacchetto"* (in Claude Code c'è anche il comando `/mcp__code-dungeon__crea_tour`);
-3. quando fai una domanda nel gioco, di' all'agente *"rispondi alle domande nel gioco"*.
+3. fai le domande direttamente nel gioco: la risposta arriva nel fumetto di Lumen.
+
+### Domande senza tornare al terminale
+
+Con **Claude Code** le domande scritte nel gioco arrivano da sole nella sessione: Code Dungeon è anche un *canale* di Claude Code. I canali sono in anteprima, quindi per ora va avviato così:
+
+```bash
+claude --dangerously-load-development-channels server:code-dungeon
+```
+
+Conferma l'avviso iniziale e da lì in poi ogni domanda fatta nel gioco viene letta e risposta senza che tu scriva nulla nel terminale.
+
+Con gli altri agenti (o Claude Code avviato normalmente) di' una volta *"resta in ascolto delle domande nel gioco"*: l'agente usa `wait_for_question` e risponde a ogni domanda appena arriva. Se l'agente tarda, il gioco ti ricorda come chiamarlo.
 
 ## Strumenti MCP
 
@@ -91,6 +103,7 @@ Poi, dal tuo agente nella cartella del progetto da spiegare:
 | `show_dialog` | fa parlare Lumen, con un'espressione |
 | `get_game_state` | livello, file, righe e passo correnti |
 | `get_user_questions` | legge e svuota le domande scritte nel gioco |
+| `wait_for_question` | resta in ascolto e restituisce la prossima domanda appena viene scritta |
 | `create_tour`, `add_step`, `set_step_text` | costruiscono il copione in `.tour/` |
 | `list_tours`, `get_tour`, `play_tour` | elencano, leggono e avviano i tour |
 | `draw_diagram` | disegna e salva uno schema in `.tour/schemi/` |
@@ -115,3 +128,4 @@ npm run build:demo   # un unico file HTML con l'esempio incorporato, senza ponte
 - Il server legge solo dentro la cartella del progetto: percorsi assoluti, `../` e link simbolici che escono vengono rifiutati.
 - Scrive solo in `.tour/`, con id validati e scrittura atomica.
 - File oltre 512 KB o binari non vengono aperti.
+- Le domande spinte nella sessione di Claude Code arrivano solo dal gioco aperto in locale (stesso controllo dell'origine).

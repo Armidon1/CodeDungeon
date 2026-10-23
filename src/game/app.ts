@@ -56,6 +56,12 @@ export class App {
   private afterLine: (() => void) | undefined;
   /** Sul fumetto c'è una risposta dal vivo dell'agente, non il testo di un passo. */
   private liveAnswer = false;
+  /** Altri fumetti dell'agente arrivati mentre l'utente leggeva una risposta: si leggono con "Avanti". */
+  private liveQueue: DialogLine[] = [];
+  /** Passo del tour da riprendere dopo le risposte dal vivo. */
+  private resumeStep: number | undefined;
+  /** Suggerimento se l'agente tarda a rispondere a una domanda. */
+  private waitHint: number | undefined;
   private connection: ConnectionState = "connecting";
   private loaded = false;
 
@@ -553,9 +559,11 @@ export class App {
 
   private say(line: DialogLine): void {
     this.stopTyping();
+    clearTimeout(this.waitHint);
     // un nuovo fumetto sostituisce la risposta dal vivo: niente "riprendi" in sospeso
     this.afterLine = undefined;
     this.liveAnswer = false;
+    this.liveQueue = [];
     const textEl = $("dialog-text");
     $("speaker").textContent = line.speaker ?? GUIDE;
     this.portrait.set({ expression: line.expression, talking: true });
@@ -789,6 +797,11 @@ export class App {
     if (this.source.ask(q, this.context())) {
       this.say({ text: "Ho passato la tua domanda all'agente. Fammi pensare...", expression: "pensieroso" });
       this.portrait.set({ talking: false });
+      this.waitHint = window.setTimeout(() => {
+        const note = $("dialog-note");
+        note.hidden = false;
+        note.textContent = "Ancora nessuna risposta. Se l'agente non è in ascolto, scrivigli nel terminale: «rispondi alle domande nel gioco».";
+      }, 30_000);
     } else if (this.source.kind === "demo") {
       this.say({
         text: "In questa demo non c'è un agente collegato, quindi non posso rispondere a domande libere. Avvia Code Dungeon con Claude Code, Codex o Gemini CLI (istruzioni nel README) e risponderò dal vivo.",
@@ -814,12 +827,18 @@ export class App {
         await this.goToFile(cmd.path, [cmd.start, cmd.end], cmd.content);
         break;
       case "dialog": {
+        const line: DialogLine = { text: cmd.text, expression: cmd.expression ?? "neutro", speaker: cmd.speaker };
+        // l'utente sta ancora leggendo una risposta: il nuovo fumetto aspetta il suo turno
+        if (this.liveAnswer) {
+          this.liveQueue.push(line);
+          this.afterLine ??= () => this.nextLive();
+          this.renderLiveNote();
+          this.updateNav();
+          break;
+        }
         // una risposta dal vivo interrompe il tour; "Avanti" lo riprende dal passo corrente
-        const resume = this.tour && this.stepIndex >= 0 ? this.stepIndex : undefined;
-        this.say({ text: cmd.text, expression: cmd.expression ?? "neutro", speaker: cmd.speaker });
-        if (resume !== undefined) this.afterLine = () => this.showStep(resume, false);
-        this.liveAnswer = true;
-        this.reportState();
+        this.resumeStep = this.tour && this.stepIndex >= 0 ? this.stepIndex : undefined;
+        this.showLive(line, []);
         break;
       }
       case "diagram":
@@ -834,6 +853,34 @@ export class App {
         await this.renderTourList();
         break;
     }
+  }
+
+  private showLive(line: DialogLine, queue: DialogLine[]): void {
+    this.say(line);
+    this.liveQueue = queue;
+    this.liveAnswer = true;
+    $("step-title").textContent = "Risposta";
+    if (queue.length || this.resumeStep !== undefined) this.afterLine = () => this.nextLive();
+    this.renderLiveNote();
+    this.updateNav();
+    this.reportState();
+  }
+
+  /** "Avanti" su una risposta dal vivo: il fumetto seguente, oppure si torna al passo del tour. */
+  private nextLive(): void {
+    const [line, ...rest] = this.liveQueue;
+    if (line) return this.showLive(line, rest);
+    const resume = this.resumeStep;
+    this.resumeStep = undefined;
+    if (resume !== undefined && this.tour) this.showStep(resume, false);
+  }
+
+  private renderLiveNote(): void {
+    if (!this.liveQueue.length) return;
+    const n = this.liveQueue.length;
+    const note = $("dialog-note");
+    note.hidden = false;
+    note.textContent = n === 1 ? "C'è un altro messaggio: premi Avanti." : `Ci sono altri ${n} messaggi: premi Avanti.`;
   }
 
   private context(): GameContext {
@@ -865,9 +912,54 @@ export class App {
     conn.textContent = labels[this.connection];
     conn.dataset.state = this.connection;
     const step = this.tour && this.stepIndex >= 0 ? this.tour.steps[this.stepIndex] : undefined;
-    $("status-step").textContent = step && this.tour ? `Passo ${this.stepIndex + 1}/${this.tour.steps.length}` : "";
+    $("status-step").textContent = step ? this.stepCounter() : "";
     $("status-level").textContent = `Livello: ${LEVEL_INFO[this.settings.level].label}`;
     $("status-gen").textContent = GENERATION_INFO[this.settings.generation].label;
+  }
+
+  /** Indici dei passi che possono seguire il passo i. */
+  private successors(i: number): number[] {
+    const steps = this.tour?.steps ?? [];
+    const next = steps[i]?.next;
+    if (!next) return i + 1 < steps.length ? [i + 1] : [];
+    return next.map((l) => steps.findIndex((s) => s.id === l.goto)).filter((j) => j >= 0);
+  }
+
+  /**
+   * "Passo k/n" lungo il percorso seguito, non nell'elenco: con le diramazioni i passi degli altri rami non contano.
+   * k = passi già fatti, n = k + il percorso più lungo che resta.
+   */
+  private stepCounter(): string {
+    const memo = new Map<number, number>();
+    const remaining = (i: number, seen: Set<number>): number => {
+      const known = memo.get(i);
+      if (known !== undefined) return known;
+      if (seen.has(i)) return 0;
+      seen.add(i);
+      const r = 1 + Math.max(0, ...this.successors(i).map((j) => remaining(j, seen)));
+      seen.delete(i);
+      memo.set(i, r);
+      return r;
+    };
+    const done = this.history.length || this.distanceFromStart(this.stepIndex);
+    return `Passo ${done + 1}/${done + remaining(this.stepIndex, new Set())}`;
+  }
+
+  /** Passi dall'inizio del tour fino a i (per un tour ripreso a metà, senza cronologia). */
+  private distanceFromStart(i: number): number {
+    const dist = new Map<number, number>([[0, 0]]);
+    const queue = [0];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      if (cur === i) return dist.get(cur)!;
+      for (const j of this.successors(cur)) {
+        if (!dist.has(j)) {
+          dist.set(j, dist.get(cur)! + 1);
+          queue.push(j);
+        }
+      }
+    }
+    return 0;
   }
 
   private updateNav(): void {

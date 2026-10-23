@@ -17,6 +17,7 @@ import {
 } from "../shared/types.js";
 import type { Bridge } from "./bridge.js";
 import type { Project } from "./project.js";
+import { log } from "./log.js";
 
 const expression = z.enum(EXPRESSIONS).describe("Espressione del ritratto della guida.");
 const level = z.enum(LEVELS);
@@ -53,13 +54,30 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
   const server = new McpServer(
     { name: "code-dungeon", version: "0.1.0" },
     {
+      // canale di Claude Code: le domande scritte nel gioco arrivano nella sessione senza che l'utente torni al terminale
+      capabilities: { experimental: { "claude/channel": {} } },
       instructions:
         "Code Dungeon è un gioco in pixel art che spiega il codice seguendo il flusso reale del programma. " +
         "Costruisci un tour con create_tour e add_step (un passo per ogni punto del flusso, nell'ordine di esecuzione), " +
-        "poi avvialo con play_tour. Durante la spiegazione controlla get_user_questions e rispondi con show_dialog, " +
-        "usando highlight_lines per mostrare il codice di cui parli. Il prompt crea_tour contiene la guida completa.",
+        "poi avvialo con play_tour. Il prompt crea_tour contiene la guida completa. " +
+        'Le domande che l\'utente scrive nel gioco possono arrivare da sole come <channel source="code-dungeon" question_id="..." ...>: ' +
+        "rispondi subito nel gioco con show_dialog passando question_id (highlight_lines prima, se parli di altro codice). " +
+        "L'utente legge la risposta nel gioco, non nel terminale. " +
+        "Se le domande non arrivano da sole, usa wait_for_question per restare in ascolto, oppure get_user_questions quando l'utente te lo chiede.",
     },
   );
+
+  bridge.onQuestion = (q) => {
+    const meta: Record<string, string> = { question_id: q.id, level: q.context.level };
+    if (q.context.file) meta.file = q.context.file;
+    if (q.context.lines) meta.lines = `${q.context.lines[0]}-${q.context.lines[1]}`;
+    if (q.context.tourId) meta.tour = q.context.tourId;
+    if (q.context.stepId) meta.step = q.context.stepId;
+    // se il client non ha attivato il canale la notifica viene ignorata e la domanda resta per get_user_questions
+    server.server
+      .notification({ method: "notifications/claude/channel", params: { content: q.text, meta } })
+      .catch((e: unknown) => log(`notifica della domanda non inviata: ${String(e)}`));
+  };
 
   const delivered = (n: number): string =>
     n > 0
@@ -173,9 +191,13 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         text: z.string().min(1).max(4000),
         expression: expression.optional(),
         speaker: z.string().max(40).optional().describe("Nome mostrato sopra il fumetto. Predefinito: il nome della guida."),
+        question_id: z.string().max(64).optional().describe("Id della domanda a cui rispondi: la toglie dalla coda di get_user_questions."),
       },
     },
-    async ({ text, expression, speaker }) => ok(`Fumetto mostrato. ${delivered(bridge.send({ type: "dialog", text, expression, speaker }))}`),
+    async ({ text, expression, speaker, question_id }) => {
+      if (question_id) bridge.answer(question_id);
+      return ok(`Fumetto mostrato. ${delivered(bridge.send({ type: "dialog", text, expression, speaker }))}`);
+    },
   );
 
   server.registerTool(
@@ -204,6 +226,24 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     async () => {
       const q = bridge.takeQuestions();
       return ok(q.length === 0 ? "Nessuna domanda in attesa." : q.length === 1 ? "1 domanda in attesa:" : `${q.length} domande in attesa:`, q.length ? q : undefined);
+    },
+  );
+
+  server.registerTool(
+    "wait_for_question",
+    {
+      title: "Resta in ascolto delle domande",
+      description:
+        "Aspetta che l'utente scriva una domanda nel gioco e la restituisce con il contesto (anche quelle già in coda). " +
+        "Rispondi con show_dialog, poi richiamalo per restare in ascolto. Utile quando le domande non arrivano da sole nella sessione.",
+      inputSchema: {
+        timeout_seconds: z.number().int().min(5).max(1800).optional().describe("Quanto aspettare al massimo. Predefinito: 300."),
+      },
+    },
+    async ({ timeout_seconds }, extra) => {
+      const q = await bridge.waitQuestions((timeout_seconds ?? 300) * 1000, extra.signal);
+      if (q.length === 0) return ok("Nessuna domanda nel frattempo. Richiama wait_for_question per continuare ad ascoltare.");
+      return ok(q.length === 1 ? "1 domanda:" : `${q.length} domande:`, q);
     },
   );
 
