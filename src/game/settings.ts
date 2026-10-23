@@ -22,8 +22,10 @@ const DEFAULTS: Settings = { level: "medio", generation: "istantanea", guide: { 
 export const defaultGuideName = (id: GuideChoice["id"]): string => (id === "custom" ? "Guida" : GUIDE_INFO[id].name);
 
 function readGuide(g: Partial<GuideChoice> | undefined): GuideChoice {
-  const id = g?.id === "custom" || BUILTIN_GUIDES.includes(g?.id as BuiltinGuide) ? g!.id! : DEFAULTS.guide.id;
-  const name = typeof g?.name === "string" && g.name.trim() ? g.name.trim().slice(0, 20) : defaultGuideName(id);
+  // una guida che non esiste più (es. Bruno, sostituito da Patrizio) riparte dalla predefinita, nome compreso
+  if (!g || !(g.id === "custom" || BUILTIN_GUIDES.includes(g.id as BuiltinGuide))) return { ...DEFAULTS.guide };
+  const id = g.id!;
+  const name = typeof g.name === "string" && g.name.trim() ? g.name.trim().slice(0, 20) : defaultGuideName(id);
   return { id, name };
 }
 

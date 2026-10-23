@@ -16,7 +16,7 @@ Funziona già:
 
 - editor VS Code pixelato con evidenziazione della sintassi (Python, JS/TS) e delle righe;
 - la guida con 5 espressioni animate e la mini-guida che cammina tra i file, con dissolvenza a pixel nel cambio file;
-- guida a scelta nel menu: Lumen, Aria, Bruno, Nilo, oppure una tua foto o un disegno convertito in pixel art (tre livelli di compressione affiancati e uno slider), con le espressioni automatiche o caricate una per una; il nome lo scegli tu. L'immagine resta nel browser;
+- guida a scelta nel menu: Lumen, Aria, Patrizio, Nilo, oppure una tua foto o un disegno convertito in pixel art (tre livelli di compressione affiancati e uno slider), con le espressioni automatiche o caricate una per una; il nome lo scegli tu. L'immagine resta nel browser;
 - tour JSON con diramazioni (scelte nel dialogo), avanti e indietro;
 - menu iniziale con 4 livelli (facile, medio, difficile, arduo) e modalità di generazione, livello cambiabile durante il tour;
 - domande dal vivo: le scrivi nel gioco, l'agente le legge e risponde nel fumetto;

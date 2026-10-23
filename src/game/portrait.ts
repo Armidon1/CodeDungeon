@@ -4,13 +4,13 @@
 
 import type { Expression } from "../shared/types";
 
-export const BUILTIN_GUIDES = ["lumen", "aria", "bruno", "nilo"] as const;
+export const BUILTIN_GUIDES = ["lumen", "aria", "patrizio", "nilo"] as const;
 export type BuiltinGuide = (typeof BUILTIN_GUIDES)[number];
 
 export const GUIDE_INFO: Record<BuiltinGuide, { name: string; hint: string }> = {
   lumen: { name: "Lumen", hint: "Lanterna, predefinita" },
   aria: { name: "Aria", hint: "Femminile" },
-  bruno: { name: "Bruno", hint: "Maschile" },
+  patrizio: { name: "Patrizio", hint: "Maschile" },
   nilo: { name: "Nilo", hint: "Neutro" },
 };
 
@@ -178,7 +178,7 @@ function drawLumen(px: Px, expr: Expression, frame: Frame): void {
   drawFace(px, expr, frame, C);
 }
 
-// ---------- Aria, Bruno, Nilo: busti con capelli e vestiti ----------
+// ---------- Aria, Patrizio, Nilo: busti con capelli e vestiti ----------
 
 type Inside = (x: number, y: number) => boolean;
 
@@ -209,8 +209,12 @@ interface Human {
   back?: Inside;
   /** Capelli o cappello davanti: frangia, ciuffi. */
   front: Inside;
-  /** Dettagli sotto il viso e le sue espressioni: fiore, pon pon, sciarpa. */
-  extras?: (px: Px, frame: Frame) => void;
+  /** Dietro la testa ma sopra i capelli lunghi: orecchie. */
+  under?: (px: Px) => void;
+  /** Vestito con un motivo; altrimenti tinta unita con l'ombra. */
+  cloth?: (x: number, y: number) => string;
+  /** Dettagli sotto il viso e le sue espressioni: fiore, pon pon, sciarpa, barba. */
+  extras?: (px: Px, frame: Frame, expr: Expression) => void;
 }
 
 const head = ellipse(16, 17.5, 8.6, 9.3);
@@ -220,12 +224,13 @@ function drawHuman(px: Px, h: Human, expr: Expression, frame: Frame): void {
   const p = h.pal;
   const hairFill = (x: number, y: number) => ((x * 7 + y * 3) % 11 === 0 ? p.hairLight : x + y > 36 ? p.hairDark : p.hair);
   // spalle: la riga sotto il ritratto è "dentro", così il busto non ha contorno in fondo
-  shape(px, (x, y) => y >= 27 && y <= 33 && Math.abs(x + 0.5 - 16) <= 6 + (y - 27) * 1.6, (x, y) => (x + y > 42 ? p.clothDark : p.cloth), p.outline);
+  shape(px, (x, y) => y >= 27 && y <= 33 && Math.abs(x + 0.5 - 16) <= 6 + (y - 27) * 1.6, h.cloth ?? ((x, y) => (x + y > 42 ? p.clothDark : p.cloth)), p.outline);
   if (h.back) shape(px, h.back, hairFill, p.outline);
+  h.under?.(px);
   for (let y = 25; y <= 27; y++) for (let x = 14; x <= 17; x++) px(x, y, p.shade);
   shape(px, head, (x, y) => (x - 16 + (y - 17.5) > 9 ? p.shade : p.body), p.outline);
   shape(px, h.front, hairFill, p.outline);
-  h.extras?.(px, frame);
+  h.extras?.(px, frame, expr);
   drawFace(px, expr, frame, p);
 }
 
@@ -257,27 +262,47 @@ const ARIA: Human = {
   },
 };
 
-const BRUNO_SPIKES = new Set(["11,7", "12,6", "15,6", "16,5", "17,5", "20,6", "21,7"]);
-const BRUNO: Human = {
+const PATRIZIO: Human = {
   pal: {
     outline: "#2e1d16",
-    body: "#d39a6a",
-    shade: "#b07a4f",
+    body: "#efc8a4",
+    shade: "#d6a47e",
     light: "#fff2c4",
     eye: "#2a1c15",
-    blush: "#e48a72",
+    blush: "#e8977f",
     sweat: "#9fd4f2",
     shine: "#ffffff",
     think: "#efe6d2",
     hair: "#4a3326",
     hairDark: "#2f2019",
     hairLight: "#6b4a36",
-    cloth: "#6a8fc9",
-    clothDark: "#46679e",
+    cloth: "#3d4f7c",
+    clothDark: "#2b3858",
   },
-  // capelli corti a punta, con le basette
-  front: (x, y) =>
-    (cap(x, y) && y < 12 + (x % 3 === 0 ? 1 : 0)) || (head(x, y) && y < 17 && (x <= 8 || x >= 24)) || BRUNO_SPIKES.has(`${x},${y}`),
+  // capelli corti con volume sopra la fronte, tempie un po' scoperte e basette corte
+  front: (x, y) => {
+    const d = Math.abs(x + 0.5 - 16);
+    const hairline = d < 4 ? 11 : d < 6 ? 10 : d < 7.5 ? 11 : 15;
+    return ellipse(16, 13.5, 9.4, 8)(x, y) && y < hairline;
+  },
+  // orecchie a sventola
+  under: (px) => {
+    for (const ox of [6.6, 25.4]) shape(px, ellipse(ox, 18.5, 2.2, 3), () => "#d6a47e", "#2e1d16");
+  },
+  // camicia a quadri con il colletto chiaro
+  cloth: (x, y) => (x % 4 === 1 || y % 4 === 2 ? (x % 4 === 1 && y % 4 === 2 ? "#e8dccb" : "#7d95c4") : x + y > 42 ? "#2b3858" : "#3d4f7c"),
+  extras: (px, _frame, expr) => {
+    for (const [x, y] of [[12, 27], [13, 27], [13, 28], [19, 27], [18, 27], [18, 28]]) px(x, y, "#e8dccb");
+    // sopracciglia folte: si alzano con la sorpresa e i pensieri (preoccupato ha le sue)
+    if (expr !== "preoccupato") {
+      const y = expr === "sorpreso" || expr === "pensieroso" ? 13 : 15;
+      for (const x of [10, 11, 12, 13, 19, 20, 21, 22]) px(x, y, "#2f2019");
+      for (const x of [11, 12, 20, 21]) px(x, y - 1, "#2f2019");
+    }
+    // baffi e pizzetto
+    for (const x of [13, 14, 15, 16, 17, 18]) px(x, 20, "#6b4a36");
+    for (const [x, y] of [[15, 24], [16, 24], [14, 25], [15, 25], [16, 25], [17, 25]]) px(x, y, "#4a3326");
+  },
 };
 
 const NILO: Human = {
@@ -308,7 +333,7 @@ const NILO: Human = {
   },
 };
 
-const HUMANS: Record<Exclude<BuiltinGuide, "lumen">, Human> = { aria: ARIA, bruno: BRUNO, nilo: NILO };
+const HUMANS: Record<Exclude<BuiltinGuide, "lumen">, Human> = { aria: ARIA, patrizio: PATRIZIO, nilo: NILO };
 
 // ---------- Immagine dell'utente ----------
 
