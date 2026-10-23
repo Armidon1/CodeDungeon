@@ -68,7 +68,7 @@ Pubblico: dal non programmatore che ha generato uno script e non sa cosa fa, fin
 7. **Accessibilità** ✅ questionario nel menu (8 aiuti e una nota libera), salvataggio in SQLite tramite il ponte, condiviso tra progetti e finestre. Il gioco applica font Atkinson Hyperlegible, testo grande, meno animazioni e fumetto a pagine; le altre richieste arrivano all'agente in `get_game_state`, con le domande e nel prompt `crea_tour`. Nessun certificato.
 8. **Suoni** ✅ quattro musiche chiptune a scelta (Taverna, Grotta di cristallo, Biblioteca, Forziere) o silenzio, effetti dell'interfaccia (passi, scelte, lavagna, domande, fine del tour) e voce della guida a bip mentre scrive, con un timbro per ritratto e un tono per espressione. Tutto sintetizzato con Web Audio, senza file audio. Volumi separati, tasto M, salvati con le altre impostazioni.
 9. **Lingue** ✅ interfaccia in inglese (predefinita) e italiano, scelta nel menu e salvata con le altre impostazioni. Testi in `src/game/i18n.ts`, cambio lingua senza ricaricare. La lingua arriva all'agente (`lang` in `get_game_state`, nelle domande e nel prompt `crea_tour`), che scrive tour e risposte in quella lingua. I tour già scritti restano nella loro lingua.
-10. **Distribuzione**: app Tauri, pacchetto npm (`npx code-dungeon mcp`), test con almeno due agenti diversi.
+10. **Distribuzione** (in corso): pacchetto npm pronto (`npx -y code-dungeon mcp`: `files`, `prepack`, `--help`, `--version`), provato da tarball con Codex CLI e Claude Code (Gemini CLI non provato: manca il login). Da fare: pubblicazione su npm, app Tauri.
 
 ## Questioni aperte
 

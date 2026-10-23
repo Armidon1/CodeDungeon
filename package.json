@@ -2,11 +2,32 @@
   "name": "code-dungeon",
   "version": "0.1.0",
   "description": "Un gioco cozy in pixel art che spiega il codice generato dagli LLM. Il gioco è un server MCP: qualsiasi agente lo pilota.",
+  "license": "MIT",
+  "author": "Armidon1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Armidon1/CodeDungeon.git"
+  },
+  "homepage": "https://github.com/Armidon1/CodeDungeon#readme",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "code-tour",
+    "pixel-art",
+    "education"
+  ],
   "type": "module",
-  "private": true,
   "bin": {
     "code-dungeon": "./dist/server/cli.js"
   },
+  "files": [
+    "dist/server",
+    "dist/shared",
+    "dist/game"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "npm run build:server && npm run build:game",
@@ -16,7 +37,8 @@
     "mcp": "tsx src/server/cli.ts mcp",
     "play": "tsx src/server/cli.ts play",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.game.json --noEmit",
-    "test:mcp": "tsx scripts/test-mcp.ts"
+    "test:mcp": "tsx scripts/test-mcp.ts",
+    "prepack": "npm run build"
   },
   "engines": {
     "node": ">=22.13"
