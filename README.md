@@ -169,13 +169,68 @@ Apri http://127.0.0.1:7337 e scegli il livello. In questa modalità puoi riprodu
 
 Il gioco può stare in una finestra sua invece che in una scheda del browser. L'app contiene solo il gioco: il server lo avvia sempre l'agente (o `npm run play`). All'apertura cerca da sola la sessione aperta sulle porte 127.0.0.1:7337-7356 e, se non ce n'è, aspetta che ne parta una. Con più sessioni aperte sceglie quella sulla porta più bassa.
 
-Per compilarla servono [Rust](https://rustup.rs) e, su Linux, le librerie di WebKitGTK (Fedora: `sudo dnf install webkit2gtk4.1-devel openssl-devel`; Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev libssl-dev build-essential`). Poi, dalla cartella di Code Dungeon:
+### 1. Compilala
+
+Servono [Rust](https://rustup.rs) e, su Linux, le librerie di WebKitGTK:
+
+- Fedora: `sudo dnf install webkit2gtk4.1-devel openssl-devel`
+- Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev libssl-dev build-essential`
+
+Su Windows e macOS basta Rust (su macOS anche gli strumenti di Xcode: `xcode-select --install`). Poi, dalla cartella di Code Dungeon:
 
 ```bash
-npm run app:build
+npm run app:build                      # tutti i pacchetti del sistema
+npm run app:build -- --bundles rpm     # solo quello che ti serve (rpm, deb, appimage, nsis, dmg)
 ```
 
-Trovi l'eseguibile in `src-tauri/target/release/code-dungeon` e i pacchetti da installare (`.deb`, `.rpm`, AppImage su Linux; `.exe` su Windows; `.dmg` su macOS) in `src-tauri/target/release/bundle/`. Pesa pochi MB perché usa il motore web del sistema.
+L'app pesa pochi MB perché usa il motore web del sistema.
+
+### 2. Aprila o installala
+
+**Senza installare niente**, su qualsiasi sistema:
+
+```bash
+./src-tauri/target/release/code-dungeon        # Linux e macOS
+.\src-tauri\target\release\code-dungeon.exe     # Windows
+```
+
+**Fedora, openSUSE** (pacchetto `.rpm`):
+
+```bash
+sudo dnf install "./src-tauri/target/release/bundle/rpm/Code Dungeon-0.1.0-1.x86_64.rpm"
+```
+
+**Debian, Ubuntu, Mint** (pacchetto `.deb`):
+
+```bash
+sudo apt install "./src-tauri/target/release/bundle/deb/Code Dungeon_0.1.0_amd64.deb"
+```
+
+**Altre distribuzioni** (AppImage, senza installazione):
+
+```bash
+chmod +x src-tauri/target/release/bundle/appimage/*.AppImage
+./src-tauri/target/release/bundle/appimage/*.AppImage
+```
+
+**Windows**: apri l'installatore in `src-tauri\target\release\bundle\nsis\` (`Code Dungeon_0.1.0_x64-setup.exe`).
+
+**macOS**: apri il `.dmg` in `src-tauri/target/release/bundle/dmg/` e trascina Code Dungeon in Applicazioni.
+
+Una volta installata la trovi nel menu delle applicazioni come "Code Dungeon", con l'icona di Lumen. Su Linux si apre anche dal terminale con `code-dungeon`.
+
+### 3. Usala
+
+Apri prima una sessione: chiedi un tour al tuo agente, oppure `npm run play -- --project <cartella>`. Se apri l'app prima, mostra "Cerco una sessione aperta…" e si collega da sola appena ne parte una.
+
+### Disinstallarla
+
+- Fedora: `sudo dnf remove code-dungeon`
+- Debian/Ubuntu: `sudo apt remove code-dungeon`
+- Windows: da Impostazioni → App
+- macOS: trascina Code Dungeon da Applicazioni al Cestino
+
+Provata finora su Fedora (rpm e deb generati, eseguibile avviato). Windows, macOS e AppImage non sono ancora stati provati.
 
 ## Domande senza tornare al terminale
 
