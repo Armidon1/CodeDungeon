@@ -36,6 +36,10 @@ Pubblico: dal non programmatore che ha generato uno script e non sa cosa fa, fin
 - Durante la spiegazione lo schema compare in una finestra a comparsa; resta salvato e si riapre come scheda dell'editor o dall'elenco "Schemi".
 - I nodi con codice collegato (gemma) aprono il file alle righe giuste.
 
+### Lingua
+- Interfaccia in inglese (predefinita) o italiano, a scelta nel menu.
+- L'agente riceve la lingua scelta e scrive tour e risposte in quella lingua.
+
 ### Accessibilità (DSA e altre esigenze)
 - Questionario su cosa aiuta: più schemi, frasi brevi, font ad alta leggibilità, meno testo per volta.
 - Le risposte entrano nel contesto dell'agente.
@@ -63,7 +67,8 @@ Pubblico: dal non programmatore che ha generato uno script e non sa cosa fa, fin
 6. **Personalizzazione** ✅ ritratti predefiniti (Lumen, Aria, Patrizio, Nilo), nome della guida, upload convertito in pixel art nel browser (ritaglio, riduzione, k-means) con tre livelli di compressione affiancati e slider, espressioni automatiche (fumetto e colori) o caricate una per una. Il nome arriva all'agente nel contesto (`guide`). Da fare: bordi del fumetto alternativi.
 7. **Accessibilità** ✅ questionario nel menu (8 aiuti e una nota libera), salvataggio in SQLite tramite il ponte, condiviso tra progetti e finestre. Il gioco applica font Atkinson Hyperlegible, testo grande, meno animazioni e fumetto a pagine; le altre richieste arrivano all'agente in `get_game_state`, con le domande e nel prompt `crea_tour`. Nessun certificato.
 8. **Suoni** ✅ quattro musiche chiptune a scelta (Taverna, Grotta di cristallo, Biblioteca, Forziere) o silenzio, effetti dell'interfaccia (passi, scelte, lavagna, domande, fine del tour) e voce della guida a bip mentre scrive, con un timbro per ritratto e un tono per espressione. Tutto sintetizzato con Web Audio, senza file audio. Volumi separati, tasto M, salvati con le altre impostazioni.
-9. **Distribuzione**: app Tauri, pacchetto npm (`npx code-dungeon mcp`), test con almeno due agenti diversi.
+9. **Lingue** ✅ interfaccia in inglese (predefinita) e italiano, scelta nel menu e salvata con le altre impostazioni. Testi in `src/game/i18n.ts`, cambio lingua senza ricaricare. La lingua arriva all'agente (`lang` in `get_game_state`, nelle domande e nel prompt `crea_tour`), che scrive tour e risposte in quella lingua. I tour già scritti restano nella loro lingua.
+10. **Distribuzione**: app Tauri, pacchetto npm (`npx code-dungeon mcp`), test con almeno due agenti diversi.
 
 ## Questioni aperte
 

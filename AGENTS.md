@@ -10,7 +10,7 @@ Leggi `docs/progetto.md`: specifica completa e roadmap a tappe. Lavora una tappa
 
 - `src/shared/types.ts`: tipi del tour e protocollo WebSocket, condivisi da server e gioco. Si parte sempre da qui quando cambia un formato.
 - `src/server/`: `cli.ts` (modi `mcp` e `play`), `mcp.ts` (strumenti e prompt), `bridge.ts` (HTTP + WebSocket su 127.0.0.1), `project.ts` (accesso ai file confinato nella radice e tour in `.tour/`), `store.ts` (impostazioni e questionario in SQLite nella cartella dati dell'utente).
-- `src/game/`: gioco nel browser senza framework. `app.ts` (UI e riproduzione dei tour), `portrait.ts` (ritratti 32×32 delle guide e immagine dell'utente), `guide.ts` (scelta della guida nel menu), `reader.ts` (aiuti alla lettura: classi CSS, movimento ridotto, fumetto a pagine), `settings.ts` (impostazioni e sincronizzazione col ponte), `pixelate.ts` (immagine → pixel art), `diagram.ts` (lavagna degli schemi), `audio.ts` (musiche, effetti e voce della guida), `highlight.ts` (sintassi), `source.ts` e `demo-source.ts` (ponte o demo incorporata).
+- `src/game/`: gioco nel browser senza framework. `app.ts` (UI e riproduzione dei tour), `i18n.ts` (testi dell'interfaccia in inglese e italiano), `portrait.ts` (ritratti 32×32 delle guide e immagine dell'utente), `guide.ts` (scelta della guida nel menu), `reader.ts` (aiuti alla lettura: classi CSS, movimento ridotto, fumetto a pagine), `settings.ts` (impostazioni e sincronizzazione col ponte), `pixelate.ts` (immagine → pixel art), `diagram.ts` (lavagna degli schemi), `audio.ts` (musiche, effetti e voce della guida), `highlight.ts` (sintassi), `source.ts` e `demo-source.ts` (ponte o demo incorporata).
 - `examples/packet-server/`: progetto d'esempio con tour in `.tour/` e schemi in `.tour/schemi/`. Tieni allineati i numeri di riga del tour se modifichi i file Python.
 
 ## Comandi
@@ -24,7 +24,7 @@ Leggi `docs/progetto.md`: specifica completa e roadmap a tappe. Lavora una tappa
 - In modalità MCP lo stdout è del protocollo: log solo con `log()` (stderr).
 - Ogni accesso a file del progetto passa da `Project.resolveInside()`. Non aggiungere letture o scritture fuori da lì. L'unica eccezione è il database di `store.ts`, a percorso fisso.
 - Il ponte resta su 127.0.0.1 con controllo dell'origine dei WebSocket.
-- Testi dell'interfaccia e messaggi degli strumenti in italiano, frasi brevi e concrete.
+- Testi dell'interfaccia in `src/game/i18n.ts`, in inglese e in italiano (stesse chiavi, niente testo letterale nei componenti: `t()` in TS, `data-i18n` in HTML). Messaggi degli strumenti MCP in italiano. Sempre frasi brevi e concrete.
 - Rispetta il movimento ridotto per ogni nuova animazione (`reducedMotion()` di `reader.ts` in TS, regole `prefers-reduced-motion` e `.meno-movimento` in CSS) e verifica il layout a 390 px di larghezza.
 - Audio: tutto sintetizzato con Web Audio in `audio.ts`, niente file audio né musiche altrui. Ogni nuovo suono passa dai bus musica/effetti, così volumi e tasto M valgono anche per lui.
 - Grafica: pixel nitidi (`image-rendering: pixelated`), palette nei token CSS di `styles.css`, niente colori letterali nei componenti.

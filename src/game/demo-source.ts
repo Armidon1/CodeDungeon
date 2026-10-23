@@ -2,6 +2,7 @@
 // Importato solo nella build demo (vedi main.ts), così non pesa sulla build normale.
 
 import type { Diagram, DiagramSummary, Tour, TourSummary } from "../shared/types";
+import { t } from "./i18n";
 import type { ConnectionState, GameSource } from "./source";
 
 import demoTour from "../../examples/packet-server/.tour/viaggio-di-un-pacchetto.json";
@@ -35,7 +36,7 @@ export class DemoSource implements GameSource {
 
   async readFile(path: string): Promise<string> {
     const text = this.contents.get(path);
-    if (text === undefined) throw new Error(`File non trovato: ${path}`);
+    if (text === undefined) throw new Error(t().msg.notFound(path));
     return text;
   }
   async listTours(): Promise<TourSummary[]> {
@@ -43,7 +44,7 @@ export class DemoSource implements GameSource {
     return [{ id: t.id, title: t.title, description: t.description, steps: t.steps.length }];
   }
   async loadTour(id: string): Promise<Tour> {
-    if (id !== this.tour.id) throw new Error(`Tour non trovato: ${id}`);
+    if (id !== this.tour.id) throw new Error(t().msg.notFound(id));
     return structuredClone(this.tour);
   }
   async listDiagrams(): Promise<DiagramSummary[]> {
@@ -51,7 +52,7 @@ export class DemoSource implements GameSource {
   }
   async loadDiagram(id: string): Promise<Diagram> {
     const d = Object.values(demoDiagrams).find((x) => x.id === id);
-    if (!d) throw new Error(`Schema non trovato: ${id}`);
+    if (!d) throw new Error(t().msg.notFound(id));
     return structuredClone(d);
   }
   ask(): boolean {

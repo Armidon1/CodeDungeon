@@ -3,6 +3,7 @@
 
 import { LEVELS, cleanReader, type GenerationMode, type Level, type ReaderProfile, type StoredPrefs } from "../shared/types";
 import { SOUND_DEFAULTS, cleanSound, type SoundSettings } from "./audio";
+import { LANGS, t, type Lang } from "./i18n";
 import { BUILTIN_GUIDES, GUIDE_INFO, type BuiltinGuide } from "./portrait";
 
 export interface GuideChoice {
@@ -12,6 +13,8 @@ export interface GuideChoice {
 }
 
 export interface Settings {
+  /** Lingua dell'interfaccia; l'agente la riceve per scrivere nella stessa. */
+  lang: Lang;
   level: Level;
   generation: GenerationMode;
   guide: GuideChoice;
@@ -22,11 +25,11 @@ export interface Settings {
 }
 
 const KEY = "code-dungeon:settings";
-const DEFAULTS: Settings = { level: "medio", generation: "istantanea", guide: { id: "lumen", name: GUIDE_INFO.lumen.name }, reader: { aids: [] }, sound: SOUND_DEFAULTS };
+const DEFAULTS: Settings = { lang: "en", level: "medio", generation: "istantanea", guide: { id: "lumen", name: GUIDE_INFO.lumen.name }, reader: { aids: [] }, sound: SOUND_DEFAULTS };
 const defaults = (): Settings => structuredClone(DEFAULTS);
 
-/** Nome proposto per una guida: quello del ritratto predefinito, "Guida" per un'immagine propria. */
-export const defaultGuideName = (id: GuideChoice["id"]): string => (id === "custom" ? "Guida" : GUIDE_INFO[id].name);
+/** Nome proposto per una guida: quello del ritratto predefinito, "Guide"/"Guida" per un'immagine propria. */
+export const defaultGuideName = (id: GuideChoice["id"]): string => (id === "custom" ? t().msg.defaultGuide : GUIDE_INFO[id].name);
 
 function readGuide(g: Partial<GuideChoice> | undefined): GuideChoice {
   // una guida che non esiste più (es. Bruno, sostituito da Patrizio) riparte dalla predefinita, nome compreso
@@ -40,6 +43,7 @@ function readGuide(g: Partial<GuideChoice> | undefined): GuideChoice {
 function parseSettings(raw: unknown): Settings {
   const s = (raw ?? {}) as Partial<Settings>;
   return {
+    lang: s.lang && LANGS.includes(s.lang) ? s.lang : DEFAULTS.lang,
     level: s.level && LEVELS.includes(s.level) ? s.level : DEFAULTS.level,
     generation: s.generation === "su_richiesta" ? "su_richiesta" : "istantanea",
     guide: readGuide(s.guide),
@@ -74,17 +78,5 @@ export function fromStored(p: StoredPrefs): Settings {
 }
 
 export function toStored(s: Settings): StoredPrefs {
-  return { settings: { level: s.level, generation: s.generation, guide: s.guide, sound: s.sound }, reader: s.reader };
+  return { settings: { lang: s.lang, level: s.level, generation: s.generation, guide: s.guide, sound: s.sound }, reader: s.reader };
 }
-
-export const LEVEL_INFO: Record<Level, { label: string; hint: string }> = {
-  facile: { label: "Facile", hint: "Per chi non programma. Metafore, niente gergo." },
-  medio: { label: "Medio", hint: "Termini tecnici di base, struttura e flusso." },
-  difficile: { label: "Difficile", hint: "Dettagli implementativi e scelte di design." },
-  arduo: { label: "Arduo", hint: "Basso livello: protocolli, flag, memoria, falle di sicurezza." },
-};
-
-export const GENERATION_INFO: Record<GenerationMode, { label: string; hint: string }> = {
-  istantanea: { label: "Istantanea", hint: "Tutti i livelli pronti subito: cambio immediato, più token." },
-  su_richiesta: { label: "Su richiesta", hint: "Solo il livello scelto: meno token, qualche secondo d'attesa quando cambi." },
-};

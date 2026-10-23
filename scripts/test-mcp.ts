@@ -164,7 +164,7 @@ await new Promise((res) => other.once("open", res));
 game.send(
   JSON.stringify({
     type: "save_prefs",
-    prefs: { settings: { level: "facile" }, reader: { aids: ["frasi_brevi", "piu_schemi", "inventato"], note: "x".repeat(400) } },
+    prefs: { settings: { level: "facile", lang: "it" }, reader: { aids: ["frasi_brevi", "piu_schemi", "inventato"], note: "x".repeat(400) } },
   }),
 );
 await new Promise((res) => setTimeout(res, 200));
@@ -174,6 +174,7 @@ check(!received.some((m) => m.type === "prefs"), "chi salva non riceve l'eco");
 other.close();
 r = await client.callTool({ name: "get_game_state", arguments: {} });
 check(/Chi legge ha chiesto: frasi brevi/.test(text(r)) && /"piu_schemi"/.test(text(r)), "get_game_state riporta le preferenze di chi legge");
+check(/Lingua scelta nel gioco: italiano/.test(text(r)) && /"lang": "it"/.test(text(r)), "get_game_state riporta la lingua scelta");
 const ws2 = new WebSocket(`ws://127.0.0.1:${PORT + 1}/ws`);
 const hello2 = await new Promise<any>((res) => ws2.once("message", (d) => res(JSON.parse(String(d)))));
 ws2.close();

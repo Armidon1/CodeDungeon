@@ -143,6 +143,11 @@ export class Bridge {
     return this.opts.store.load().reader ?? { aids: [] };
   }
 
+  /** Lingua dell'interfaccia scelta nel menu del gioco: i testi dell'agente vanno scritti in questa. */
+  get lang(): "en" | "it" {
+    return this.opts.store.load().settings?.lang === "it" ? "it" : "en";
+  }
+
   /** Invia un messaggio a tutte le finestre del gioco. Ritorna quante lo hanno ricevuto. */
   send(msg: ServerMessage): number {
     this.remember(msg);

@@ -10,10 +10,11 @@ agente (Claude Code / Codex / Gemini CLI) ──MCP stdio──▶ server Code D
                                                           └─ .tour/*.json nel tuo progetto (finiscono su Git)
 ```
 
-## Stato: tappa 8 di 9
+## Stato: tappa 9 di 10
 
 Funziona già:
 
+- interfaccia in inglese (predefinita) o in italiano, a scelta nel menu. L'agente riceve la lingua scelta e scrive tour e risposte in quella lingua;
 - editor VS Code pixelato con evidenziazione della sintassi (Python, JS/TS) e delle righe;
 - la guida con 5 espressioni animate e la mini-guida che cammina tra i file, con dissolvenza a pixel nel cambio file;
 - guida a scelta nel menu: Lumen, Aria, Patrizio, Nilo, oppure una tua foto o un disegno convertito in pixel art (tre livelli di compressione affiancati e uno slider), con le espressioni automatiche o caricate una per una; il nome lo scegli tu. L'immagine resta nel browser;

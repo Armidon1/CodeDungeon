@@ -9,13 +9,6 @@ import type { Expression } from "../shared/types";
 export const TRACK_IDS = ["taverna", "grotta", "biblioteca", "forziere"] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
 
-export const TRACK_INFO: Record<TrackId, { label: string; hint: string }> = {
-  taverna: { label: "Taverna", hint: "Calda e tranquilla, per leggere con calma." },
-  grotta: { label: "Grotta di cristallo", hint: "Misteriosa, con l'eco del dungeon." },
-  biblioteca: { label: "Biblioteca", hint: "Lenta e morbida, quasi in sottofondo." },
-  forziere: { label: "Forziere", hint: "Allegra e veloce, da avventura." },
-};
-
 export interface SoundSettings {
   music: TrackId | "off";
   /** Volumi da 0 a 1. */

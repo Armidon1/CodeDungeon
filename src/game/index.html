@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="it">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -12,8 +12,8 @@
         <span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="titlebar-name">Code Dungeon</span>
         <span class="titlebar-project" id="project-name"></span>
-        <button type="button" class="chip-btn" id="sound-btn" aria-pressed="false" title="Audio (tasto M)">♪ Audio</button>
-        <button type="button" class="chip-btn" id="menu-btn" aria-label="Apri il menu">Menu</button>
+        <button type="button" class="chip-btn" id="sound-btn" aria-pressed="false" title="Audio (M key)" data-i18n="ui.audio" data-i18n-title="ui.audioTitle">♪ Audio</button>
+        <button type="button" class="chip-btn" id="menu-btn" aria-label="Open the menu" data-i18n="ui.menu" data-i18n-aria-label="ui.openMenu">Menu</button>
       </header>
 
       <div class="workbench">
@@ -23,46 +23,46 @@
           <span class="act act-tour"></span>
         </nav>
 
-        <aside class="sidebar" aria-label="Esplora file">
-          <div class="sidebar-title">Esplora</div>
+        <aside class="sidebar" aria-label="File explorer" data-i18n-aria-label="ui.explorerLabel">
+          <div class="sidebar-title" data-i18n="ui.explorer">Explorer</div>
           <div class="explorer" id="explorer">
             <canvas class="walker" id="walker" aria-hidden="true"></canvas>
             <ul class="file-list" id="file-list"></ul>
           </div>
-          <div class="sidebar-title sidebar-tours">Tour salvati</div>
+          <div class="sidebar-title sidebar-tours" data-i18n="ui.savedTours">Saved tours</div>
           <ul class="tour-list" id="tour-list"></ul>
-          <div class="sidebar-title sidebar-tours">Schemi</div>
+          <div class="sidebar-title sidebar-tours" data-i18n="ui.diagrams">Diagrams</div>
           <ul class="tour-list" id="diagram-list"></ul>
         </aside>
 
         <main class="main">
-          <div class="tabs" id="tabs" role="group" aria-label="Schede aperte"></div>
+          <div class="tabs" id="tabs" role="group" aria-label="Open tabs" data-i18n-aria-label="ui.openTabs"></div>
           <div class="editor-wrap">
-            <div class="editor" id="editor" role="region" aria-label="Editor del codice" tabindex="0"></div>
+            <div class="editor" id="editor" role="region" aria-label="Code editor" data-i18n-aria-label="ui.codeEditor" tabindex="0"></div>
             <div class="editor-empty" id="editor-empty">
-              <p>Nessun file aperto.</p>
-              <p class="muted">Scegli un tour, oppure chiedi all'agente di aprire un file.</p>
+              <p data-i18n="ui.noFile">No file open.</p>
+              <p class="muted" data-i18n="ui.noFileHint">Pick a tour, or ask the agent to open a file.</p>
             </div>
             <canvas class="wipe" id="wipe" aria-hidden="true"></canvas>
             <section class="board-view" id="board-view" aria-labelledby="board-view-title" hidden>
               <div class="board-head">
-                <span class="board-badge">Lavagna</span>
+                <span class="board-badge" data-i18n="ui.board">Board</span>
                 <h2 class="board-title" id="board-view-title"></h2>
               </div>
-              <p class="board-hint">Le stanze con la gemma aprono il loro codice.</p>
+              <p class="board-hint" data-i18n="ui.boardHint">Rooms with a gem open their code.</p>
             </section>
             <section class="board-pop" id="board-pop" aria-labelledby="board-pop-title" hidden>
               <div class="board-head">
-                <span class="board-badge">Lavagna</span>
+                <span class="board-badge" data-i18n="ui.board">Board</span>
                 <h2 class="board-title" id="board-pop-title"></h2>
-                <button type="button" class="chip-btn" id="board-pop-fold" aria-expanded="true">Riduci</button>
-                <button type="button" class="chip-btn" id="board-pop-tab">Scheda</button>
-                <button type="button" class="chip-btn" id="board-pop-close" aria-label="Chiudi la lavagna">✕</button>
+                <button type="button" class="chip-btn" id="board-pop-fold" aria-expanded="true">Minimize</button>
+                <button type="button" class="chip-btn" id="board-pop-tab" data-i18n="ui.toTab">Tab</button>
+                <button type="button" class="chip-btn" id="board-pop-close" aria-label="Close the board" data-i18n-aria-label="ui.closeBoard">✕</button>
               </div>
             </section>
           </div>
 
-          <section class="dialog" id="dialog" aria-label="Dialogo con la guida">
+          <section class="dialog" id="dialog" aria-label="Dialog with the guide" data-i18n-aria-label="ui.dialog">
             <div class="portrait-frame">
               <canvas class="portrait" id="portrait" aria-hidden="true"></canvas>
             </div>
@@ -70,22 +70,22 @@
               <div class="dialog-head">
                 <span class="speaker" id="speaker"></span>
                 <span class="step-title" id="step-title"></span>
-                <div class="level-switch" id="level-switch" role="radiogroup" aria-label="Livello della spiegazione"></div>
+                <div class="level-switch" id="level-switch" role="radiogroup" aria-label="Explanation level" data-i18n-aria-label="ui.levelSwitch"></div>
               </div>
               <p class="dialog-text" id="dialog-text" aria-hidden="true"></p>
               <p class="sr-only" id="dialog-live" aria-live="polite"></p>
               <p class="dialog-note" id="dialog-note" hidden></p>
               <div class="choices" id="choices"></div>
               <div class="dialog-foot">
-                <button type="button" class="pix-btn ghost" id="prev-btn">◀ Indietro</button>
+                <button type="button" class="pix-btn ghost" id="prev-btn" data-i18n="ui.back">◀ Back</button>
                 <span class="advance" id="advance" aria-hidden="true">▼</span>
-                <button type="button" class="pix-btn" id="next-btn">Avanti ▶</button>
+                <button type="button" class="pix-btn" id="next-btn">Next ▶</button>
               </div>
             </div>
             <form class="ask" id="ask-form" autocomplete="off">
-              <label class="sr-only" for="ask-input">Domanda per la guida</label>
-              <input id="ask-input" name="question" type="text" maxlength="500" placeholder="Chiedi qualcosa su questo codice…" />
-              <button type="submit" class="pix-btn">Chiedi</button>
+              <label class="sr-only" for="ask-input" data-i18n="ui.askLabel">Question for the guide</label>
+              <input id="ask-input" name="question" type="text" maxlength="500" placeholder="Ask something about this code…" />
+              <button type="submit" class="pix-btn" data-i18n="ui.ask">Ask</button>
             </form>
           </section>
         </main>
@@ -113,90 +113,95 @@
         </div>
 
         <fieldset class="menu-group">
-          <legend>Livello di spiegazione</legend>
+          <legend data-i18n="menu.language">Language</legend>
+          <div class="option-grid lang-grid" id="lang-options"></div>
+        </fieldset>
+
+        <fieldset class="menu-group">
+          <legend data-i18n="menu.level">Explanation level</legend>
           <div class="option-grid level-grid" id="level-options"></div>
         </fieldset>
 
         <fieldset class="menu-group">
-          <legend>Generazione dei testi</legend>
+          <legend data-i18n="menu.generation">Text generation</legend>
           <div class="option-grid gen-grid" id="gen-options"></div>
         </fieldset>
 
         <fieldset class="menu-group">
-          <legend>La guida</legend>
+          <legend data-i18n="menu.guide">The guide</legend>
           <div class="option-grid guide-grid" id="guide-options"></div>
           <div class="guide-bar">
-            <label class="guide-name" for="guide-name">Nome
+            <label class="guide-name" for="guide-name"><span data-i18n="menu.guideName">Name</span>
               <input id="guide-name" type="text" maxlength="20" autocomplete="off" spellcheck="false" />
             </label>
-            <button type="button" class="chip-btn" id="guide-edit">Carica la tua immagine</button>
+            <button type="button" class="chip-btn" id="guide-edit">Upload your image</button>
           </div>
           <p class="guide-msg" id="guide-msg" role="status" hidden></p>
 
           <section class="guide-editor" id="guide-editor" aria-labelledby="guide-editor-title" hidden>
-            <h2 class="guide-editor-title" id="guide-editor-title">La tua immagine</h2>
-            <p class="small muted">Una foto o un disegno diventa pixel art. Resta in questo browser: non viene inviata a nessuno.</p>
+            <h2 class="guide-editor-title" id="guide-editor-title" data-i18n="menu.yourImage">Your image</h2>
+            <p class="small muted" data-i18n="menu.imageIntro">A photo or a drawing becomes pixel art. It stays in this browser: it is never sent anywhere.</p>
             <div class="guide-upload">
-              <button type="button" class="pix-btn" id="guide-pick">Scegli un'immagine</button>
+              <button type="button" class="pix-btn" id="guide-pick">Choose an image</button>
               <input type="file" id="guide-file" accept="image/*" hidden />
               <span class="small muted" id="guide-file-name"></span>
             </div>
             <div class="guide-tuning" id="guide-tuning" hidden>
-              <div class="option-grid preset-grid" id="guide-presets" role="radiogroup" aria-label="Compressione"></div>
-              <label class="guide-slider" for="guide-detail">Dettaglio
+              <div class="option-grid preset-grid" id="guide-presets" role="radiogroup" aria-label="Compression" data-i18n-aria-label="menu.compression"></div>
+              <label class="guide-slider" for="guide-detail"><span data-i18n="menu.detail">Detail</span>
                 <input type="range" id="guide-detail" aria-describedby="guide-detail-out" />
                 <output id="guide-detail-out" for="guide-detail"></output>
               </label>
             </div>
-            <p class="small muted" id="guide-retune" hidden>Per cambiare la compressione scegli di nuovo l'immagine.</p>
+            <p class="small muted" id="guide-retune" data-i18n="menu.retune" hidden>To change the compression, choose the image again.</p>
             <div class="guide-faces-group" id="guide-faces-group" hidden>
-              <h3 class="guide-sub">Espressioni</h3>
-              <p class="small muted">Quelle automatiche aggiungono un fumetto e cambiano un po' i colori. Puoi caricarne una tua per ciascuna.</p>
+              <h3 class="guide-sub" data-i18n="menu.expressions">Expressions</h3>
+              <p class="small muted" data-i18n="menu.expressionsIntro">The automatic ones add a speech bubble and shift the colors a little. You can upload your own for each one.</p>
               <div class="face-grid" id="guide-faces"></div>
             </div>
             <div class="guide-actions">
-              <button type="button" class="pix-btn ghost" id="guide-cancel">Annulla</button>
-              <button type="button" class="pix-btn" id="guide-save">Usa questa guida</button>
+              <button type="button" class="pix-btn ghost" id="guide-cancel" data-i18n="menu.cancel">Cancel</button>
+              <button type="button" class="pix-btn" id="guide-save" data-i18n="menu.useGuide">Use this guide</button>
             </div>
           </section>
         </fieldset>
 
         <fieldset class="menu-group">
-          <legend>Musica e suoni</legend>
+          <legend data-i18n="menu.sound">Music and sounds</legend>
           <div class="option-grid track-grid" id="track-options"></div>
           <div class="sound-bar">
-            <label class="sound-slider" for="music-volume">Musica
+            <label class="sound-slider" for="music-volume"><span data-i18n="menu.music">Music</span>
               <input type="range" id="music-volume" min="0" max="100" step="5" />
             </label>
-            <label class="sound-slider" for="sfx-volume">Effetti
+            <label class="sound-slider" for="sfx-volume"><span data-i18n="menu.effects">Effects</span>
               <input type="range" id="sfx-volume" min="0" max="100" step="5" />
             </label>
             <label class="sound-check" for="voice-on">
               <input type="checkbox" id="voice-on" />
-              Voce della guida mentre parla
+              <span data-i18n="menu.voice">Guide's voice while talking</span>
             </label>
           </div>
-          <p class="small muted sound-note">Musiche e suoni sono creati dal gioco, senza file audio. Il tasto M toglie e rimette l'audio.</p>
+          <p class="small muted sound-note" data-i18n="menu.soundNote">Music and sounds are made by the game, with no audio files. The M key mutes and unmutes.</p>
         </fieldset>
 
         <fieldset class="menu-group" aria-describedby="reader-privacy">
-          <legend>Cosa ti aiuta a capire</legend>
-          <p class="reader-intro">Facoltativo. Scegli quello che ti serve: il gioco cambia subito, l'agente adatta le spiegazioni.</p>
+          <legend data-i18n="menu.reader">What helps you understand</legend>
+          <p class="reader-intro" data-i18n="menu.readerIntro">Optional. Pick what you need: the game changes right away, the agent adapts its explanations.</p>
           <div class="option-grid reader-grid" id="reader-options"></div>
-          <label class="reader-note" for="reader-note">Altro da sapere su come leggi (facoltativo)
-            <textarea id="reader-note" rows="2" maxlength="300" placeholder="Es. «leggo meglio con elenchi puntati»"></textarea>
+          <label class="reader-note" for="reader-note"><span data-i18n="menu.readerNote">Anything else about how you read (optional)</span>
+            <textarea id="reader-note" rows="2" maxlength="300" placeholder="E.g. “I read better with bullet lists”" data-i18n-placeholder="menu.readerNotePlaceholder"></textarea>
           </label>
           <div class="reader-bar">
-            <p class="small muted" id="reader-privacy">Le risposte restano su questo computer. L'agente le riceve solo per adattare le spiegazioni. Non servono certificati né diagnosi.</p>
-            <button type="button" class="chip-btn" id="reader-clear">Cancella le risposte</button>
+            <p class="small muted" id="reader-privacy" data-i18n="menu.readerPrivacy">Your answers stay on this computer. The agent gets them only to adapt its explanations. No certificates or diagnoses needed.</p>
+            <button type="button" class="chip-btn" id="reader-clear" data-i18n="menu.readerClear">Clear answers</button>
           </div>
         </fieldset>
 
         <div class="title-actions">
           <p class="title-source" id="title-source"></p>
-          <button type="button" class="pix-btn big" id="start-btn">Entra nel dungeon ▶</button>
+          <button type="button" class="pix-btn big" id="start-btn">Enter the dungeon ▶</button>
         </div>
-        <p class="title-keys">Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu · M audio</p>
+        <p class="title-keys" data-i18n="menu.keys">Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · M audio</p>
       </div>
     </div>
 

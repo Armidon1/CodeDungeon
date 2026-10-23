@@ -484,7 +484,7 @@ button.board-node:hover { color: var(--lantern); }
 }
 .option-grid { display: grid; gap: 10px; }
 .level-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.gen-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gen-grid, .lang-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .option {
   position: relative;
   display: grid;

@@ -3,6 +3,7 @@
 // Il disegno è progressivo: i pezzi nuovi compaiono uno alla volta e la mini guida percorre le frecce.
 
 import { diagramPieces, type Diagram, type DiagramEdge, type DiagramNode } from "../shared/types";
+import { t } from "./i18n";
 import { drawMiniGuide } from "./portrait";
 import { reducedMotion } from "./reader";
 
@@ -527,8 +528,8 @@ export class Board {
       el.textContent = b.lines.join("\n");
       if (code) {
         (el as HTMLButtonElement).type = "button";
-        el.title = `Apri ${code.file}, righe ${code.lines[0]}-${code.lines[1]}`;
-        el.setAttribute("aria-label", `${b.node.label}: apri ${code.file}, righe ${code.lines[0]}-${code.lines[1]}`);
+        el.title = t().msg.openCode(code.file, code.lines[0], code.lines[1]);
+        el.setAttribute("aria-label", t().msg.openCodeAria(b.node.label, code.file, code.lines[0], code.lines[1]));
         el.addEventListener("click", () => this.opts.onOpenCode(code.file, code.lines));
       } else {
         el.setAttribute("aria-hidden", "true");
@@ -677,7 +678,7 @@ export class Board {
     const edges = d.kind === "sequenza" ? d.edges.slice(0, n) : d.edges.filter((e) => ids.has(e.from) && ids.has(e.to));
     this.summary.replaceChildren(
       ...[
-        `Schema «${d.title}» (${d.kind}): ${nodes.map((x) => x.label).join(", ")}.`,
+        t().msg.boardSummary(d.title, t().kinds[d.kind].toLowerCase(), nodes.map((x) => x.label).join(", ")),
         ...edges.map((e) => `${label.get(e.from)} → ${label.get(e.to)}${e.label ? ` (${e.label})` : ""}`),
       ].map((t) => {
         const li = document.createElement("li");

@@ -1,6 +1,8 @@
 // Evidenziazione della sintassi minimale, riga per riga, per Python e JavaScript/TypeScript.
 // Restituisce HTML già escapato.
 
+import { t } from "./i18n";
+
 const PY_KEYWORDS = new Set(
   "and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield match case".split(" "),
 );
@@ -23,7 +25,7 @@ export function langOf(path: string): Lang {
 }
 
 export function langLabel(lang: Lang): string {
-  return { python: "Python", js: "JavaScript", json: "JSON", text: "Testo" }[lang];
+  return { python: "Python", js: "JavaScript", json: "JSON", text: t().msg.plainText }[lang];
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

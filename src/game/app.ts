@@ -2,7 +2,6 @@
 
 import {
   AIDS,
-  AID_INFO,
   LEVELS,
   READER_NOTE_MAX,
   type Diagram,
@@ -15,13 +14,14 @@ import {
   type TourStep,
 } from "../shared/types";
 import * as sound from "./audio";
-import { TRACK_IDS, TRACK_INFO, type SoundSettings } from "./audio";
+import { TRACK_IDS, type SoundSettings } from "./audio";
 import { Board } from "./diagram";
 import { highlightLines, langLabel, langOf } from "./highlight";
 import { GuidePicker } from "./guide";
+import { DEFAULT_GUIDE_NAMES, LANGS, LANG_INFO, setLang, t, type Lang } from "./i18n";
 import { Portrait, drawMiniGuide, setGuideLook } from "./portrait";
 import { applyReader, pages, reducedMotion } from "./reader";
-import { GENERATION_INFO, LEVEL_INFO, fromStored, isEmpty, loadSettings, saveSettings, toStored, type Settings } from "./settings";
+import { fromStored, isEmpty, loadSettings, saveSettings, toStored, type Settings } from "./settings";
 import type { AgentCommand, ConnectionState, GameSource } from "./source";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -105,6 +105,7 @@ export class App {
     this.buildReaderOptions();
     this.buildLevelSwitch();
     this.bindControls();
+    this.applyLang();
     // il browser lascia suonare solo dopo un gesto dell'utente
     const unlock = () => {
       sound.unlock();
@@ -173,12 +174,12 @@ export class App {
       await this.playTour(tours[0].id);
     } else if (this.source.agent) {
       this.say({
-        text: `Ciao, sono ${this.settings.guide.name}! Questo progetto non ha ancora un tour. Chiedi al tuo agente di crearne uno con gli strumenti di Code Dungeon, oppure scrivimi qui sotto una domanda.`,
+        text: t().msg.helloAgent(this.settings.guide.name),
         expression: "felice",
       });
     } else {
       this.say({
-        text: `Ciao, sono ${this.settings.guide.name}! Non trovo tour salvati in questo progetto. Avvia Code Dungeon dal tuo agente (vedi il README) per crearne uno.`,
+        text: t().msg.helloNoAgent(this.settings.guide.name),
         expression: "pensieroso",
       });
     }
@@ -197,6 +198,7 @@ export class App {
     const before = this.settings;
     this.settings = fromStored(p);
     saveSettings(this.settings);
+    if (before.lang !== this.settings.lang) this.applyLang();
     applyReader(this.settings.reader);
     sound.configure(this.settings.sound);
     this.syncSoundOptions();
@@ -211,19 +213,49 @@ export class App {
     if (changed && this.tour && this.stepIndex >= 0 && $("title-screen").hidden && !this.liveAnswer) this.showStep(this.stepIndex, false);
   }
 
+  // ---------- Lingua ----------
+
+  private setLanguage(lang: Lang): void {
+    if (lang === this.settings.lang) return;
+    this.settings.lang = lang;
+    this.applyLang();
+    this.persist();
+    this.reportState();
+  }
+
+  /** Riscrive l'interfaccia nella lingua scelta. Fumetti già mostrati e testi dei tour restano come sono. */
+  private applyLang(): void {
+    setLang(this.settings.lang);
+    // il nome predefinito di un'immagine propria segue la lingua; uno scelto dall'utente resta
+    const guide = this.settings.guide;
+    if (guide.id === "custom" && DEFAULT_GUIDE_NAMES.includes(guide.name)) guide.name = t().msg.defaultGuide;
+    const radio = document.getElementById(`opt-lang-${this.settings.lang}`) as HTMLInputElement | null;
+    if (radio) radio.checked = true;
+    this.guidePicker.relabel();
+    this.renderGuide();
+    this.renderStatus();
+    this.renderTitleSource();
+    this.syncTitleOptions();
+    this.syncSoundOptions();
+    this.foldPop($("board-pop").classList.contains("is-folded"));
+    this.renderTabs();
+    this.updateNav();
+    if (this.loaded) void Promise.all([this.renderTourList(), this.renderDiagramList()]);
+    if (this.currentFile) $("status-lang").textContent = langLabel(langOf(this.currentFile));
+  }
+
   // ---------- Suoni ----------
 
   private buildSoundOptions(): void {
     const box = $("track-options");
-    const tracks = [...TRACK_IDS.map((id) => ({ id, ...TRACK_INFO[id] })), { id: "off", label: "Nessuna", hint: "Silenzio: restano gli effetti." }];
-    for (const t of tracks) {
-      const id = `opt-music-${t.id}`;
+    for (const track of [...TRACK_IDS, "off"]) {
+      const id = `opt-music-${track}`;
       box.insertAdjacentHTML(
         "beforeend",
         `<label class="option" for="${id}">
-          <input type="radio" name="music" id="${id}" value="${t.id}">
-          <span class="option-name">${t.label}</span>
-          <span class="option-hint">${t.hint}</span>
+          <input type="radio" name="music" id="${id}" value="${track}">
+          <span class="option-name" data-i18n="tracks.${track}.label"></span>
+          <span class="option-hint" data-i18n="tracks.${track}.hint"></span>
         </label>`,
       );
     }
@@ -257,7 +289,7 @@ export class App {
     $<HTMLInputElement>("voice-on").checked = s.voice;
     const btn = $("sound-btn");
     btn.setAttribute("aria-pressed", String(s.muted));
-    btn.setAttribute("aria-label", s.muted ? "Audio spento: riattiva" : "Audio attivo: spegni");
+    btn.setAttribute("aria-label", s.muted ? t().msg.muted : t().msg.unmuted);
   }
 
   private setSound(patch: Partial<SoundSettings>, save = true): void {
@@ -282,8 +314,8 @@ export class App {
         "beforeend",
         `<label class="option check" for="${id}">
           <input type="checkbox" name="aid" id="${id}" value="${aid}">
-          <span class="option-name">${AID_INFO[aid].label}</span>
-          <span class="option-hint">${AID_INFO[aid].hint}</span>
+          <span class="option-name" data-i18n="aids.${aid}.label"></span>
+          <span class="option-hint" data-i18n="aids.${aid}.hint"></span>
         </label>`,
       );
     }
@@ -319,6 +351,18 @@ export class App {
   // ---------- Schermata iniziale ----------
 
   private buildTitleScreen(): void {
+    const langs = $("lang-options");
+    for (const l of LANGS) {
+      const id = `opt-lang-${l}`;
+      langs.insertAdjacentHTML(
+        "beforeend",
+        `<label class="option" for="${id}" lang="${l}">
+          <input type="radio" name="lang" id="${id}" value="${l}">
+          <span class="option-name">${LANG_INFO[l].label}</span>
+          <span class="option-hint">${LANG_INFO[l].hint}</span>
+        </label>`,
+      );
+    }
     const levels = $("level-options");
     for (const lv of LEVELS) {
       const id = `opt-level-${lv}`;
@@ -326,8 +370,8 @@ export class App {
         "beforeend",
         `<label class="option" for="${id}">
           <input type="radio" name="level" id="${id}" value="${lv}">
-          <span class="option-name">${LEVEL_INFO[lv].label}</span>
-          <span class="option-hint">${LEVEL_INFO[lv].hint}</span>
+          <span class="option-name" data-i18n="levels.${lv}.label"></span>
+          <span class="option-hint" data-i18n="levels.${lv}.hint"></span>
         </label>`,
       );
     }
@@ -338,14 +382,15 @@ export class App {
         "beforeend",
         `<label class="option" for="${id}">
           <input type="radio" name="generation" id="${id}" value="${g}">
-          <span class="option-name">${GENERATION_INFO[g].label}</span>
-          <span class="option-hint">${GENERATION_INFO[g].hint}</span>
+          <span class="option-name" data-i18n="generation.${g}.label"></span>
+          <span class="option-hint" data-i18n="generation.${g}.hint"></span>
         </label>`,
       );
     }
     $("title-screen").addEventListener("change", (e) => {
       const input = e.target as HTMLInputElement;
       if (input.type === "radio" || input.type === "checkbox") sound.play("select");
+      if (input.name === "lang") this.setLanguage(input.value as Lang);
       if (input.name === "level") this.setLevel(input.value as Level);
       if (input.name === "generation") {
         this.settings.generation = input.value as Settings["generation"];
@@ -360,27 +405,29 @@ export class App {
   private syncTitleOptions(): void {
     const lv = document.getElementById(`opt-level-${this.settings.level}`) as HTMLInputElement | null;
     const gen = document.getElementById(`opt-gen-${this.settings.generation}`) as HTMLInputElement | null;
+    const lang = document.getElementById(`opt-lang-${this.settings.lang}`) as HTMLInputElement | null;
     if (lv) lv.checked = true;
     if (gen) gen.checked = true;
-    $("start-btn").textContent = this.tour ? "Riprendi l'esplorazione ▶" : "Entra nel dungeon ▶";
+    if (lang) lang.checked = true;
+    $("start-btn").textContent = this.tour ? t().menu.resume : t().menu.enter;
   }
 
   private renderTitleSource(): void {
     const el = $("title-source");
     if (this.source.kind === "demo") {
-      el.textContent = `Demo · progetto d'esempio «${this.source.projectName}», un server TCP in Python`;
+      el.textContent = t().msg.sourceDemo(this.source.projectName);
     } else if (this.connection === "connected") {
-      el.textContent = `Progetto «${this.source.projectName}»${this.source.agent ? " · agente collegato" : " · senza agente"}`;
+      el.textContent = t().msg.sourceProject(this.source.projectName, this.source.agent);
     } else {
-      el.textContent = "In attesa del ponte su 127.0.0.1:7337… avvia `npm run play` o il server MCP.";
+      el.textContent = t().msg.sourceWaiting;
     }
   }
 
   /** Nome e mini-guida ovunque compaiano. */
   private renderGuide(): void {
     const name = this.settings.guide.name;
-    $("tagline").textContent = `${name} ti accompagna dentro il codice, un passo del programma alla volta.`;
-    $<HTMLInputElement>("ask-input").placeholder = `Chiedi a ${name} qualcosa su questo codice…`;
+    $("tagline").textContent = t().msg.tagline(name);
+    $<HTMLInputElement>("ask-input").placeholder = t().msg.askPlaceholder(name);
     if (this.speakerIsGuide) $("speaker").textContent = name;
     drawMiniGuide($<HTMLCanvasElement>("walker"), 0);
   }
@@ -422,18 +469,18 @@ export class App {
     list.innerHTML = "";
     const tours = await this.source.listTours().catch(() => []);
     if (tours.length === 0) {
-      list.innerHTML = `<li class="muted small">Nessun tour salvato in .tour/</li>`;
+      list.innerHTML = `<li class="muted small">${t().msg.noTours}</li>`;
       return;
     }
-    for (const t of tours) {
+    for (const tour of tours) {
       const li = document.createElement("li");
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "tour-item";
       btn.innerHTML = `<span class="tour-title"></span><span class="tour-meta"></span>`;
-      btn.querySelector(".tour-title")!.textContent = t.title;
-      btn.querySelector(".tour-meta")!.textContent = t.steps === 1 ? "1 passo" : `${t.steps} passi`;
-      btn.addEventListener("click", () => void this.playTour(t.id));
+      btn.querySelector(".tour-title")!.textContent = tour.title;
+      btn.querySelector(".tour-meta")!.textContent = t().msg.steps(tour.steps);
+      btn.addEventListener("click", () => void this.playTour(tour.id));
       li.append(btn);
       list.append(li);
     }
@@ -444,7 +491,7 @@ export class App {
     list.innerHTML = "";
     const diagrams = await this.source.listDiagrams().catch(() => []);
     if (diagrams.length === 0) {
-      list.innerHTML = `<li class="muted small">Nessuno schema in .tour/schemi/</li>`;
+      list.innerHTML = `<li class="muted small">${t().msg.noDiagrams}</li>`;
       return;
     }
     for (const d of diagrams) {
@@ -454,7 +501,7 @@ export class App {
       btn.className = "tour-item";
       btn.innerHTML = `<span class="tour-title"></span><span class="tour-meta"></span>`;
       btn.querySelector(".tour-title")!.textContent = d.title;
-      btn.querySelector(".tour-meta")!.textContent = d.kind === "sequenza" ? "Sequenza" : "Flusso";
+      btn.querySelector(".tour-meta")!.textContent = t().kinds[d.kind];
       btn.addEventListener("click", () => void this.openDiagramTab(d.id));
       li.append(btn);
       list.append(li);
@@ -508,7 +555,7 @@ export class App {
   /** Apre un file (con camminata e dissolvenza a pixel) ed evidenzia le righe. Le chiamate si mettono in coda. */
   goToFile(path: string, lines?: [number, number], content?: string): Promise<void> {
     this.navigating = this.navigating.then(() => this.doGoToFile(path, lines, content)).catch((e) => {
-      this.say({ text: `Non riesco ad aprire ${path}: ${e instanceof Error ? e.message : String(e)}`, expression: "preoccupato" });
+      this.say({ text: t().msg.cantOpenFile(path, e instanceof Error ? e.message : String(e)), expression: "preoccupato" });
     });
     return this.navigating;
   }
@@ -635,11 +682,11 @@ export class App {
     }
     for (const d of this.boardTabs) {
       const btn = tab(d.title, "tab-board-icon", this.view === d.id, () => this.setView(d.id));
-      btn.title = `Schema: ${d.title}`;
+      btn.title = t().msg.tabDiagram(d.title);
       const close = document.createElement("span");
       close.className = "tab-close";
       close.textContent = "×";
-      close.title = "Chiudi la scheda";
+      close.title = t().ui.closeTab;
       close.setAttribute("aria-hidden", "true");
       close.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -693,7 +740,7 @@ export class App {
       this.addBoardTab(await this.loadDiagram(id));
       this.setView(id);
     } catch (e) {
-      this.say({ text: `Non riesco ad aprire lo schema: ${e instanceof Error ? e.message : String(e)}`, expression: "preoccupato" });
+      this.say({ text: t().msg.cantOpenDiagram(e instanceof Error ? e.message : String(e)), expression: "preoccupato" });
     }
   }
 
@@ -721,7 +768,7 @@ export class App {
   private foldPop(folded: boolean): void {
     $("board-pop").classList.toggle("is-folded", folded);
     const btn = $("board-pop-fold");
-    btn.textContent = folded ? "Apri" : "Riduci";
+    btn.textContent = folded ? t().ui.unfold : t().ui.fold;
     btn.setAttribute("aria-expanded", String(!folded));
   }
 
@@ -743,7 +790,7 @@ export class App {
       if (this.tour?.steps[this.stepIndex] !== step) return;
       await this.openPop(d, step.diagram.upto, true);
     } catch (e) {
-      this.say({ text: `Non riesco a caricare lo schema «${step.diagram.id}»: ${e instanceof Error ? e.message : String(e)}`, expression: "preoccupato" });
+      this.say({ text: t().msg.cantLoadDiagram(step.diagram.id, e instanceof Error ? e.message : String(e)), expression: "preoccupato" });
     }
   }
 
@@ -777,7 +824,7 @@ export class App {
     textEl.scrollTop = 0;
     this.portrait.set({ expression: line.expression, talking: true });
     const note = $("dialog-note");
-    const pageNote = this.pageList.length > 1 ? `Pagina ${index + 1} di ${this.pageList.length}.` : "";
+    const pageNote = this.pageList.length > 1 ? t().msg.page(index + 1, this.pageList.length) : "";
     const noteText = [last ? line.note : undefined, pageNote].filter(Boolean).join(" ");
     note.hidden = !noteText;
     note.textContent = noteText;
@@ -866,7 +913,7 @@ export class App {
     try {
       this.tour = tourData ?? (await this.source.loadTour(id));
     } catch (e) {
-      this.say({ text: `Non riesco a caricare il tour: ${e instanceof Error ? e.message : String(e)}`, expression: "preoccupato" });
+      this.say({ text: t().msg.cantLoadTour(e instanceof Error ? e.message : String(e)), expression: "preoccupato" });
       return;
     }
     this.history = [];
@@ -884,8 +931,8 @@ export class App {
     const order = [...LEVELS].sort((a, b) => Math.abs(LEVELS.indexOf(a) - idx) - Math.abs(LEVELS.indexOf(b) - idx));
     const fallback = order.find((l) => step.text[l]);
     return {
-      text: fallback ? step.text[fallback]! : "(Questo passo non ha ancora testo.)",
-      note: `Questo passo non ha ancora la versione «${LEVEL_INFO[want].label}»: ti mostro «${fallback ? LEVEL_INFO[fallback].label : "?"}».`,
+      text: fallback ? step.text[fallback]! : t().msg.noText,
+      note: t().msg.missingLevel(t().levels[want].label, fallback ? t().levels[fallback].label : "?"),
       missing: true,
     };
   }
@@ -903,7 +950,7 @@ export class App {
         `[richiesta automatica] Scrivi il testo di livello «${this.settings.level}» per il passo «${step.id}» del tour «${this.tour.id}» con set_step_text, poi riavvialo da quel passo con play_tour.`,
         this.context(),
       );
-      if (sent) fullNote = `${note} Ho chiesto all'agente di scriverla: fammi pensare...`;
+      if (sent) fullNote = `${note} ${t().msg.askedAgent}`;
     }
     $("step-title").textContent = step.title ?? "";
     void this.goToFile(step.file, step.lines);
@@ -917,7 +964,7 @@ export class App {
     if (!this.tour) return;
     const idx = this.tour.steps.findIndex((s) => s.id === link.goto);
     if (idx === -1) {
-      this.say({ text: `Il passo «${link.goto}» non esiste in questo tour.`, expression: "preoccupato" });
+      this.say({ text: t().msg.missingStep(link.goto), expression: "preoccupato" });
       return;
     }
     this.awaitingChoice = false;
@@ -968,20 +1015,20 @@ export class App {
   }
 
   private endTour(): void {
-    const title = this.tour?.title ?? "il tour";
+    const title = this.tour?.title ?? t().msg.theTour;
     this.stepIndex = -1;
-    const t = this.tour;
+    const tour = this.tour;
     this.tour = undefined;
     this.history = [];
-    $("step-title").textContent = "Fine";
+    $("step-title").textContent = t().msg.end;
     sound.play("end");
     this.say({
-      text: `Abbiamo finito «${title}»! Puoi rigiocarlo, cambiare livello per rileggerlo con occhi diversi, o farmi una domanda.`,
+      text: t().msg.tourEnd(title),
       expression: "felice",
-      actions: t
+      actions: tour
         ? [
-            { label: "Ricomincia il tour", run: () => void this.playTour(t.id, undefined, t) },
-            { label: "Resto qui", run: () => {} },
+            { label: t().msg.restart, run: () => void this.playTour(tour.id, undefined, tour) },
+            { label: t().msg.stay, run: () => {} },
           ]
         : undefined,
     });
@@ -999,8 +1046,8 @@ export class App {
       btn.className = "lv";
       btn.dataset.level = lv;
       btn.setAttribute("role", "radio");
-      btn.title = `${LEVEL_INFO[lv].label}: ${LEVEL_INFO[lv].hint}`;
-      btn.textContent = LEVEL_INFO[lv].label;
+      btn.dataset.i18n = `levels.${lv}.label`;
+      btn.dataset.i18nTitle = `levels.${lv}.hint`;
       btn.addEventListener("click", () => this.setLevel(lv));
       box.append(btn);
     }
@@ -1035,25 +1082,25 @@ export class App {
     const sent = this.source.ask(q, this.context());
     sound.play(sent ? "ask" : "error");
     if (sent) {
-      this.say({ text: "Ho passato la tua domanda all'agente. Fammi pensare...", expression: "pensieroso" });
+      this.say({ text: t().msg.asked, expression: "pensieroso" });
       this.portrait.set({ talking: false });
       this.waitHint = window.setTimeout(() => {
         const note = $("dialog-note");
         note.hidden = false;
-        note.textContent = "Ancora nessuna risposta. Se l'agente non è in ascolto, scrivigli nel terminale: «rispondi alle domande nel gioco».";
+        note.textContent = t().msg.waitHint;
       }, 30_000);
     } else if (this.source.kind === "demo") {
       this.say({
-        text: "In questa demo non c'è un agente collegato, quindi non posso rispondere a domande libere. Avvia Code Dungeon con Claude Code, Codex o Gemini CLI (istruzioni nel README) e risponderò dal vivo.",
+        text: t().msg.demoNoAgent,
         expression: "pensieroso",
       });
     } else if (this.connection === "connected") {
       this.say({
-        text: "Sei in modalità riproduzione (npm run play), senza un agente che possa rispondere. Avvia Code Dungeon come server MCP dal tuo agente e la tua domanda arriverà a lui.",
+        text: t().msg.playNoAgent,
         expression: "pensieroso",
       });
     } else {
-      this.say({ text: "Il ponte non è collegato: non riesco a far arrivare la domanda all'agente.", expression: "preoccupato" });
+      this.say({ text: t().msg.bridgeDown, expression: "preoccupato" });
     }
   }
 
@@ -1100,7 +1147,7 @@ export class App {
     this.say(line);
     this.liveQueue = queue;
     this.liveAnswer = true;
-    $("step-title").textContent = "Risposta";
+    $("step-title").textContent = t().msg.answer;
     if (queue.length || this.resumeStep !== undefined) this.afterLine = () => this.nextLive();
     this.renderLiveNote();
     this.updateNav();
@@ -1121,7 +1168,7 @@ export class App {
     const n = this.liveQueue.length;
     const note = $("dialog-note");
     note.hidden = false;
-    note.textContent = n === 1 ? "C'è un altro messaggio: premi Avanti." : `Ci sono altri ${n} messaggi: premi Avanti.`;
+    note.textContent = t().msg.moreMessages(n);
   }
 
   private context(): GameContext {
@@ -1134,6 +1181,7 @@ export class App {
       stepId: step?.id,
       live: this.liveAnswer,
       guide: this.settings.guide.name,
+      lang: this.settings.lang,
     };
   }
 
@@ -1146,17 +1194,17 @@ export class App {
   private renderStatus(): void {
     const conn = $("status-conn");
     const labels: Record<ConnectionState, string> = {
-      demo: "● Demo",
-      connecting: "○ Collegamento…",
-      connected: this.source.agent ? "● Agente collegato" : "● Ponte collegato",
-      offline: "○ Ponte non raggiungibile",
+      demo: t().msg.statusDemo,
+      connecting: t().msg.statusConnecting,
+      connected: this.source.agent ? t().msg.statusAgent : t().msg.statusBridge,
+      offline: t().msg.statusOffline,
     };
     conn.textContent = labels[this.connection];
     conn.dataset.state = this.connection;
     const step = this.tour && this.stepIndex >= 0 ? this.tour.steps[this.stepIndex] : undefined;
     $("status-step").textContent = step ? this.stepCounter() : "";
-    $("status-level").textContent = `Livello: ${LEVEL_INFO[this.settings.level].label}`;
-    $("status-gen").textContent = GENERATION_INFO[this.settings.generation].label;
+    $("status-level").textContent = t().msg.statusLevel(t().levels[this.settings.level].label);
+    $("status-gen").textContent = t().generation[this.settings.generation].label;
   }
 
   /** Indici dei passi che possono seguire il passo i. */
@@ -1184,7 +1232,7 @@ export class App {
       return r;
     };
     const done = this.history.length || this.distanceFromStart(this.stepIndex);
-    return `Passo ${done + 1}/${done + remaining(this.stepIndex, new Set())}`;
+    return t().msg.stepCounter(done + 1, done + remaining(this.stepIndex, new Set()));
   }
 
   /** Passi dall'inizio del tour fino a i (per un tour ripreso a metà, senza cronologia). */
@@ -1208,7 +1256,7 @@ export class App {
     ($("prev-btn") as HTMLButtonElement).disabled = this.history.length === 0 && this.page === 0;
     const canNext = !!this.typing || this.morePages || !!this.afterLine || (!this.awaitingChoice && !!this.tour && this.stepIndex >= 0);
     ($("next-btn") as HTMLButtonElement).disabled = !canNext;
-    $("next-btn").textContent = this.typing ? "Salta ▶▶" : "Avanti ▶";
+    $("next-btn").textContent = this.typing ? t().ui.skip : t().ui.next;
     $("advance").hidden = !canNext || !!this.typing;
   }
 

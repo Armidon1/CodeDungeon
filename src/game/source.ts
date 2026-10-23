@@ -2,6 +2,7 @@
 // - BridgeSource: il ponte locale (server MCP o `npm run play`) via WebSocket.
 // - DemoSource (demo-source.ts): il progetto d'esempio incorporato, senza agente.
 
+import { t } from "./i18n";
 import type { Diagram, DiagramSummary, GameContext, ServerMessage, StoredPrefs, Tour, TourSummary } from "../shared/types";
 
 export type AgentCommand = Extract<ServerMessage, { type: "open_file" | "highlight" | "dialog" | "play_tour" | "diagram" }>;
@@ -94,7 +95,7 @@ export class BridgeSource implements GameSource {
     };
     ws.onclose = () => {
       this.setStatus("offline");
-      for (const p of this.pending.values()) p.reject(new Error("Connessione al ponte chiusa."));
+      for (const p of this.pending.values()) p.reject(new Error(t().msg.bridgeClosed));
       this.pending.clear();
       const delay = Math.min(10_000, 500 * 2 ** this.retry++);
       setTimeout(() => this.connect(), delay);
@@ -104,7 +105,7 @@ export class BridgeSource implements GameSource {
   private request<T>(body: Record<string, unknown>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        reject(new Error("Il ponte non è collegato."));
+        reject(new Error(t().msg.bridgeNotConnected));
         return;
       }
       const reqId = `r${++this.seq}`;

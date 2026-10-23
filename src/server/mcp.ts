@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
-  AID_INFO,
+  AID_AGENT,
   DIAGRAM_KINDS,
   DIAGRAM_SHAPES,
   EXPRESSIONS,
@@ -75,12 +75,15 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
   /** Le richieste di chi legge (questionario nel gioco), da rispettare in ogni testo. Vuoto se non ce ne sono. */
   const readerAsks = (): string[] => {
     const r = bridge.reader;
-    return [...r.aids.flatMap((a) => AID_INFO[a].agent ?? []), ...(r.note ? [`nelle sue parole: «${r.note}»`] : [])];
+    return [...r.aids.flatMap((a) => AID_AGENT[a] ?? []), ...(r.note ? [`nelle sue parole: «${r.note}»`] : [])];
   };
   const readerNote = (): string => {
     const asks = readerAsks();
     return asks.length ? ` Chi legge ha chiesto: ${asks.join("; ")}. Adatta così ogni testo (tour, risposte, schemi).` : "";
   };
+
+  /** Lingua dei testi: quella scelta nel menu del gioco. */
+  const langNote = (): string => ` Lingua scelta nel gioco: ${bridge.lang === "it" ? "italiano (it)" : "inglese (en)"}. Scrivi i testi in questa lingua.`;
 
   bridge.onQuestion = (q) => {
     const meta: Record<string, string> = { question_id: q.id, level: q.context.level };
@@ -88,6 +91,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     if (q.context.lines) meta.lines = `${q.context.lines[0]}-${q.context.lines[1]}`;
     if (q.context.tourId) meta.tour = q.context.tourId;
     if (q.context.stepId) meta.step = q.context.stepId;
+    if (q.context.lang) meta.lang = q.context.lang;
     const asks = readerAsks();
     if (asks.length) meta.aiuti = asks.join("; ");
     // se il client non ha attivato il canale la notifica viene ignorata e la domanda resta per get_user_questions
@@ -208,7 +212,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       title: "Fai parlare la guida",
       description:
         "Mostra un fumetto della guida. Usalo per rispondere alle domande dell'utente o commentare ciò che è evidenziato. " +
-        "Scrivi al livello attuale dell'utente (vedi get_game_state) e nella sua lingua.",
+        "Scrivi al livello attuale dell'utente (vedi get_game_state) e nella sua lingua (campo lang: en inglese, it italiano).",
       inputSchema: {
         text: z.string().min(1).max(4000),
         expression: expression.optional(),
@@ -227,7 +231,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     {
       title: "Stato del gioco",
       description:
-        "Restituisce livello di difficoltà scelto, file e righe visibili, tour e passo correnti, " +
+        "Restituisce livello di difficoltà e lingua scelti, file e righe visibili, tour e passo correnti, " +
         "e le preferenze di chi legge (reader: aiuti scelti nel questionario e una nota).",
       inputSchema: {},
     },
@@ -235,8 +239,9 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       ok(
         (bridge.listening ? `Gioco su ${bridge.url}. ` : "Ponte verso il gioco non attivo. ") +
           (bridge.connected ? "Stato attuale del gioco:" : "Nessuna finestra del gioco collegata. Ultimo stato noto:") +
+          langNote() +
           readerNote(),
-        { ...bridge.context, reader: bridge.reader },
+        { ...bridge.context, lang: bridge.context?.lang ?? bridge.lang, reader: bridge.reader },
       ),
   );
 
@@ -319,7 +324,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
           throw new Error(`Esiste già un tour "${tour_id}". Usa overwrite: true oppure un altro id.`);
         }
         await project.saveTour({ version: 1, id: tour_id, title, description, generation, steps: [] });
-        return ok(`Tour "${tour_id}" creato. Aggiungi i passi con add_step.${readerNote()}`);
+        return ok(`Tour "${tour_id}" creato. Aggiungi i passi con add_step.${langNote()}${readerNote()}`);
       } catch (e) {
         return fail(e);
       }
@@ -549,7 +554,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         flusso ? `Crea un tour di Code Dungeon su questo flusso: ${flusso}.` : "Crea un tour di Code Dungeon sul flusso principale di questo progetto.",
         livelli && livelli !== "istantanea" ? `Scrivi solo il livello «${livelli}».` : "Scrivi il testo per tutti e quattro i livelli.",
         "Alla fine avvialo con play_tour.",
-      ].join(" ") + readerNote();
+      ].join(" ") + langNote() + readerNote();
       return { messages: [{ role: "user" as const, content: { type: "text" as const, text: `${ask}\n\n${guide}` } }] };
     },
   );

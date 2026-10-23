@@ -8,11 +8,12 @@ import { reducedMotion } from "./reader";
 export const BUILTIN_GUIDES = ["lumen", "aria", "patrizio", "nilo"] as const;
 export type BuiltinGuide = (typeof BUILTIN_GUIDES)[number];
 
-export const GUIDE_INFO: Record<BuiltinGuide, { name: string; hint: string }> = {
-  lumen: { name: "Lumen", hint: "Lanterna, predefinita" },
-  aria: { name: "Aria", hint: "Femminile" },
-  patrizio: { name: "Patrizio", hint: "Maschile" },
-  nilo: { name: "Nilo", hint: "Neutro" },
+/** Nomi proposti per i ritratti predefiniti (le descrizioni sono in i18n.ts). */
+export const GUIDE_INFO: Record<BuiltinGuide, { name: string }> = {
+  lumen: { name: "Lumen" },
+  aria: { name: "Aria" },
+  patrizio: { name: "Patrizio" },
+  nilo: { name: "Nilo" },
 };
 
 /** Guida dell'utente: immagini già in pixel art, una per espressione; le mancanti si generano dalla base. */

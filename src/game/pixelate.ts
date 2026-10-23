@@ -1,28 +1,26 @@
 // Da foto o disegno a pixel art: ritaglio quadrato, riduzione per gradi, pochi colori (k-means)
 // e contorno scuro se lo sfondo è trasparente. Tutto avviene nel browser: l'immagine non esce dal computer.
 
+import { t } from "./i18n";
+
 /** Dettaglio regolabile con lo slider: lato del ritratto in pixel di gioco. */
 export const DETAIL = { min: 16, max: 64, step: 2 } as const;
 
 /** Colori della palette per un certo dettaglio: meno pixel, meno colori. */
 export const colorsFor = (size: number): number => Math.round(size / 2.5);
 
-/** I tre livelli di compressione mostrati affiancati. */
-export const PRESETS = [
-  { label: "Leggera", size: 48 },
-  { label: "Media", size: 32 },
-  { label: "Forte", size: 20 },
-] as const;
+/** I tre livelli di compressione mostrati affiancati (nomi in i18n.ts). */
+export const PRESETS = [{ size: 48 }, { size: 32 }, { size: 20 }] as const;
 
 const MAX_BYTES = 20 * 1024 * 1024;
 
 export async function readImage(file: File): Promise<ImageBitmap> {
-  if (!file.type.startsWith("image/")) throw new Error("Il file non è un'immagine.");
-  if (file.size > MAX_BYTES) throw new Error("L'immagine supera 20 MB.");
+  if (!file.type.startsWith("image/")) throw new Error(t().msg.notImage);
+  if (file.size > MAX_BYTES) throw new Error(t().msg.tooBig);
   try {
     return await createImageBitmap(file);
   } catch {
-    throw new Error("Non riesco a leggere questa immagine.");
+    throw new Error(t().msg.unreadable);
   }
 }
 
@@ -167,7 +165,7 @@ export function canvasFromUrl(url: string): Promise<HTMLCanvasElement> {
       c.getContext("2d")!.drawImage(img, 0, 0);
       resolve(c);
     };
-    img.onerror = () => reject(new Error("Immagine salvata non valida."));
+    img.onerror = () => reject(new Error(t().msg.badStored));
     img.src = url;
   });
 }

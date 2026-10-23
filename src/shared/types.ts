@@ -90,23 +90,17 @@ export function diagramPieces(d: Diagram): number {
 
 // ---------- Accessibilità: cosa aiuta chi legge ----------
 
-/** Aiuti scelti nel questionario. Alcuni cambiano il gioco, altri il modo in cui scrive l'agente (`agent`). */
+/** Aiuti scelti nel questionario. Alcuni cambiano il gioco (etichette in src/game/i18n.ts), altri il modo in cui scrive l'agente. */
 export const AIDS = ["frasi_brevi", "poco_testo", "piu_schemi", "esempi", "termini", "font_leggibile", "testo_grande", "meno_movimento"] as const;
 export type Aid = (typeof AIDS)[number];
 
-export const AID_INFO: Record<Aid, { label: string; hint: string; agent?: string }> = {
-  frasi_brevi: { label: "Frasi brevi", hint: "Una idea per frase.", agent: "frasi brevi, una idea per frase" },
-  poco_testo: {
-    label: "Poco testo per volta",
-    hint: "Il fumetto si divide in pagine corte.",
-    agent: "fumetti corti (2-3 frasi): meglio più passi o più show_dialog che un blocco lungo",
-  },
-  piu_schemi: { label: "Più schemi", hint: "La guida disegna più spesso sulla lavagna.", agent: "usa spesso la lavagna (draw_diagram), anche per concetti piccoli" },
-  esempi: { label: "Esempi concreti", hint: "Un esempio o una metafora per ogni concetto.", agent: "un esempio concreto o una metafora per ogni concetto" },
-  termini: { label: "Spiega i termini", hint: "Ogni parola tecnica spiegata la prima volta.", agent: "spiega ogni termine tecnico la prima volta che lo usi" },
-  font_leggibile: { label: "Font ad alta leggibilità", hint: "Atkinson Hyperlegible al posto dei caratteri pixel." },
-  testo_grande: { label: "Testo più grande", hint: "Fumetto, codice e menu più grandi." },
-  meno_movimento: { label: "Meno animazioni", hint: "Niente scrittura lettera per lettera, dissolvenze e camminate." },
+/** Cosa chiede ogni aiuto all'agente. Gli aiuti senza voce li applica solo il gioco. */
+export const AID_AGENT: Partial<Record<Aid, string>> = {
+  frasi_brevi: "frasi brevi, una idea per frase",
+  poco_testo: "fumetti corti (2-3 frasi): meglio più passi o più show_dialog che un blocco lungo",
+  piu_schemi: "usa spesso la lavagna (draw_diagram), anche per concetti piccoli",
+  esempi: "un esempio concreto o una metafora per ogni concetto",
+  termini: "spiega ogni termine tecnico la prima volta che lo usi",
 };
 
 export const READER_NOTE_MAX = 300;
@@ -159,6 +153,8 @@ export interface GameContext {
   live?: boolean;
   /** Nome della guida scelto dall'utente nel gioco. */
   guide?: string;
+  /** Lingua dell'interfaccia scelta dall'utente ("en" o "it"): scrivi tour e risposte in questa lingua. */
+  lang?: string;
 }
 
 export interface UserQuestion {

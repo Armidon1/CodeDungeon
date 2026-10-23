@@ -3,6 +3,7 @@
 // L'immagine resta nel browser (localStorage), come le altre impostazioni.
 
 import { EXPRESSIONS, type Expression } from "../shared/types";
+import { t } from "./i18n";
 import { DETAIL, PRESETS, canvasFromUrl, colorsFor, hasCutout, pixelate, readImage } from "./pixelate";
 import { BUILTIN_GUIDES, GUIDE_INFO, drawStill, type CustomImage, type GuideLook } from "./portrait";
 import { defaultGuideName, type GuideChoice } from "./settings";
@@ -15,14 +16,6 @@ interface StoredImage {
   base: string;
   faces: Partial<Record<Expression, string>>;
 }
-
-const EXPRESSION_LABEL: Record<Expression, string> = {
-  neutro: "Neutro",
-  felice: "Felice",
-  pensieroso: "Pensieroso",
-  preoccupato: "Preoccupato",
-  sorpreso: "Sorpreso",
-};
 
 async function loadCustomImage(): Promise<CustomImage | undefined> {
   try {
@@ -94,7 +87,14 @@ export class GuidePicker {
     const input = document.getElementById(`opt-guide-${choice.id}`) as HTMLInputElement | null;
     if (input) input.checked = true;
     $<HTMLInputElement>("guide-name").value = choice.name;
-    $("guide-edit").textContent = this.custom ? "Modifica la tua immagine" : "Carica la tua immagine";
+    $("guide-edit").textContent = this.custom ? t().menu.editImage : t().menu.uploadImage;
+  }
+
+  /** Ridisegna i testi che dipendono dallo stato dopo un cambio di lingua. */
+  relabel(): void {
+    this.sync();
+    for (const p of PRESETS) $(`preset-hint-${p.size}`).textContent = t().msg.presetHint(p.size, colorsFor(p.size));
+    if (!$("guide-editor").hidden) this.renderEditor();
   }
 
   /** Le impostazioni sono cambiate altrove (database, altra finestra): menu allineato e aspetto da mostrare. */
@@ -121,14 +121,14 @@ export class GuidePicker {
   private build(): void {
     const grid = $("guide-options");
     for (const id of [...BUILTIN_GUIDES, "custom"] as const) {
-      const info = id === "custom" ? { name: "La tua immagine", hint: "Foto o disegno" } : GUIDE_INFO[id];
+      const name = id === "custom" ? `<span class="option-name" data-i18n="menu.yourImage"></span>` : `<span class="option-name">${GUIDE_INFO[id].name}</span>`;
       grid.insertAdjacentHTML(
         "beforeend",
         `<label class="option guide-option" for="opt-guide-${id}">
           <input type="radio" name="guide" id="opt-guide-${id}" value="${id}">
           <canvas class="guide-thumb" id="guide-thumb-${id}" aria-hidden="true"></canvas>
-          <span class="option-name">${info.name}</span>
-          <span class="option-hint">${info.hint}</span>
+          ${name}
+          <span class="option-hint" data-i18n="guides.${id}"></span>
         </label>`,
       );
     }
@@ -172,8 +172,8 @@ export class GuidePicker {
         `<label class="option preset" for="opt-preset-${p.size}">
           <input type="radio" name="preset" id="opt-preset-${p.size}" value="${p.size}">
           <canvas class="preset-view" id="preset-view-${p.size}" aria-hidden="true"></canvas>
-          <span class="option-name">${p.label}</span>
-          <span class="option-hint">${p.size} px · ${colorsFor(p.size)} colori</span>
+          <span class="option-name" data-i18n="presets.${p.size}"></span>
+          <span class="option-hint" id="preset-hint-${p.size}"></span>
         </label>`,
       );
     }
@@ -185,10 +185,10 @@ export class GuidePicker {
         "beforeend",
         `<div class="face" data-expr="${e}">
           <canvas class="face-view" aria-hidden="true"></canvas>
-          <span class="face-name">${EXPRESSION_LABEL[e]}</span>
+          <span class="face-name" data-i18n="expressions.${e}"></span>
           <span class="face-kind small muted"></span>
-          <button type="button" class="chip-btn face-load">Carica</button>
-          <button type="button" class="chip-btn face-auto">Automatica</button>
+          <button type="button" class="chip-btn face-load" data-i18n="msg.upload"></button>
+          <button type="button" class="chip-btn face-auto" data-i18n="msg.automatic"></button>
         </div>`,
       );
     }
@@ -234,7 +234,7 @@ export class GuidePicker {
 
   private pickFile(target: Expression | undefined): void {
     if (target && !this.draft) {
-      this.message("Prima scegli l'immagine principale.");
+      this.message(t().msg.pickMainFirst);
       return;
     }
     this.faceTarget = target;
@@ -249,7 +249,7 @@ export class GuidePicker {
       const bmp = await readImage(file);
       if (this.faceTarget) {
         this.faceOriginals[this.faceTarget] = bmp;
-        this.message(`Espressione «${EXPRESSION_LABEL[this.faceTarget].toLowerCase()}» caricata.`);
+        this.message(t().msg.expressionLoaded(t().expressions[this.faceTarget]));
       } else {
         this.original = bmp;
         this.presetCache.clear();
@@ -307,7 +307,7 @@ export class GuidePicker {
     $("guide-retune").hidden = hasOriginal || !this.draft;
     $("guide-faces-group").hidden = !this.draft;
     ($("guide-save") as HTMLButtonElement).disabled = !this.draft;
-    $("guide-pick").textContent = this.draft ? "Cambia immagine" : "Scegli un'immagine";
+    $("guide-pick").textContent = this.draft ? t().menu.changeImage : t().menu.pickImage;
     if (!hasOriginal) $("guide-file-name").textContent = "";
 
     if (hasOriginal) {
@@ -316,7 +316,7 @@ export class GuidePicker {
         $<HTMLInputElement>(`opt-preset-${p.size}`).checked = p.size === this.size;
       }
       $<HTMLInputElement>("guide-detail").value = String(this.size);
-      $("guide-detail-out").textContent = `${this.size} × ${this.size} px · ${colorsFor(this.size)} colori`;
+      $("guide-detail-out").textContent = t().msg.detailOut(this.size, colorsFor(this.size));
     }
 
     if (!this.draft) return;
@@ -325,7 +325,7 @@ export class GuidePicker {
       const expr = el.dataset.expr as Expression;
       drawStill(el.querySelector("canvas")!, look, expr);
       const own = !!this.draft.faces[expr];
-      el.querySelector(".face-kind")!.textContent = expr === "neutro" ? "Immagine principale" : own ? "Caricata" : "Automatica";
+      el.querySelector(".face-kind")!.textContent = expr === "neutro" ? t().msg.mainImage : own ? t().msg.uploaded : t().msg.automatic;
       (el.querySelector(".face-load") as HTMLElement).hidden = expr === "neutro";
       (el.querySelector(".face-auto") as HTMLElement).hidden = !own || expr === "neutro";
     }
@@ -338,7 +338,7 @@ export class GuidePicker {
     this.renderThumbs();
     $("guide-editor").hidden = true;
     this.select("custom");
-    this.message(stored ? "" : "Il browser non mi lascia salvare l'immagine: vale fino alla chiusura della pagina.");
+    this.message(stored ? "" : t().msg.cantStoreImage);
     $<HTMLInputElement>("opt-guide-custom").focus();
   }
 
