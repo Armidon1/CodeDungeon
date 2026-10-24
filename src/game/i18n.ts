@@ -105,7 +105,7 @@ const en = {
     tabs: { label: "Settings", game: "Game", guide: "Guide", sound: "Sound", reading: "Reading" },
     enter: "Enter the dungeon ▶",
     resume: "Resume exploring ▶",
-    keys: "Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · M audio · F full screen · + − text size",
+    keys: "Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · C chat · M audio · F full screen · + − text size",
   },
   levels: {
     facile: { label: "Easy", hint: "For non-programmers. Metaphors, no jargon." },
@@ -340,7 +340,7 @@ const it: Dict = {
     tabs: { label: "Impostazioni", game: "Gioco", guide: "Guida", sound: "Suono", reading: "Lettura" },
     enter: "Entra nel dungeon ▶",
     resume: "Riprendi l'esplorazione ▶",
-    keys: "Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu · M audio · F schermo intero · + − dimensione del testo",
+    keys: "Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu · C chat · M audio · F schermo intero · + − dimensione del testo",
   },
   levels: {
     facile: { label: "Facile", hint: "Per chi non programma. Metafore, niente gergo." },
