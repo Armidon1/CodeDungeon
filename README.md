@@ -18,6 +18,7 @@ Already working:
 
 - interface in English (default) or Italian, chosen in the menu. The agent receives the chosen language and writes tours and answers in it;
 - pixelated VS Code editor with syntax highlighting (Python, JS/TS) and line highlighting;
+- activity bar on the left, as in VS Code: files, search, tours, diagrams and questions, one panel at a time (click the open one to close the side bar). Search looks through every project file (Ctrl+F, with the selected text already in); `:42` or Ctrl+G jumps to a line;
 - the guide with 5 animated expressions and a mini guide that walks between files, with a pixel dissolve when the file changes;
 - guide chosen in the menu: Lumen, Aria, Patrizio, Nilo, or your own photo or drawing turned into pixel art (three compression levels side by side and a slider), with automatic expressions or one uploaded per expression; you pick the name. The image stays in the browser;
 - JSON tours with branches (choices in the dialog), forward and back;

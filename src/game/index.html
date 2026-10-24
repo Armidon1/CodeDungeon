@@ -24,24 +24,42 @@
       </header>
 
       <div class="workbench">
-        <nav class="activitybar" aria-hidden="true">
-          <span class="act act-files is-on"></span>
-          <span class="act act-search"></span>
-          <span class="act act-tour"></span>
+        <nav class="activitybar" aria-label="Side panels" data-i18n-aria-label="ui.panels">
+          <button type="button" class="act-btn" data-panel="files" aria-pressed="false" data-i18n-aria-label="ui.explorer" data-i18n-title="ui.explorer"><span class="act act-files" aria-hidden="true"></span></button>
+          <button type="button" class="act-btn" data-panel="search" aria-pressed="false" data-i18n-aria-label="ui.searchTitle" data-i18n-title="ui.searchTitle"><span class="act act-search" aria-hidden="true"></span></button>
+          <button type="button" class="act-btn" data-panel="tours" aria-pressed="false" data-i18n-aria-label="ui.savedTours" data-i18n-title="ui.savedTours"><span class="act act-tour" aria-hidden="true"></span></button>
+          <button type="button" class="act-btn" data-panel="diagrams" aria-pressed="false" data-i18n-aria-label="ui.diagrams" data-i18n-title="ui.diagrams"><span class="act act-board" aria-hidden="true"></span></button>
+          <button type="button" class="act-btn" data-panel="questions" aria-pressed="false" data-i18n-aria-label="ui.questions" data-i18n-title="ui.questions"><span class="act act-chat" aria-hidden="true"></span></button>
         </nav>
 
-        <aside class="sidebar" aria-label="File explorer" data-i18n-aria-label="ui.explorerLabel">
-          <div class="sidebar-title" data-i18n="ui.explorer">Explorer</div>
-          <div class="explorer" id="explorer">
-            <canvas class="walker" id="walker" aria-hidden="true"></canvas>
-            <ul class="file-list" id="file-list"></ul>
-          </div>
-          <div class="sidebar-title sidebar-tours" data-i18n="ui.savedTours">Saved tours</div>
-          <ul class="tour-list" id="tour-list"></ul>
-          <div class="sidebar-title sidebar-tours" data-i18n="ui.diagrams">Diagrams</div>
-          <ul class="tour-list" id="diagram-list"></ul>
-          <div class="sidebar-title sidebar-tours" data-i18n="ui.questions">Questions</div>
-          <ul class="tour-list" id="conversation-list"></ul>
+        <aside class="sidebar" aria-label="Side panel" data-i18n-aria-label="ui.sideLabel">
+          <section class="side-panel" data-panel="files">
+            <div class="sidebar-title" data-i18n="ui.explorer">Explorer</div>
+            <div class="explorer" id="explorer">
+              <canvas class="walker" id="walker" aria-hidden="true"></canvas>
+              <ul class="file-list" id="file-list"></ul>
+            </div>
+          </section>
+          <section class="side-panel" data-panel="search">
+            <div class="sidebar-title" data-i18n="ui.search">Search</div>
+            <form class="search-form" id="search-form" role="search">
+              <input class="search-input" id="search-input" type="text" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="Search the code… (:42 goes to a line)" data-i18n-placeholder="ui.searchPlaceholder" aria-describedby="search-status">
+            </form>
+            <p class="search-status muted small" id="search-status" aria-live="polite"></p>
+            <ul class="search-results" id="search-results"></ul>
+          </section>
+          <section class="side-panel" data-panel="tours">
+            <div class="sidebar-title" data-i18n="ui.savedTours">Saved tours</div>
+            <ul class="tour-list" id="tour-list"></ul>
+          </section>
+          <section class="side-panel" data-panel="diagrams">
+            <div class="sidebar-title" data-i18n="ui.diagrams">Diagrams</div>
+            <ul class="tour-list" id="diagram-list"></ul>
+          </section>
+          <section class="side-panel" data-panel="questions">
+            <div class="sidebar-title" data-i18n="ui.questions">Questions</div>
+            <ul class="tour-list" id="conversation-list"></ul>
+          </section>
         </aside>
         <div class="splitter splitter-side" id="split-side" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize the explorer (arrows, Enter closes it, double click resets)" title="Drag to resize · double click resets" data-i18n-aria-label="ui.resizeSide" data-i18n-title="ui.resizeTitle"></div>
 

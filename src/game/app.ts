@@ -42,6 +42,16 @@ const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0
 /** Caratteri del testo selezionato mostrati sotto una domanda riletta. */
 const QUOTE_NOTE_MAX = 140;
 
+/** Pannelli della barra laterale, nell'ordine della barra delle attività. */
+const PANELS = ["files", "search", "tours", "diagrams", "questions"] as const;
+type Panel = (typeof PANELS)[number];
+/** La ricerca nel codice si ferma a tanti risultati e guarda al massimo tanti file. */
+const SEARCH_MAX = 200;
+const SEARCH_FILES_MAX = 400;
+/** ":42" nel campo di ricerca: vai alla riga 42 del file aperto. */
+const GO_TO_LINE = /^\s*:(\d+)\s*$/;
+const isPhone = () => matchMedia("(max-width: 760px)").matches;
+
 interface DialogLine {
   text: string;
   expression: Expression;
@@ -120,6 +130,10 @@ export class App {
   private popParked = false;
   private diagramCache = new Map<string, Diagram>();
   private layout: LayoutControls | undefined;
+  private panel: Panel = "files";
+  /** Ricerca in corso: una nuova ferma la vecchia. */
+  private searchRun = 0;
+  private searchTimer: number | undefined;
 
   constructor(private source: GameSource) {
     applyReader(this.settings.reader);
@@ -271,6 +285,7 @@ export class App {
     this.updateNav();
     if (this.loaded) void Promise.all([this.renderTourList(), this.renderDiagramList(), this.renderConversationList()]);
     if (this.currentFile) $("status-lang").textContent = langLabel(langOf(this.currentFile));
+    if (this.panel === "search") void this.runSearch();
   }
 
   // ---------- Suoni ----------
@@ -369,6 +384,7 @@ export class App {
 
   /** Righe e lavagne si rimisurano dopo un cambio di dimensioni (finestra o testo). */
   private relayout(): void {
+    this.renderActivity();
     if (this.currentFile) void this.walkTo(this.currentFile);
     if (!$("board-pop").hidden) this.popBoard.refresh();
     if (this.view !== undefined) this.tabBoard.refresh();
@@ -648,7 +664,8 @@ export class App {
     const target = document.querySelector<HTMLElement>(`#file-list .file[data-path="${CSS.escape(path)}"]`);
     const walker = $<HTMLCanvasElement>("walker");
     const explorer = $("explorer");
-    if (!target) return;
+    // pannello dei file nascosto: la guida si rimette al suo posto quando lo si riapre
+    if (!target || !target.offsetParent) return;
     const horizontal = getComputedStyle(explorer).getPropertyValue("--strip").trim() === "1";
     const size = walker.clientHeight || 24;
     const x = horizontal ? target.offsetLeft + 5 : 6;
@@ -666,6 +683,114 @@ export class App {
     await sleep(460);
     clearInterval(tick);
     drawMiniGuide(walker, 0);
+  }
+
+  // ---------- Barra laterale ----------
+
+  /** Mostra un pannello della barra laterale; open: riapre la barra se era chiusa. */
+  private showPanel(panel: Panel, { open = true, focus = false } = {}): void {
+    this.panel = panel;
+    this.layout?.setPanel(panel);
+    for (const el of document.querySelectorAll<HTMLElement>(".side-panel")) el.classList.toggle("is-on", el.dataset.panel === panel);
+    if (open && this.layout && !this.layout.sideOpen()) this.layout.setSideOpen(true);
+    this.renderActivity();
+    if (panel === "files" && this.currentFile) void this.walkTo(this.currentFile);
+    if (panel === "search") {
+      if (!$<HTMLInputElement>("search-input").value) void this.runSearch();
+      if (focus) $("search-input").focus();
+    }
+  }
+
+  private renderActivity(): void {
+    const open = this.layout?.sideOpen() ?? true;
+    for (const b of document.querySelectorAll<HTMLElement>(".act-btn")) b.setAttribute("aria-pressed", String(open && b.dataset.panel === this.panel));
+  }
+
+  /** Ctrl+F: cerca il testo selezionato (se è breve); Ctrl+G: prepara ":" per saltare a una riga. */
+  private openSearch(goToLine: boolean): void {
+    const input = $<HTMLInputElement>("search-input");
+    const sel = getSelection()?.toString().trim();
+    if (goToLine) input.value = ":";
+    else if (sel && !sel.includes("\n") && sel.length <= 80) input.value = sel;
+    this.showPanel("search", { focus: true });
+    if (goToLine) input.setSelectionRange(1, 1);
+    else input.select();
+    void this.runSearch();
+  }
+
+  /** Cerca in tutti i file del progetto, senza distinguere maiuscole e minuscole. */
+  private async runSearch(): Promise<void> {
+    const run = ++this.searchRun;
+    const query = $<HTMLInputElement>("search-input").value;
+    const status = $("search-status");
+    const list = $("search-results");
+    const line = GO_TO_LINE.exec(query);
+    if (line || query.trim().length < 2) {
+      list.replaceChildren();
+      status.textContent = line ? t().msg.goToLine(Number(line[1]), this.currentFile) : t().msg.searchHint;
+      return;
+    }
+    status.textContent = t().msg.searching;
+    const needle = query.toLowerCase();
+    const found = new Map<string, { n: number; text: string }[]>();
+    let count = 0;
+    for (const file of this.source.files.slice(0, SEARCH_FILES_MAX)) {
+      const text = await this.readFile(file).catch(() => "");
+      if (run !== this.searchRun) return;
+      text.split("\n").forEach((l, i) => {
+        if (count >= SEARCH_MAX || !l.toLowerCase().includes(needle)) return;
+        count++;
+        const hits = found.get(file) ?? [];
+        hits.push({ n: i + 1, text: l });
+        found.set(file, hits);
+      });
+      if (count >= SEARCH_MAX) break;
+    }
+    list.replaceChildren(
+      ...[...found].flatMap(([file, hits]) => {
+        const head = document.createElement("li");
+        head.className = "search-file";
+        head.textContent = file;
+        return [head, ...hits.map((h) => this.searchHit(file, h.n, h.text, needle))];
+      }),
+    );
+    status.textContent = count ? t().msg.searchResults(count, found.size, count >= SEARCH_MAX) : t().msg.searchNone;
+  }
+
+  /** Una riga trovata: numero, un po' di contesto prima e la parola cercata evidenziata. */
+  private searchHit(file: string, n: number, text: string, needle: string): HTMLLIElement {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "search-hit";
+    const num = document.createElement("span");
+    num.className = "search-line";
+    num.textContent = String(n);
+    const body = document.createElement("span");
+    body.className = "search-text";
+    const at = text.toLowerCase().indexOf(needle);
+    const from = Math.max(0, at - 16);
+    const before = text.slice(from, at);
+    const mark = document.createElement("mark");
+    mark.textContent = text.slice(at, at + needle.length);
+    body.append(from === 0 ? before.trimStart() : `…${before}`, mark, text.slice(at + needle.length));
+    btn.append(num, body);
+    btn.title = `${file}:${n}`;
+    btn.addEventListener("click", () => void this.goToFile(file, [n, n]));
+    li.append(btn);
+    return li;
+  }
+
+  /** Invio nel campo di ricerca: salta alla riga (":42") o apre il primo risultato. */
+  private submitSearch(): void {
+    const line = GO_TO_LINE.exec($<HTMLInputElement>("search-input").value);
+    if (!line) {
+      $("search-results").querySelector<HTMLButtonElement>(".search-hit")?.click();
+      return;
+    }
+    if (!this.currentFile) return;
+    const n = Math.max(1, Math.min(this.currentLines.length, Number(line[1])));
+    void this.goToFile(this.currentFile, [n, n]);
   }
 
   // ---------- Editor ----------
@@ -1535,6 +1660,34 @@ export class App {
       this.next();
     });
     this.layout = initLayout(() => this.relayout());
+    const saved = this.layout.panel() as Panel;
+    this.showPanel(PANELS.includes(saved) ? saved : "files", { open: false });
+    for (const btn of document.querySelectorAll<HTMLButtonElement>(".act-btn")) {
+      btn.addEventListener("click", () => {
+        const panel = btn.dataset.panel as Panel;
+        // come in VS Code: l'icona del pannello aperto chiude la barra laterale
+        if (panel === this.panel && this.layout!.sideOpen()) this.layout!.setSideOpen(false);
+        else this.showPanel(panel, { focus: panel === "search" });
+      });
+    }
+    const search = $<HTMLInputElement>("search-input");
+    search.addEventListener("input", () => {
+      clearTimeout(this.searchTimer);
+      this.searchTimer = window.setTimeout(() => void this.runSearch(), 200);
+    });
+    search.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      // Esc svuota il campo; a campo vuoto torna al codice
+      e.stopPropagation();
+      if (search.value) {
+        search.value = "";
+        void this.runSearch();
+      } else search.blur();
+    });
+    $("search-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      this.submitSearch();
+    });
     const askSel = $("ask-sel");
     // il clic sul pulsante non deve togliere la selezione prima di leggerla
     askSel.addEventListener("pointerdown", (e) => e.preventDefault());
@@ -1588,6 +1741,11 @@ export class App {
       if (e.key === "F11" && isDesktopApp()) {
         e.preventDefault();
         this.toggleFullscreen();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === "f" || e.key === "g") && $("title-screen").hidden && !isPhone()) {
+        e.preventDefault();
+        this.openSearch(e.key === "g");
         return;
       }
       if (inField) return;

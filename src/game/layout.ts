@@ -29,13 +29,21 @@ interface Layout {
   dialog?: number;
   /** Misure della finestra della lavagna in px; undefined = quelle iniziali. */
   pop?: { w: number; h: number };
-  /** Misure della finestra libera del gioco in px; undefined = quelle che aveva prima di diventare libera. */
+  /** Misure della finestra classica del gioco in px; undefined = quelle di styles.css. */
   frame?: { w: number; h: number };
+  /** Pannello della barra laterale scelto con la barra delle attività. */
+  panel?: string;
 }
 
 export interface LayoutControls {
-  /** Da chiamare quando cambia il tipo di finestra (larga, classica, libera). */
+  /** Da chiamare quando cambia il tipo di finestra (larga o classica). */
   refreshFrame(): void;
+  /** Pannello laterale salvato l'ultima volta. */
+  panel(): string | undefined;
+  setPanel(panel: string): void;
+  sideOpen(): boolean;
+  /** Apre (alla misura di prima o a quella iniziale) o chiude la barra laterale. */
+  setSideOpen(open: boolean): void;
 }
 
 type Size = { w: number; h: number };
@@ -52,6 +60,7 @@ function load(): Layout {
       dialog: typeof raw.dialog === "number" ? raw.dialog : undefined,
       pop: readSize(raw.pop),
       frame: readSize(raw.frame),
+      panel: typeof raw.panel === "string" ? raw.panel : undefined,
     };
   } catch {
     return {};
@@ -78,6 +87,8 @@ export function initLayout(onChange: () => void): LayoutControls {
   const app = document.getElementById("app")!;
   const frameGrip = document.getElementById("frame-grip")!;
   const layout = load();
+  /** Larghezza da ridare alla barra laterale quando la si riapre dalla barra delle attività. */
+  let lastSide = layout.side || SIDE_DEFAULT;
 
   const applySide = () => {
     const w = layout.side ?? SIDE_DEFAULT;
@@ -94,6 +105,7 @@ export function initLayout(onChange: () => void): LayoutControls {
   };
   const setSide = (w: number) => {
     layout.side = w < SIDE_CLOSE ? 0 : Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(w)));
+    if (layout.side) lastSide = layout.side;
     applySide();
     onChange();
   };
@@ -275,6 +287,16 @@ export function initLayout(onChange: () => void): LayoutControls {
       save(layout);
       applyDialog();
       applyPop();
+    },
+    panel: () => layout.panel,
+    setPanel(panel) {
+      layout.panel = panel;
+      save(layout);
+    },
+    sideOpen: () => layout.side !== 0,
+    setSideOpen(open) {
+      setSide(open ? lastSide : 0);
+      save(layout);
     },
   };
 }
