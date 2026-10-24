@@ -23,10 +23,10 @@ import { GuidePicker } from "./guide";
 import { DEFAULT_GUIDE_NAMES, LANGS, LANG_INFO, setLang, t, type Lang } from "./i18n";
 import { Portrait, drawMiniGuide, setGuideLook } from "./portrait";
 import { applyReader, pages, reducedMotion } from "./reader";
-import { TEXT_SCALE_MAX, TEXT_SCALE_MIN, TEXT_SCALE_STEP, cleanTextScale, fromStored, isEmpty, loadSettings, saveSettings, toStored, type Settings } from "./settings";
+import { FRAMES, TEXT_SCALE_MAX, TEXT_SCALE_MIN, TEXT_SCALE_STEP, cleanTextScale, fromStored, isEmpty, loadSettings, saveSettings, toStored, type Frame, type Settings } from "./settings";
 import { isDesktopApp, type AgentCommand, type ConnectionState, type GameSource } from "./source";
 import { pickSession, switchSession } from "./sessions";
-import { initLayout } from "./layout";
+import { initLayout, type LayoutControls } from "./layout";
 import { fullscreenAvailable, onFullscreenChange, toggleFullscreen } from "./fullscreen";
 
 /** Testo selezionato nel codice o nel fumetto, allegato alla prossima domanda. */
@@ -114,10 +114,12 @@ export class App {
   /** Finestra della lavagna nascosta mentre una scheda mostra lo stesso schema: torna quando si lascia la scheda. */
   private popParked = false;
   private diagramCache = new Map<string, Diagram>();
+  private layout: LayoutControls | undefined;
 
   constructor(private source: GameSource) {
     applyReader(this.settings.reader);
     this.applyTextScale();
+    this.applyFrame();
     sound.configure(this.settings.sound);
     this.buildTitleScreen();
     this.buildSoundOptions();
@@ -220,6 +222,7 @@ export class App {
     if (before.lang !== this.settings.lang) this.applyLang();
     applyReader(this.settings.reader);
     this.applyTextScale();
+    if (before.frame !== this.settings.frame) this.applyFrame();
     sound.configure(this.settings.sound);
     this.syncSoundOptions();
     setGuideLook(this.guidePicker.refresh());
@@ -335,6 +338,13 @@ export class App {
   }
 
   /** Dimensione del testo: --fs moltiplica ogni font-size di styles.css. */
+  /** Finestra larga, classica o libera: classe sul body; nella libera la misura la tiene layout.ts. */
+  private applyFrame(): void {
+    for (const f of FRAMES) document.body.classList.toggle(`frame-${f}`, f === this.settings.frame);
+    this.layout?.refreshFrame();
+    this.relayout();
+  }
+
   private applyTextScale(): void {
     const scale = this.settings.textScale;
     document.documentElement.style.setProperty("--fs", String(scale));
@@ -447,11 +457,28 @@ export class App {
         </label>`,
       );
     }
+    const frames = $("frame-options");
+    for (const f of FRAMES) {
+      const id = `opt-frame-${f}`;
+      frames.insertAdjacentHTML(
+        "beforeend",
+        `<label class="option" for="${id}">
+          <input type="radio" name="frame" id="${id}" value="${f}">
+          <span class="option-name" data-i18n="frames.${f}.label"></span>
+          <span class="option-hint" data-i18n="frames.${f}.hint"></span>
+        </label>`,
+      );
+    }
     $("title-screen").addEventListener("change", (e) => {
       const input = e.target as HTMLInputElement;
       if (input.type === "radio" || input.type === "checkbox") sound.play("select");
       if (input.name === "lang") this.setLanguage(input.value as Lang);
       if (input.name === "level") this.setLevel(input.value as Level);
+      if (input.name === "frame") {
+        this.settings.frame = input.value as Frame;
+        this.persist();
+        this.applyFrame();
+      }
       if (input.name === "generation") {
         this.settings.generation = input.value as Settings["generation"];
         this.persist();
@@ -465,6 +492,8 @@ export class App {
   private syncTitleOptions(): void {
     const lv = document.getElementById(`opt-level-${this.settings.level}`) as HTMLInputElement | null;
     const gen = document.getElementById(`opt-gen-${this.settings.generation}`) as HTMLInputElement | null;
+    const frame = document.getElementById(`opt-frame-${this.settings.frame}`) as HTMLInputElement | null;
+    if (frame) frame.checked = true;
     const lang = document.getElementById(`opt-lang-${this.settings.lang}`) as HTMLInputElement | null;
     if (lv) lv.checked = true;
     if (gen) gen.checked = true;
@@ -1493,7 +1522,7 @@ export class App {
       if (!getSelection()?.isCollapsed) return;
       this.next();
     });
-    initLayout(() => this.relayout());
+    this.layout = initLayout(() => this.relayout());
     const askSel = $("ask-sel");
     // il clic sul pulsante non deve togliere la selezione prima di leggerla
     askSel.addEventListener("pointerdown", (e) => e.preventDefault());

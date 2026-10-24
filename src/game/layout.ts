@@ -1,4 +1,5 @@
-// Sezioni ridimensionabili: larghezza dell'esplora file, altezza del pannello della guida e finestra della lavagna.
+// Sezioni ridimensionabili: larghezza dell'esplora file, altezza del pannello della guida, finestra della lavagna
+// e, con la finestra "libera" del menu, la finestra intera del gioco.
 // Si trascina il divisore (o si usano le frecce quando ha il fuoco); doppio clic torna alla misura iniziale.
 // Le misure restano in questo browser: sono una comodità di chi guarda, non un'impostazione del progetto.
 
@@ -16,6 +17,10 @@ const POP_MIN_W = 320;
 const POP_MIN_H = 180;
 /** Distanza della finestra della lavagna dai bordi dell'editor (top/right in styles.css). */
 const POP_GAP = 10;
+const FRAME_MIN_W = 600;
+const FRAME_MIN_H = 420;
+/** Spazio minimo tra la finestra libera e il bordo dello schermo. */
+const FRAME_GAP = 6;
 
 interface Layout {
   /** Larghezza dell'esplora file in px; 0 = chiuso. */
@@ -24,7 +29,20 @@ interface Layout {
   dialog?: number;
   /** Misure della finestra della lavagna in px; undefined = quelle iniziali. */
   pop?: { w: number; h: number };
+  /** Misure della finestra libera del gioco in px; undefined = quelle che aveva prima di diventare libera. */
+  frame?: { w: number; h: number };
 }
+
+export interface LayoutControls {
+  /** Da chiamare quando cambia il tipo di finestra (larga, classica, libera). */
+  refreshFrame(): void;
+}
+
+type Size = { w: number; h: number };
+const readSize = (v: unknown): Size | undefined => {
+  const o = v as Partial<Size> | undefined;
+  return o && typeof o.w === "number" && typeof o.h === "number" ? { w: o.w, h: o.h } : undefined;
+};
 
 function load(): Layout {
   try {
@@ -32,8 +50,8 @@ function load(): Layout {
     return {
       side: typeof raw.side === "number" ? raw.side : undefined,
       dialog: typeof raw.dialog === "number" ? raw.dialog : undefined,
-      pop:
-        raw.pop && typeof raw.pop.w === "number" && typeof raw.pop.h === "number" ? { w: raw.pop.w, h: raw.pop.h } : undefined,
+      pop: readSize(raw.pop),
+      frame: readSize(raw.frame),
     };
   } catch {
     return {};
@@ -49,7 +67,7 @@ function save(l: Layout): void {
 }
 
 /** Collega i divisori e la maniglia della lavagna. onChange: le righe e le lavagne si rimisurano. */
-export function initLayout(onChange: () => void): void {
+export function initLayout(onChange: () => void): LayoutControls {
   const workbench = document.querySelector<HTMLElement>(".workbench")!;
   const main = document.querySelector<HTMLElement>(".main")!;
   const dialog = document.getElementById("dialog")!;
@@ -57,6 +75,8 @@ export function initLayout(onChange: () => void): void {
   const dialogSplit = document.getElementById("split-dialog")!;
   const pop = document.getElementById("board-pop")!;
   const popGrip = document.getElementById("board-pop-grip")!;
+  const app = document.getElementById("app")!;
+  const frameGrip = document.getElementById("frame-grip")!;
   const layout = load();
 
   const applySide = () => {
@@ -111,12 +131,49 @@ export function initLayout(onChange: () => void): void {
     return { w: r.width, h: r.height };
   };
 
+  // finestra libera: centrata, la maniglia in basso a destra la allarga dai due lati insieme
+  const clampFrame = (f: Size): Size => ({
+    w: Math.round(Math.max(FRAME_MIN_W, Math.min(innerWidth - 2 * FRAME_GAP, f.w))),
+    h: Math.round(Math.max(FRAME_MIN_H, Math.min(innerHeight - 2 * FRAME_GAP, f.h))),
+  });
+  const frameSize = (): Size => {
+    const r = app.getBoundingClientRect();
+    return { w: r.width, h: r.height };
+  };
+  const applyFrame = () => {
+    if (!document.body.classList.contains("frame-libera")) {
+      app.style.removeProperty("--frame-w");
+      app.style.removeProperty("--frame-h");
+      return;
+    }
+    // la prima volta parte dalla misura che la finestra ha adesso (sul telefono la finestra resta piena)
+    if (!layout.frame && !matchMedia("(max-width: 760px)").matches) layout.frame = clampFrame(frameSize());
+    if (!layout.frame) return;
+    const f = clampFrame(layout.frame);
+    app.style.setProperty("--frame-w", `${f.w}px`);
+    app.style.setProperty("--frame-h", `${f.h}px`);
+  };
+  const setFrame = (f: Size | undefined) => {
+    layout.frame = f && clampFrame(f);
+    if (!f) {
+      // ripristino: torna alla misura della finestra larga
+      app.style.removeProperty("--frame-w");
+      app.style.removeProperty("--frame-h");
+      document.body.classList.remove("frame-libera");
+      layout.frame = clampFrame(frameSize());
+      document.body.classList.add("frame-libera");
+    }
+    applyFrame();
+    onChange();
+  };
+
   sideSplit.setAttribute("aria-valuemin", "0");
   sideSplit.setAttribute("aria-valuemax", String(SIDE_MAX));
   dialogSplit.setAttribute("aria-valuemin", String(DIALOG_MIN));
   applySide();
   applyDialog();
   applyPop();
+  applyFrame();
 
   /** Trascinamento col puntatore: move riceve lo spostamento dall'inizio. */
   const drag = <T>(el: HTMLElement, start: () => T, move: (startValue: T, dx: number, dy: number) => void) => {
@@ -147,6 +204,7 @@ export function initLayout(onChange: () => void): void {
   drag(dialogSplit, () => dialog.getBoundingClientRect().height, (h0, _dx, dy) => setDialog(Math.min(dialogMax(), Math.max(DIALOG_MIN, h0 - dy))));
 
   drag(popGrip, popSize, (p0, dx, dy) => setPop({ w: p0.w - dx, h: p0.h + dy }));
+  drag(frameGrip, frameSize, (f0, dx, dy) => setFrame({ w: f0.w + 2 * dx, h: f0.h + 2 * dy }));
 
   sideSplit.addEventListener("dblclick", () => {
     setSide(SIDE_DEFAULT);
@@ -183,6 +241,22 @@ export function initLayout(onChange: () => void): void {
     e.stopPropagation();
     save(layout);
   });
+  frameGrip.addEventListener("dblclick", () => {
+    setFrame(undefined);
+    save(layout);
+  });
+  frameGrip.addEventListener("keydown", (e) => {
+    const { w, h } = frameSize();
+    if (e.key === "ArrowRight") setFrame({ w: w + 2 * KEY_STEP, h });
+    else if (e.key === "ArrowLeft") setFrame({ w: w - 2 * KEY_STEP, h });
+    else if (e.key === "ArrowDown") setFrame({ w, h: h + 2 * KEY_STEP });
+    else if (e.key === "ArrowUp") setFrame({ w, h: h - 2 * KEY_STEP });
+    else if (e.key === "Enter") setFrame(undefined);
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+    save(layout);
+  });
   dialogSplit.addEventListener("keydown", (e) => {
     const h = dialog.getBoundingClientRect().height;
     if (e.key === "ArrowUp") setDialog(Math.min(dialogMax(), h + KEY_STEP));
@@ -196,9 +270,19 @@ export function initLayout(onChange: () => void): void {
 
   // la finestra si rimpicciolisce: il pannello della guida non deve schiacciare il codice
   window.addEventListener("resize", () => {
+    applyFrame();
     applyDialog();
     applyPop();
   });
   // la finestra si apre dopo un cambio di misure dell'editor: si riadatta allo spazio di adesso
   new MutationObserver(applyPop).observe(pop, { attributes: true, attributeFilter: ["hidden"] });
+
+  return {
+    refreshFrame() {
+      applyFrame();
+      save(layout);
+      applyDialog();
+      applyPop();
+    },
+  };
 }

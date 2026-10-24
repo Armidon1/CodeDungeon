@@ -4,6 +4,7 @@
 // I testi dei tour e le risposte dell'agente restano nella lingua in cui sono scritti.
 
 import type { Aid, DiagramKind, Expression, GenerationMode, Level } from "../shared/types";
+import type { Frame } from "./settings";
 
 export const LANGS = ["en", "it"] as const;
 export type Lang = (typeof LANGS)[number];
@@ -28,6 +29,7 @@ const en = {
     resizeSide: "Resize the explorer (arrows, Enter closes it, double click resets)",
     resizeDialog: "Resize the guide panel (arrows, Enter resets)",
     resizeBoard: "Resize the board (arrows, Enter resets)",
+    resizeFrame: "Resize the window (arrows, Enter resets)",
     resizeTitle: "Drag to resize · double click resets",
     askSelection: "? Ask about this",
     clearSelection: "Remove the selected text",
@@ -64,6 +66,7 @@ const en = {
     language: "Language",
     level: "Explanation level",
     generation: "Text generation",
+    frame: "Window",
     guide: "The guide",
     guideName: "Name",
     uploadImage: "Upload your image",
@@ -104,6 +107,11 @@ const en = {
     istantanea: { label: "Instant", hint: "Every level ready at once: instant switching, more tokens." },
     su_richiesta: { label: "On demand", hint: "Only the chosen level: fewer tokens, a few seconds' wait when you switch." },
   } satisfies Record<GenerationMode, Info>,
+  frames: {
+    larga: { label: "Wide", hint: "Almost the whole screen: more room for the code." },
+    classica: { label: "Classic", hint: "Narrower, with the starry sky around it." },
+    libera: { label: "Free", hint: "Drag the bottom right corner to choose the size." },
+  } satisfies Record<Frame, Info>,
   aids: {
     frasi_brevi: { label: "Short sentences", hint: "One idea per sentence." },
     poco_testo: { label: "Little text at a time", hint: "The speech bubble splits into short pages." },
@@ -237,6 +245,7 @@ const it: Dict = {
     resizeSide: "Ridimensiona l'esplora file (frecce, Invio lo chiude, doppio clic ripristina)",
     resizeDialog: "Ridimensiona il pannello della guida (frecce, Invio ripristina)",
     resizeBoard: "Ridimensiona la lavagna (frecce, Invio ripristina)",
+    resizeFrame: "Ridimensiona la finestra (frecce, Invio ripristina)",
     resizeTitle: "Trascina per ridimensionare · doppio clic ripristina",
     askSelection: "? Chiedi su questo",
     clearSelection: "Togli il testo selezionato",
@@ -273,6 +282,7 @@ const it: Dict = {
     language: "Lingua",
     level: "Livello di spiegazione",
     generation: "Generazione dei testi",
+    frame: "Finestra",
     guide: "La guida",
     guideName: "Nome",
     uploadImage: "Carica la tua immagine",
@@ -312,6 +322,11 @@ const it: Dict = {
   generation: {
     istantanea: { label: "Istantanea", hint: "Tutti i livelli pronti subito: cambio immediato, più token." },
     su_richiesta: { label: "Su richiesta", hint: "Solo il livello scelto: meno token, qualche secondo d'attesa quando cambi." },
+  },
+  frames: {
+    larga: { label: "Larga", hint: "Quasi tutto lo schermo: più spazio per il codice." },
+    classica: { label: "Classica", hint: "Più stretta, con il cielo stellato intorno." },
+    libera: { label: "Libera", hint: "Trascina l'angolo in basso a destra per sceglierne la misura." },
   },
   aids: {
     frasi_brevi: { label: "Frasi brevi", hint: "Una idea per frase." },

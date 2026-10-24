@@ -110,6 +110,7 @@
 
       <button type="button" class="pix-btn ask-sel" id="ask-sel" data-i18n="ui.askSelection" hidden>? Ask about this</button>
 
+      <span class="frame-grip" id="frame-grip" role="separator" tabindex="0" aria-label="Resize the window (arrows, Enter resets)" title="Drag to resize · double click resets" data-i18n-aria-label="ui.resizeFrame" data-i18n-title="ui.resizeTitle"></span>
       <footer class="statusbar">
         <span class="status-conn" id="status-conn"></span>
         <span class="status-step" id="status-step"></span>
@@ -144,6 +145,11 @@
         <fieldset class="menu-group">
           <legend data-i18n="menu.generation">Text generation</legend>
           <div class="option-grid gen-grid" id="gen-options"></div>
+        </fieldset>
+
+        <fieldset class="menu-group">
+          <legend data-i18n="menu.frame">Window</legend>
+          <div class="option-grid frame-grid" id="frame-options"></div>
         </fieldset>
 
         <fieldset class="menu-group">
