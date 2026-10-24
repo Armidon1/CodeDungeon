@@ -150,6 +150,14 @@
           </div>
         </div>
 
+        <div class="menu-tabs" role="tablist" aria-label="Settings" data-i18n-aria-label="menu.tabs.label">
+          <button type="button" class="menu-tab" role="tab" id="menu-tab-gioco" data-tab="gioco" aria-controls="menu-panel-gioco" data-i18n="menu.tabs.game">Game</button>
+          <button type="button" class="menu-tab" role="tab" id="menu-tab-guida" data-tab="guida" aria-controls="menu-panel-guida" data-i18n="menu.tabs.guide">Guide</button>
+          <button type="button" class="menu-tab" role="tab" id="menu-tab-suono" data-tab="suono" aria-controls="menu-panel-suono" data-i18n="menu.tabs.sound">Sound</button>
+          <button type="button" class="menu-tab" role="tab" id="menu-tab-lettura" data-tab="lettura" aria-controls="menu-panel-lettura" data-i18n="menu.tabs.reading">Reading</button>
+        </div>
+
+        <div class="menu-panel" role="tabpanel" id="menu-panel-gioco" data-tab="gioco" aria-labelledby="menu-tab-gioco">
         <fieldset class="menu-group">
           <legend data-i18n="menu.language">Language</legend>
           <div class="option-grid lang-grid" id="lang-options"></div>
@@ -170,6 +178,9 @@
           <div class="option-grid frame-grid" id="frame-options"></div>
         </fieldset>
 
+        </div>
+
+        <div class="menu-panel" role="tabpanel" id="menu-panel-guida" data-tab="guida" aria-labelledby="menu-tab-guida">
         <fieldset class="menu-group">
           <legend data-i18n="menu.guide">The guide</legend>
           <div class="option-grid guide-grid" id="guide-options"></div>
@@ -209,6 +220,9 @@
           </section>
         </fieldset>
 
+        </div>
+
+        <div class="menu-panel" role="tabpanel" id="menu-panel-suono" data-tab="suono" aria-labelledby="menu-tab-suono">
         <fieldset class="menu-group">
           <legend data-i18n="menu.sound">Music and sounds</legend>
           <div class="option-grid track-grid" id="track-options"></div>
@@ -227,6 +241,9 @@
           <p class="small muted sound-note" data-i18n="menu.soundNote">Music and sounds are made by the game, with no audio files. The M key mutes and unmutes.</p>
         </fieldset>
 
+        </div>
+
+        <div class="menu-panel" role="tabpanel" id="menu-panel-lettura" data-tab="lettura" aria-labelledby="menu-tab-lettura">
         <fieldset class="menu-group" aria-describedby="reader-privacy">
           <legend data-i18n="menu.reader">What helps you understand</legend>
           <p class="reader-intro" data-i18n="menu.readerIntro">Optional. Pick what you need: the game changes right away, the agent adapts its explanations.</p>
@@ -239,6 +256,8 @@
             <button type="button" class="chip-btn" id="reader-clear" data-i18n="menu.readerClear">Clear answers</button>
           </div>
         </fieldset>
+
+        </div>
 
         <div class="title-actions">
           <p class="title-source"><span id="title-source"></span> <button type="button" class="link-btn" id="session-btn" data-i18n="ui.switchSession" hidden>Switch session</button></p>

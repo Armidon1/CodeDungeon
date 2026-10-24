@@ -33,6 +33,8 @@ interface Layout {
   frame?: { w: number; h: number };
   /** Pannello della barra laterale scelto con la barra delle attività. */
   panel?: string;
+  /** Scheda del menu iniziale aperta l'ultima volta. */
+  menuTab?: string;
 }
 
 export interface LayoutControls {
@@ -41,6 +43,8 @@ export interface LayoutControls {
   /** Pannello laterale salvato l'ultima volta. */
   panel(): string | undefined;
   setPanel(panel: string): void;
+  menuTab(): string | undefined;
+  setMenuTab(tab: string): void;
   sideOpen(): boolean;
   /** Apre (alla misura di prima o a quella iniziale) o chiude la barra laterale. */
   setSideOpen(open: boolean): void;
@@ -61,6 +65,7 @@ function load(): Layout {
       pop: readSize(raw.pop),
       frame: readSize(raw.frame),
       panel: typeof raw.panel === "string" ? raw.panel : undefined,
+      menuTab: typeof raw.menuTab === "string" ? raw.menuTab : undefined,
     };
   } catch {
     return {};
@@ -291,6 +296,11 @@ export function initLayout(onChange: () => void): LayoutControls {
     panel: () => layout.panel,
     setPanel(panel) {
       layout.panel = panel;
+      save(layout);
+    },
+    menuTab: () => layout.menuTab,
+    setMenuTab(tab) {
+      layout.menuTab = tab;
       save(layout);
     },
     sideOpen: () => layout.side !== 0,

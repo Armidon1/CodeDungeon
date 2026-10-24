@@ -194,7 +194,42 @@ export class App {
     $("app").inert = true;
     this.syncTitleOptions();
     this.guidePicker.sync();
-    ($("title-screen").querySelector<HTMLInputElement>("input:checked") ?? $("start-btn")).focus();
+    ($("title-screen").querySelector<HTMLInputElement>(".menu-panel.is-on input:checked") ?? $("start-btn")).focus();
+  }
+
+  /** Schede del menu iniziale: frecce, Home e Fine come in un tablist ARIA. */
+  private bindMenuTabs(): void {
+    const tabs = [...document.querySelectorAll<HTMLButtonElement>(".menu-tab")];
+    const show = (tab: string, focus = false): void => {
+      for (const b of tabs) {
+        const on = b.dataset.tab === tab;
+        b.setAttribute("aria-selected", String(on));
+        b.tabIndex = on ? 0 : -1;
+        if (on && focus) b.focus();
+      }
+      for (const p of document.querySelectorAll<HTMLElement>(".menu-panel")) p.classList.toggle("is-on", p.dataset.tab === tab);
+      this.layout?.setMenuTab(tab);
+    };
+    const saved = this.layout?.menuTab();
+    show(tabs.some((b) => b.dataset.tab === saved) ? saved! : tabs[0].dataset.tab!);
+    tabs.forEach((b, i) => {
+      b.addEventListener("click", () => {
+        sound.play("select");
+        show(b.dataset.tab!);
+      });
+      b.addEventListener("keydown", (e) => {
+        const to =
+          e.key === "ArrowRight" ? (i + 1) % tabs.length
+          : e.key === "ArrowLeft" ? (i - 1 + tabs.length) % tabs.length
+          : e.key === "Home" ? 0
+          : e.key === "End" ? tabs.length - 1
+          : -1;
+        if (to < 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        show(tabs[to].dataset.tab!, true);
+      });
+    });
   }
 
   private closeTitle(): void {
@@ -1688,6 +1723,7 @@ export class App {
         else this.showPanel(panel, { focus: panel === "search" });
       });
     }
+    this.bindMenuTabs();
     const search = $<HTMLInputElement>("search-input");
     search.addEventListener("input", () => {
       clearTimeout(this.searchTimer);

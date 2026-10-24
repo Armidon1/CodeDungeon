@@ -22,7 +22,7 @@ Already working:
 - the guide with 5 animated expressions and a mini guide that walks between files, with a pixel dissolve when the file changes;
 - guide chosen in the menu: Lumen, Aria, Patrizio, Nilo, or your own photo or drawing turned into pixel art (three compression levels side by side and a slider), with automatic expressions or one uploaded per expression; you pick the name. The image stays in the browser;
 - JSON tours with branches (choices in the dialog), forward and back;
-- start menu with 4 levels (Easy, Medium, Hard, Expert) and a generation mode; the level can be changed during the tour;
+- start menu in four tabs (Game, Guide, Sound, Reading; arrow keys move between them, the last one opened is remembered) with 4 levels (Easy, Medium, Hard, Expert) and a generation mode; the level can be changed during the tour;
 - live questions: you type them in the game, the agent reads them and answers in the speech bubble. Select some code (or part of the guide's text) and press "Ask about this": the agent receives the selected text with the question;
 - question history: every conversation is saved in `.tour/conversazioni/` and stays in the "Questions" list. One click replays it with the code and diagrams of the answer; if you type while reading an answer, the question continues that conversation and the agent also receives the previous questions and answers;
 - "What helps you understand" questionnaire in the menu: short sentences, little text at a time (paged bubble), more diagrams, examples, explained terms, a highly legible font (Atkinson Hyperlegible), fewer animations, and the text size (the same as A− / A+). The game adapts at once; the agent receives the requests and adapts its explanations;
