@@ -126,6 +126,25 @@ button { cursor: pointer; }
 .text-size .chip-btn + .chip-btn { border-left: 0; }
 .text-size .chip-btn:disabled { color: var(--ink-faint); border-color: var(--line); cursor: default; }
 .text-size + .chip-btn { margin-left: 0; }
+/* schermo intero: quattro angoli in pixel; da dentro gli angoli puntano verso il centro */
+.fs-icon {
+  --c: currentColor;
+  display: block;
+  width: 12px;
+  height: 12px;
+  background:
+    linear-gradient(var(--c), var(--c)) 0 0 / 5px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) 0 0 / 2px 5px no-repeat,
+    linear-gradient(var(--c), var(--c)) 100% 0 / 5px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) 100% 0 / 2px 5px no-repeat,
+    linear-gradient(var(--c), var(--c)) 0 100% / 5px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) 0 100% / 2px 5px no-repeat,
+    linear-gradient(var(--c), var(--c)) 100% 100% / 5px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) 100% 100% / 2px 5px no-repeat;
+}
+#fullscreen-btn { display: grid; place-items: center; }
+#fullscreen-btn[hidden] { display: none; }
+#fullscreen-btn[aria-pressed="true"] .fs-icon { --c: var(--lantern); }
 #sound-btn[aria-pressed="true"] { color: var(--ink-faint); text-decoration: line-through; }
 
 .workbench {

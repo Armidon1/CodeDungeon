@@ -27,6 +27,7 @@ import { TEXT_SCALE_MAX, TEXT_SCALE_MIN, TEXT_SCALE_STEP, cleanTextScale, fromSt
 import { isDesktopApp, type AgentCommand, type ConnectionState, type GameSource } from "./source";
 import { pickSession, switchSession } from "./sessions";
 import { initLayout } from "./layout";
+import { fullscreenAvailable, onFullscreenChange, toggleFullscreen } from "./fullscreen";
 
 /** Testo selezionato nel codice o nel fumetto, allegato alla prossima domanda. */
 interface Quote {
@@ -297,9 +298,21 @@ export class App {
       sound.blip(this.settings.guide.id, "felice");
     });
     $("sound-btn").addEventListener("click", () => this.toggleMute());
+    const fsBtn = $("fullscreen-btn");
+    if (fullscreenAvailable()) {
+      fsBtn.hidden = false;
+      fsBtn.addEventListener("click", () => this.toggleFullscreen());
+      onFullscreenChange((on) => fsBtn.setAttribute("aria-pressed", String(on)));
+    }
     $("text-smaller").addEventListener("click", () => this.changeTextScale(-1));
     $("text-bigger").addEventListener("click", () => this.changeTextScale(1));
     this.syncSoundOptions();
+  }
+
+  private toggleFullscreen(): void {
+    toggleFullscreen().catch(() => {
+      // il browser può rifiutare (iframe, permessi): il gioco resta com'è
+    });
   }
 
   private syncSoundOptions(): void {
@@ -1530,7 +1543,17 @@ export class App {
         else if (this.source.files.length) void this.start();
         return;
       }
+      // nel browser F11 è già suo; nell'app lo prende il gioco
+      if (e.key === "F11" && isDesktopApp()) {
+        e.preventDefault();
+        this.toggleFullscreen();
+        return;
+      }
       if (inField) return;
+      if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey && fullscreenAvailable()) {
+        this.toggleFullscreen();
+        return;
+      }
       if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         this.toggleMute();
         return;

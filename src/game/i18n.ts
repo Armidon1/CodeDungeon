@@ -20,6 +20,8 @@ const en = {
   ui: {
     audio: "♪ Audio",
     audioTitle: "Audio (M key)",
+    fullscreen: "Full screen",
+    fullscreenTitle: "Full screen (F key)",
     textSize: "Text size",
     textSmaller: "Smaller text (− key)",
     textBigger: "Bigger text (+ key)",
@@ -90,7 +92,7 @@ const en = {
     readerClear: "Clear answers",
     enter: "Enter the dungeon ▶",
     resume: "Resume exploring ▶",
-    keys: "Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · M audio · + − text size",
+    keys: "Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · M audio · F full screen · + − text size",
   },
   levels: {
     facile: { label: "Easy", hint: "For non-programmers. Metaphors, no jargon." },
@@ -227,6 +229,8 @@ const it: Dict = {
   ui: {
     audio: "♪ Audio",
     audioTitle: "Audio (tasto M)",
+    fullscreen: "Schermo intero",
+    fullscreenTitle: "Schermo intero (tasto F)",
     textSize: "Dimensione del testo",
     textSmaller: "Testo più piccolo (tasto −)",
     textBigger: "Testo più grande (tasto +)",
@@ -297,7 +301,7 @@ const it: Dict = {
     readerClear: "Cancella le risposte",
     enter: "Entra nel dungeon ▶",
     resume: "Riprendi l'esplorazione ▶",
-    keys: "Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu · M audio · + − dimensione del testo",
+    keys: "Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu · M audio · F schermo intero · + − dimensione del testo",
   },
   levels: {
     facile: { label: "Facile", hint: "Per chi non programma. Metafore, niente gergo." },
