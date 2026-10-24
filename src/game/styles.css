@@ -450,6 +450,7 @@ button.board-node:hover { color: var(--lantern); }
   background: var(--code-bg);
 }
 .board-edge.is-center { transform: translateX(-50%); }
+.board-edge.is-end { transform: translateX(-100%); }
 .board-walker { position: absolute; left: 0; top: 0; z-index: 2; image-rendering: pixelated; pointer-events: none; }
 
 /* ---------- Dialogo ---------- */

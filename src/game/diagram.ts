@@ -29,7 +29,8 @@ interface EdgePath {
   px: Pt[];
   /** Direzione della punta all'arrivo. */
   dir: "giu" | "destra" | "sinistra";
-  label?: { x: number; y: number; center?: boolean };
+  /** center: centrata su x; end: finisce su x (a sinistra della linea). */
+  label?: { x: number; y: number; center?: boolean; end?: boolean };
 }
 
 interface Layout {
@@ -171,7 +172,9 @@ function layoutFlow(d: Diagram, scale: number): Layout {
 
   // canali tra le righe: canale r sta sotto la riga r; -1 sopra la prima
   const slots = new Map<number, number>();
-  const labelChan = new Set<number>();
+  /** Etichette che finiscono in ogni canale: ognuna ha la sua riga, così due archi verso lo stesso nodo non si sovrappongono. */
+  const labelsIn = new Map<number, number>();
+  const labelRow: number[] = [];
   const slotOf: { out: number; in: number }[] = [];
   const take = (ch: number) => {
     const s = slots.get(ch) ?? 0;
@@ -184,10 +187,16 @@ function layoutFlow(d: Diagram, scale: number): Layout {
     const so = take(ra);
     const si = kind[i] === "vicino" ? so : take(rb - 1);
     slotOf.push({ out: so, in: si });
-    if (e.label) labelChan.add(rb - 1);
+    if (e.label) {
+      labelRow[i] = labelsIn.get(rb - 1) ?? 0;
+      labelsIn.set(rb - 1, labelRow[i] + 1);
+    }
   });
   const labelH = Math.ceil((EDGE_FONT + 4) / scale);
-  const chanH = (ch: number) => (slots.has(ch) || labelChan.has(ch) ? 5 + 2 * (slots.get(ch) ?? 0) + (labelChan.has(ch) ? labelH : 3) : 0);
+  const chanH = (ch: number) => {
+    const labels = labelsIn.get(ch) ?? 0;
+    return slots.has(ch) || labels ? 5 + 2 * (slots.get(ch) ?? 0) + (labels ? labels * labelH : 3) : 0;
+  };
 
   const gapX = 8;
   const rowW = rows.map((row) => row.reduce((s, n) => s + boxes[n].w, 0) + gapX * Math.max(0, row.length - 1));
@@ -209,6 +218,8 @@ function layoutFlow(d: Diagram, scale: number): Layout {
   });
   const chanTop = (ch: number) => (ch < 0 ? 4 : rowTop[ch] + rowH[ch]);
   const slotY = (ch: number, s: number) => chanTop(ch) + 2 + 2 * s;
+  /** Le etichette stanno sotto tutte le corsie orizzontali del canale, accanto al tratto che scende nel nodo. */
+  const labelY = (ch: number, k: number) => chanTop(ch) + 2 * (slots.get(ch) ?? 0) + 2 + k * labelH;
 
   // porte: uscite sul lato basso, entrate sul lato alto, ordinate per non incrociarsi
   const portX = (n: number, list: number[], ei: number) => {
@@ -224,6 +235,8 @@ function layoutFlow(d: Diagram, scale: number): Layout {
     ins[n].sort((a, b) => cx(index.get(d.edges[a].from)!) - cx(index.get(d.edges[b].from)!));
   }
 
+  // con più archi verso lo stesso nodo, le etichette di quelli a sinistra vanno a sinistra della linea: non la incrociano
+  const edgeLabel = (x: number, y: number, end: boolean) => (end ? { x: x - 2, y, end } : { x: x + 2, y });
   let left = 0;
   let right = 0;
   const edges: EdgePath[] = d.edges.map((edge, i) => {
@@ -242,7 +255,7 @@ function layoutFlow(d: Diagram, scale: number): Layout {
       const lane = kind[i] === "salto" ? 3 + 2 * left++ : x0 + inner + 3 + 2 * right++;
       pts = [start, [ox, yo], [lane, yo], [lane, yi], [ix, yi], end];
     }
-    return { edge, px: raster(pts), dir: "giu", label: edge.label ? { x: ix + 2, y: yi + 2 } : undefined };
+    return { edge, px: raster(pts), dir: "giu", label: edge.label ? edgeLabel(ix, labelY(rank[b] - 1, labelRow[i]), ins[b].indexOf(i) < (ins[b].length - 1) / 2) : undefined };
   });
 
   return { w: x0 + inner + 4 + (rightLanes ? 2 * rightLanes + 3 : 0), h: y + 2, nodes: boxes, edges, lifelines: [] };
@@ -540,7 +553,7 @@ export class Board {
     this.edgeEls = l.edges.map((e) => {
       if (!e.label || !e.edge.label) return undefined;
       const el = document.createElement("span");
-      el.className = `board-edge${e.label.center ? " is-center" : ""}`;
+      el.className = `board-edge${e.label.center ? " is-center" : e.label.end ? " is-end" : ""}`;
       el.setAttribute("aria-hidden", "true");
       el.style.left = `${e.label.x * s}px`;
       el.style.top = `${e.label.y * s}px`;

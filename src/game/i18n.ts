@@ -187,6 +187,8 @@ const en = {
     restart: "Restart the tour",
     stay: "Stay here",
     answer: "Answer",
+    question: "Question",
+    quoted: (text: string) => `“${text}”`,
     asked: "I passed your question to the agent. Let me think...",
     waitHint: "No answer yet. If the agent isn't listening, write in its terminal: “answer the questions in the game”.",
     demoNoAgent:
@@ -402,6 +404,8 @@ const it: Dict = {
     restart: "Ricomincia il tour",
     stay: "Resto qui",
     answer: "Risposta",
+    question: "Domanda",
+    quoted: (text) => `«${text}»`,
     asked: "Ho passato la tua domanda all'agente. Fammi pensare...",
     waitHint: "Ancora nessuna risposta. Se l'agente non è in ascolto, scrivigli nel terminale: «rispondi alle domande nel gioco».",
     demoNoAgent:

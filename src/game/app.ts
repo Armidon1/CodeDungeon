@@ -38,6 +38,9 @@ interface Quote {
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+/** Caratteri del testo selezionato mostrati sotto una domanda riletta. */
+const QUOTE_NOTE_MAX = 140;
 
 interface DialogLine {
   text: string;
@@ -47,6 +50,8 @@ interface DialogLine {
   /** Scelte con un'azione propria (es. "Ricomincia il tour"). */
   actions?: Choice[];
   note?: string;
+  /** Titolo sopra il fumetto di una risposta dal vivo (predefinito: "Risposta"). */
+  title?: string;
   /** Da fare quando il fumetto compare (es. riaprire il codice di una vecchia risposta). */
   before?: () => void;
 }
@@ -1294,11 +1299,15 @@ export class App {
       return;
     }
     const lines = turns.flatMap((turn): DialogLine[] => {
-      const { file, lines } = turn.question.context;
+      const { file, lines, selection } = turn.question.context;
+      // il testo selezionato su cui era la domanda, sotto il fumetto
+      const quote = selection && `${t().msg.quoteFrom(file, lines)} ${t().msg.quoted(clip(selection.replace(/\s+/g, " "), QUOTE_NOTE_MAX))}`;
       const question: DialogLine = {
         text: turn.question.text,
         expression: "pensieroso",
         speaker: t().msg.you,
+        title: t().msg.question,
+        note: quote || undefined,
         before: file ? () => void this.goToFile(file, lines) : undefined,
       };
       const answers = turn.answers.map((a, i): DialogLine => ({
@@ -1401,10 +1410,11 @@ export class App {
     this.liveQueue = queue;
     this.liveAnswer = true;
     this.renderAskHint();
-    $("step-title").textContent = t().msg.answer;
+    $("step-title").textContent = line.title ?? t().msg.answer;
     if (queue.length || this.resumeStep !== undefined) this.afterLine = () => this.nextLive();
     this.renderLiveNote();
     this.updateNav();
+    this.renderStatus();
     this.reportState();
   }
 
@@ -1422,7 +1432,8 @@ export class App {
     const n = this.liveQueue.length;
     const note = $("dialog-note");
     note.hidden = false;
-    note.textContent = t().msg.moreMessages(n);
+    // la nota del fumetto (es. il testo selezionato di una domanda) resta, l'avviso va dopo
+    note.textContent = [this.dialogLine?.note, t().msg.moreMessages(n)].filter(Boolean).join(" ");
   }
 
   private context(): GameContext {
@@ -1456,7 +1467,8 @@ export class App {
     conn.textContent = labels[this.connection];
     conn.dataset.state = this.connection;
     const step = this.tour && this.stepIndex >= 0 ? this.tour.steps[this.stepIndex] : undefined;
-    $("status-step").textContent = step ? this.stepCounter() : "";
+    // mentre il fumetto mostra una risposta o una conversazione il passo del tour non è in vista
+    $("status-step").textContent = step && !this.liveAnswer ? this.stepCounter() : "";
     $("status-level").textContent = t().msg.statusLevel(t().levels[this.settings.level].label);
     $("status-gen").textContent = t().generation[this.settings.generation].label;
   }
