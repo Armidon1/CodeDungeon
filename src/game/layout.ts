@@ -1,5 +1,6 @@
 // Sezioni ridimensionabili: larghezza dell'esplora file, altezza del pannello della guida, finestra della lavagna
-// e, con la finestra "classica" del menu, la finestra intera del gioco.
+// e, con la finestra "classica" del menu, la finestra intera del gioco. Nella modalità chat: la colonna della
+// lavagna e l'altezza del fumetto, salvate a parte.
 // Si trascina il divisore (o si usano le frecce quando ha il fuoco); doppio clic torna alla misura iniziale.
 // Le misure restano in questo browser: sono una comodità di chi guarda, non un'impostazione del progetto.
 
@@ -17,6 +18,10 @@ const POP_MIN_W = 320;
 const POP_MIN_H = 180;
 /** Distanza della finestra della lavagna dai bordi dell'editor (top/right in styles.css). */
 const POP_GAP = 10;
+/** Nella chat: lo storico e la lavagna tengono almeno questo spazio. */
+const CHAT_LOG_MIN = 80;
+const CHAT_MIN_W = 320;
+const CHAT_BOARD_MIN = 280;
 const FRAME_MIN_W = 600;
 const FRAME_MIN_H = 420;
 /** Spazio minimo tra la finestra classica e il bordo dello schermo. */
@@ -37,6 +42,9 @@ interface Layout {
   menuTab?: string;
   /** Modalità chat: il codice nascosto, lo storico dei messaggi al suo posto. */
   chat?: boolean;
+  /** Nella chat: larghezza della colonna della lavagna e altezza del fumetto in px. */
+  chatBoard?: number;
+  chatDialog?: number;
 }
 
 export interface LayoutControls {
@@ -71,6 +79,8 @@ function load(): Layout {
       panel: typeof raw.panel === "string" ? raw.panel : undefined,
       menuTab: typeof raw.menuTab === "string" ? raw.menuTab : undefined,
       chat: raw.chat === true || undefined,
+      chatBoard: typeof raw.chatBoard === "number" ? raw.chatBoard : undefined,
+      chatDialog: typeof raw.chatDialog === "number" ? raw.chatDialog : undefined,
     };
   } catch {
     return {};
@@ -96,6 +106,9 @@ export function initLayout(onChange: () => void): LayoutControls {
   const popGrip = document.getElementById("board-pop-grip")!;
   const app = document.getElementById("app")!;
   const frameGrip = document.getElementById("frame-grip")!;
+  const chatSplit = document.getElementById("split-chat")!;
+  /** Nella chat il fumetto ha una sua altezza: lì sopra c'è lo storico, non il codice. */
+  const inChat = () => app.classList.contains("is-chat");
   const layout = load();
   /** Larghezza da ridare alla barra laterale quando la si riapre dalla barra delle attività. */
   let lastSide = layout.side || SIDE_DEFAULT;
@@ -106,9 +119,11 @@ export function initLayout(onChange: () => void): LayoutControls {
     workbench.style.setProperty("--side-w", `${w}px`);
     sideSplit.setAttribute("aria-valuenow", String(w));
   };
-  const dialogMax = () => Math.max(DIALOG_MIN, main.clientHeight - EDITOR_MIN - 40);
+  const dialogMax = () => Math.max(DIALOG_MIN, main.clientHeight - (inChat() ? CHAT_LOG_MIN : EDITOR_MIN) - 40);
+  const dialogSaved = () => (inChat() ? layout.chatDialog : layout.dialog);
   const applyDialog = () => {
-    const h = layout.dialog === undefined ? undefined : Math.min(dialogMax(), Math.max(DIALOG_MIN, layout.dialog));
+    const saved = dialogSaved();
+    const h = saved === undefined ? undefined : Math.min(dialogMax(), Math.max(DIALOG_MIN, saved));
     main.classList.toggle("has-dialog-h", h !== undefined);
     if (h !== undefined) main.style.setProperty("--dialog-h", `${h}px`);
     dialogSplit.setAttribute("aria-valuenow", String(Math.round(h ?? dialog.getBoundingClientRect().height)));
@@ -120,8 +135,24 @@ export function initLayout(onChange: () => void): LayoutControls {
     onChange();
   };
   const setDialog = (h: number | undefined) => {
-    layout.dialog = h === undefined ? undefined : Math.round(h);
+    const v = h === undefined ? undefined : Math.round(h);
+    if (inChat()) layout.chatDialog = v;
+    else layout.dialog = v;
     applyDialog();
+    onChange();
+  };
+
+  // colonna della lavagna nella chat: il divisore la allarga verso sinistra
+  const chatBoardMax = () => Math.max(CHAT_BOARD_MIN, main.clientWidth - CHAT_MIN_W - 6);
+  const applyChatBoard = () => {
+    const w = layout.chatBoard === undefined ? undefined : Math.min(chatBoardMax(), Math.max(CHAT_BOARD_MIN, layout.chatBoard));
+    if (w === undefined) main.style.removeProperty("--chat-board-w");
+    else main.style.setProperty("--chat-board-w", `${w}px`);
+  };
+  const chatBoardWidth = () => main.querySelector<HTMLElement>(".editor-wrap")!.getBoundingClientRect().width;
+  const setChatBoard = (w: number | undefined) => {
+    layout.chatBoard = w === undefined ? undefined : Math.round(Math.min(chatBoardMax(), Math.max(CHAT_BOARD_MIN, w)));
+    applyChatBoard();
     onChange();
   };
 
@@ -188,6 +219,7 @@ export function initLayout(onChange: () => void): LayoutControls {
   applyDialog();
   applyPop();
   applyFrame();
+  applyChatBoard();
 
   /** Trascinamento col puntatore: move riceve lo spostamento dall'inizio. */
   const drag = <T>(el: HTMLElement, start: () => T, move: (startValue: T, dx: number, dy: number) => void) => {
@@ -217,6 +249,22 @@ export function initLayout(onChange: () => void): LayoutControls {
   drag(sideSplit, () => layout.side ?? SIDE_DEFAULT, (w0, dx) => setSide(w0 + dx));
   drag(dialogSplit, () => dialog.getBoundingClientRect().height, (h0, _dx, dy) => setDialog(Math.min(dialogMax(), Math.max(DIALOG_MIN, h0 - dy))));
 
+  // la lavagna ha margini di 4 + 10px: la colonna è un po' più larga di quel che si misura
+  drag(chatSplit, () => chatBoardWidth() + 14, (w0, dx) => setChatBoard(w0 - dx));
+  chatSplit.addEventListener("dblclick", () => {
+    setChatBoard(undefined);
+    save(layout);
+  });
+  chatSplit.addEventListener("keydown", (e) => {
+    const w = chatBoardWidth() + 14;
+    if (e.key === "ArrowLeft") setChatBoard(w + KEY_STEP);
+    else if (e.key === "ArrowRight") setChatBoard(w - KEY_STEP);
+    else if (e.key === "Enter") setChatBoard(undefined);
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+    save(layout);
+  });
   drag(popGrip, popSize, (p0, dx, dy) => setPop({ w: p0.w - dx, h: p0.h + dy }));
   drag(frameGrip, frameSize, (f0, dx, dy) => setFrame({ w: f0.w + 2 * dx, h: f0.h + 2 * dy }));
 
@@ -287,6 +335,7 @@ export function initLayout(onChange: () => void): LayoutControls {
     applyFrame();
     applyDialog();
     applyPop();
+    applyChatBoard();
   });
   // la finestra si apre dopo un cambio di misure dell'editor: si riadatta allo spazio di adesso
   new MutationObserver(applyPop).observe(pop, { attributes: true, attributeFilter: ["hidden"] });
@@ -312,6 +361,8 @@ export function initLayout(onChange: () => void): LayoutControls {
     setChat(on) {
       layout.chat = on || undefined;
       save(layout);
+      applyDialog();
+      applyChatBoard();
     },
     sideOpen: () => layout.side !== 0,
     setSideOpen(open) {

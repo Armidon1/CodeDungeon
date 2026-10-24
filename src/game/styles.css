@@ -509,21 +509,25 @@ button.board-node:hover { color: var(--lantern); }
 #chat-btn[aria-pressed="true"] .act { opacity: 1; background: var(--lantern); }
 .chat-log, .dialog-code { display: none; }
 .app.is-chat .workbench { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-.app.is-chat :is(.activitybar, .sidebar, .splitter-side, .tabs, .splitter-dialog, .editor, .editor-empty, .wipe, .board-view, .board-grip, #board-pop-fold, #board-pop-tab) { display: none; }
+.splitter-chat { display: none; cursor: col-resize; }
+.splitter-chat::after { left: 2px; top: 50%; width: 2px; height: 28px; transform: translateY(-50%); }
+.app.is-chat :is(.activitybar, .sidebar, .splitter-side, .tabs, .editor, .editor-empty, .wipe, .board-view, .board-grip, #board-pop-fold, #board-pop-tab) { display: none; }
 .app.is-chat .main {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-  grid-template-areas: "log" "dialog";
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-areas: "log" "splitd" "dialog";
 }
 .app.is-chat .main.has-board {
-  grid-template-columns: minmax(340px, 1fr) minmax(0, 1.25fr);
-  grid-template-areas: "log board" "dialog board";
+  grid-template-columns: minmax(0, 1fr) 6px var(--chat-board-w, minmax(0, 1.25fr));
+  grid-template-areas: "log splitc board" "splitd splitc board" "dialog splitc board";
 }
+.app.is-chat .splitter-dialog { grid-area: splitd; margin-inline: 10px; }
+.app.is-chat .main.has-board .splitter-chat { display: block; grid-area: splitc; margin-block: 10px; }
 .app.is-chat .editor-wrap { display: none; grid-area: board; }
-.app.is-chat .main.has-board .editor-wrap { display: block; margin: 10px 10px 10px 0; background: none; }
+.app.is-chat .main.has-board .editor-wrap { display: block; margin: 10px 10px 10px 4px; background: none; }
 .app.is-chat .chat-log { grid-area: log; display: flex; }
 .app.is-chat .dialog { grid-area: dialog; max-height: 50vh; overflow-y: auto; align-content: start; }
-.app.is-chat .main.has-dialog-h .dialog { height: auto; }
+.app.is-chat .main.has-dialog-h .dialog { max-height: none; }
 .app.is-chat .dialog-code { display: block; }
 .app.is-chat .dialog-code:empty { display: none; }
 .app.is-chat .board-pop,
@@ -569,6 +573,8 @@ button.board-node:hover { color: var(--lantern); }
 .chat-snippet .ln { padding-left: 8px; }
 .chat-more { grid-column: 2; color: var(--ink-faint); }
 .dialog-code .chat-snippet { max-height: calc(6 * 1.2em + 14px); overflow-y: auto; }
+/* fumetto allungato col divisore: l'estratto usa lo spazio in più, il campo delle domande resta in vista */
+.main.has-dialog-h .dialog-code .chat-snippet { max-height: max(calc(6 * 1.2em + 14px), calc(var(--dialog-h) - 330px)); }
 
 /* ---------- Dialogo ---------- */
 .dialog {
