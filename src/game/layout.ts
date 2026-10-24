@@ -35,6 +35,8 @@ interface Layout {
   panel?: string;
   /** Scheda del menu iniziale aperta l'ultima volta. */
   menuTab?: string;
+  /** Modalità chat: il codice nascosto, lo storico dei messaggi al suo posto. */
+  chat?: boolean;
 }
 
 export interface LayoutControls {
@@ -45,6 +47,8 @@ export interface LayoutControls {
   setPanel(panel: string): void;
   menuTab(): string | undefined;
   setMenuTab(tab: string): void;
+  chat(): boolean;
+  setChat(on: boolean): void;
   sideOpen(): boolean;
   /** Apre (alla misura di prima o a quella iniziale) o chiude la barra laterale. */
   setSideOpen(open: boolean): void;
@@ -66,6 +70,7 @@ function load(): Layout {
       frame: readSize(raw.frame),
       panel: typeof raw.panel === "string" ? raw.panel : undefined,
       menuTab: typeof raw.menuTab === "string" ? raw.menuTab : undefined,
+      chat: raw.chat === true || undefined,
     };
   } catch {
     return {};
@@ -301,6 +306,11 @@ export function initLayout(onChange: () => void): LayoutControls {
     menuTab: () => layout.menuTab,
     setMenuTab(tab) {
       layout.menuTab = tab;
+      save(layout);
+    },
+    chat: () => layout.chat === true,
+    setChat(on) {
+      layout.chat = on || undefined;
       save(layout);
     },
     sideOpen: () => layout.side !== 0,

@@ -19,6 +19,7 @@
           <button type="button" class="chip-btn" id="text-bigger" data-text-step="1" title="Bigger text (+ key)" data-i18n-title="ui.textBigger" data-i18n-aria-label="ui.textBigger" aria-label="Bigger text (+ key)">A+</button>
         </span>
         <button type="button" class="chip-btn" id="fullscreen-btn" aria-pressed="false" aria-label="Full screen" title="Full screen (F key)" data-i18n-aria-label="ui.fullscreen" data-i18n-title="ui.fullscreenTitle" hidden><span class="fs-icon" aria-hidden="true"></span></button>
+        <button type="button" class="chip-btn" id="chat-btn" aria-pressed="false" aria-label="Chat with the guide: hides the code (C key)" title="Chat with the guide: hides the code (C key)" data-i18n-aria-label="ui.chat" data-i18n-title="ui.chat"><span class="act act-chat" aria-hidden="true"></span></button>
         <button type="button" class="chip-btn" id="sound-btn" aria-pressed="false" title="Audio (M key)" data-i18n="ui.audio" data-i18n-title="ui.audioTitle">♪ Audio</button>
         <button type="button" class="chip-btn" id="menu-btn" aria-label="Open the menu" data-i18n="ui.menu" data-i18n-aria-label="ui.openMenu">Menu</button>
       </header>
@@ -91,6 +92,8 @@
             </section>
           </div>
 
+          <ol class="chat-log" id="chat-log" aria-label="Messages" data-i18n-aria-label="ui.chatLog"></ol>
+
           <div class="splitter splitter-dialog" id="split-dialog" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize the guide panel (arrows, Enter resets)" title="Drag to resize · double click resets" data-i18n-aria-label="ui.resizeDialog" data-i18n-title="ui.resizeTitle"></div>
           <section class="dialog" id="dialog" aria-label="Dialog with the guide" data-i18n-aria-label="ui.dialog">
             <div class="portrait-frame">
@@ -105,6 +108,7 @@
               <p class="dialog-text" id="dialog-text" aria-hidden="true"></p>
               <p class="sr-only" id="dialog-live" aria-live="polite"></p>
               <p class="dialog-note" id="dialog-note" hidden></p>
+              <div class="dialog-code" id="dialog-code"></div>
               <div class="choices" id="choices"></div>
               <div class="dialog-foot">
                 <button type="button" class="pix-btn ghost" id="prev-btn" data-i18n="ui.back">◀ Back</button>

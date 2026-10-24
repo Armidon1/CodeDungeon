@@ -17,6 +17,7 @@ import {
 } from "../shared/types";
 import * as sound from "./audio";
 import { TRACK_IDS, type SoundSettings } from "./audio";
+import { ChatLog, type ChatCode } from "./chat";
 import { Board } from "./diagram";
 import { highlightLines, langLabel, langOf } from "./highlight";
 import { GuidePicker } from "./guide";
@@ -64,6 +65,13 @@ interface DialogLine {
   title?: string;
   /** Da fare quando il fumetto compare (es. riaprire il codice di una vecchia risposta). */
   before?: () => void;
+  /** Codice di cui parla il fumetto: nella chat diventa una scheda. */
+  code?: ChatCode;
+  diagram?: { id: string; title: string };
+  /** Il fumetto riporta una domanda dell'utente (conversazioni rilette). */
+  fromUser?: boolean;
+  /** Messaggio di passaggio ("ci penso…"): non entra nello storico della chat. */
+  transient?: boolean;
 }
 
 interface Choice {
@@ -134,6 +142,18 @@ export class App {
   /** Ricerca in corso: una nuova ferma la vecchia. */
   private searchRun = 0;
   private searchTimer: number | undefined;
+  /** Storico dei fumetti per la modalità chat. */
+  private chat = new ChatLog($("chat-log"), {
+    readFile: (path) => this.readFile(path),
+    openCode: (code) => {
+      this.setChat(false);
+      void this.goToFile(code.file, code.lines);
+    },
+    openDiagram: (id) => void this.loadDiagram(id).then((d) => this.openPop(d, undefined)),
+  });
+  /** Codice e schema mostrati dall'agente prima del suo prossimo fumetto. */
+  private pendingCode: ChatCode | undefined;
+  private pendingDiagram: { id: string; title: string } | undefined;
 
   constructor(private source: GameSource) {
     applyReader(this.settings.reader);
@@ -1085,6 +1105,11 @@ export class App {
 
   /** Clic su una stanza della lavagna: apre il suo codice. */
   private openFromBoard(file: string, lines: [number, number], fromPop: boolean): void {
+    // nella chat il codice della stanza arriva come scheda, la lavagna resta aperta
+    if (this.isChat) {
+      this.chat.add({ who: "guide", speaker: this.settings.guide.name, expression: "felice", code: { file, lines } });
+      return;
+    }
     if (fromPop) this.foldPop(true);
     void this.goToFile(file, lines);
   }
@@ -1102,9 +1127,42 @@ export class App {
     }
   }
 
+  // ---------- Modalità chat ----------
+
+  private get isChat(): boolean {
+    return $("app").classList.contains("is-chat");
+  }
+
+  /** Nasconde (o rimette) codice e barra laterale; l'editor resta com'era. */
+  private setChat(on: boolean, quiet = false): void {
+    if (on === this.isChat) return;
+    // uno schema messo da parte in una scheda torna nella finestra, che nella chat è la colonna della lavagna
+    if (on && this.view !== undefined) {
+      const d = this.boardTabs.find((b) => b.id === this.view);
+      this.setView(undefined);
+      // anche uno schema aperto solo in una scheda passa nella colonna della lavagna
+      if (d && $("board-pop").hidden) void this.openPop(d, undefined);
+    }
+    if (on) this.foldPop(false);
+    $("app").classList.toggle("is-chat", on);
+    $("chat-btn").setAttribute("aria-pressed", String(on));
+    this.layout?.setChat(on);
+    this.syncChatBoard();
+    if (!quiet) sound.play("select");
+    this.relayout();
+    if (on) this.chat.scrollToEnd();
+    else if (this.highlight) requestAnimationFrame(() => this.scrollToHighlight());
+  }
+
+  /** Nella chat la lavagna ha una colonna sua, solo quando è aperta. */
+  private syncChatBoard(): void {
+    $("app").querySelector(".main")!.classList.toggle("has-board", !$("board-pop").hidden);
+  }
+
   // ---------- Dialogo ----------
 
   private say(line: DialogLine): void {
+    this.logLine(this.dialogLine);
     this.stopTyping();
     clearTimeout(this.waitHint);
     // un nuovo fumetto sostituisce la risposta dal vivo: niente "riprendi" in sospeso
@@ -1117,8 +1175,25 @@ export class App {
     // chi usa un lettore di schermo riceve il testo intero, non le pagine
     $("dialog-live").textContent = line.text;
     this.dialogLine = line;
+    const slot = $("dialog-code");
+    slot.replaceChildren(...(line.code ? [this.chat.codeCard(line.code)] : []));
     this.pageList = pages(line.text);
     this.showPage(0);
+  }
+
+  /** Il fumetto che lascia il posto a un altro entra nello storico della chat. */
+  private logLine(line: DialogLine | undefined): void {
+    if (!line || line.transient) return;
+    this.chat.add({
+      who: line.fromUser ? "user" : "guide",
+      text: line.text,
+      speaker: line.speaker ?? this.settings.guide.name,
+      title: line.fromUser ? undefined : line.title,
+      expression: line.expression,
+      quote: line.fromUser ? line.note : undefined,
+      code: line.code,
+      diagram: line.diagram,
+    });
   }
 
   /** Mostra una pagina del fumetto corrente; scelte e azioni solo sull'ultima. */
@@ -1267,7 +1342,14 @@ export class App {
     $("step-title").textContent = step.title ?? "";
     void this.goToFile(step.file, step.lines);
     void this.showStepDiagram(step);
-    this.say({ text, expression: step.expression ?? "neutro", choices: step.next, note: fullNote });
+    this.say({
+      text,
+      expression: step.expression ?? "neutro",
+      choices: step.next,
+      note: fullNote,
+      title: step.title,
+      code: { file: step.file, lines: step.lines },
+    });
     this.renderStatus();
     this.reportState();
   }
@@ -1399,7 +1481,11 @@ export class App {
     sound.play(sent ? "ask" : "error");
     if (sent) {
       this.setQuote(undefined);
-      this.say({ text: t().msg.asked, expression: "pensieroso" });
+      // la domanda va nello storico dopo il fumetto che l'ha fatta nascere
+      this.logLine(this.dialogLine);
+      this.dialogLine = undefined;
+      this.chat.add({ who: "user", text: q, quote: quote?.text && clip(quote.text.replace(/\s+/g, " "), QUOTE_NOTE_MAX), code: quote?.file && quote.lines ? { file: quote.file, lines: quote.lines } : undefined });
+      this.say({ text: t().msg.asked, expression: "pensieroso", transient: true });
       this.portrait.set({ talking: false });
       this.waitHint = window.setTimeout(() => {
         const note = $("dialog-note");
@@ -1425,14 +1511,24 @@ export class App {
     if (!$("title-screen").hidden) this.closeTitle();
     switch (cmd.type) {
       case "open_file":
+        this.pendingCode = { file: cmd.path };
         await this.goToFile(cmd.path, undefined, cmd.content);
         break;
       case "highlight":
+        this.pendingCode = { file: cmd.path, lines: [cmd.start, cmd.end] };
         await this.goToFile(cmd.path, [cmd.start, cmd.end], cmd.content);
         break;
       case "dialog": {
         sound.play("answer");
-        const line: DialogLine = { text: cmd.text, expression: cmd.expression ?? "neutro", speaker: cmd.speaker };
+        const line: DialogLine = {
+          text: cmd.text,
+          expression: cmd.expression ?? "neutro",
+          speaker: cmd.speaker,
+          code: this.pendingCode,
+          diagram: this.pendingDiagram,
+        };
+        this.pendingCode = undefined;
+        this.pendingDiagram = undefined;
         // l'utente sta ancora leggendo una risposta: il nuovo fumetto aspetta il suo turno
         if (this.liveAnswer) {
           this.liveQueue.push(line);
@@ -1448,6 +1544,7 @@ export class App {
       }
       case "diagram":
         this.diagramCache.set(cmd.diagram.id, cmd.diagram);
+        this.pendingDiagram = { id: cmd.diagram.id, title: cmd.diagram.title };
         await this.openPop(cmd.diagram, cmd.upto);
         void this.renderDiagramList();
         break;
@@ -1484,11 +1581,14 @@ export class App {
         title: t().msg.question,
         note: quote || undefined,
         before: file ? () => void this.goToFile(file, lines) : undefined,
+        code: file ? { file, lines } : undefined,
+        fromUser: true,
       };
       const answers = turn.answers.map((a, i): DialogLine => ({
         text: a.text,
         expression: a.expression ?? "neutro",
         before: i === 0 ? () => void this.showAnswerScene(turn) : undefined,
+        code: i === 0 ? turn.code : undefined,
       }));
       return [question, ...answers];
     });
@@ -1769,6 +1869,9 @@ export class App {
     });
     $("editor").addEventListener("scroll", () => (askSel.hidden = true));
     $("menu-btn").addEventListener("click", () => this.openTitle());
+    $("chat-btn").addEventListener("click", () => this.setChat(!this.isChat));
+    new MutationObserver(() => this.syncChatBoard()).observe($("board-pop"), { attributes: true, attributeFilter: ["hidden"] });
+    if (this.layout?.chat()) this.setChat(true, true);
     $("project-name").addEventListener("click", () => void this.chooseSession());
     $("session-btn").addEventListener("click", () => void this.chooseSession());
     $("board-pop-close").addEventListener("click", () => this.closePop());
@@ -1805,6 +1908,10 @@ export class App {
       if (inField) return;
       if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey && fullscreenAvailable()) {
         this.toggleFullscreen();
+        return;
+      }
+      if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey && !e.altKey && $("title-screen").hidden) {
+        this.setChat(!this.isChat);
         return;
       }
       if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey && !e.altKey) {

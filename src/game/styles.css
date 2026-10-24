@@ -501,6 +501,75 @@ button.board-node:hover { color: var(--lantern); }
 .board-edge.is-end { transform: translateX(-100%); }
 .board-walker { position: absolute; left: 0; top: 0; z-index: 2; image-rendering: pixelated; pointer-events: none; }
 
+/* ---------- Modalità chat ---------- */
+/* Il codice e la barra laterale si nascondono (restano com'erano); lo storico prende il loro posto. */
+#chat-btn { display: grid; place-items: center; padding-inline: 8px; }
+#chat-btn .act { width: 16px; height: 16px; opacity: 0.8; background: var(--ink); }
+#chat-btn[aria-pressed="true"] { border-color: var(--lantern); }
+#chat-btn[aria-pressed="true"] .act { opacity: 1; background: var(--lantern); }
+.chat-log, .dialog-code { display: none; }
+.app.is-chat .workbench { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.app.is-chat :is(.activitybar, .sidebar, .splitter-side, .tabs, .splitter-dialog, .editor, .editor-empty, .wipe, .board-view, .board-grip, #board-pop-fold, #board-pop-tab) { display: none; }
+.app.is-chat .main {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: "log" "dialog";
+}
+.app.is-chat .main.has-board {
+  grid-template-columns: minmax(340px, 1fr) minmax(0, 1.25fr);
+  grid-template-areas: "log board" "dialog board";
+}
+.app.is-chat .editor-wrap { display: none; grid-area: board; }
+.app.is-chat .main.has-board .editor-wrap { display: block; margin: 10px 10px 10px 0; background: none; }
+.app.is-chat .chat-log { grid-area: log; display: flex; }
+.app.is-chat .dialog { grid-area: dialog; max-height: 50vh; overflow-y: auto; align-content: start; }
+.app.is-chat .main.has-dialog-h .dialog { height: auto; }
+.app.is-chat .dialog-code { display: block; }
+.app.is-chat .dialog-code:empty { display: none; }
+.app.is-chat .board-pop,
+.app.is-chat .board-pop.has-size { inset: 0; width: auto; height: auto; max-height: none; animation: none; }
+.app.is-chat .board-pop .board { flex: 1; }
+
+.chat-log {
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 14px max(14px, calc((100% - 880px) / 2)) 4px;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 0;
+}
+.chat-log > :first-child { margin-top: auto; }
+.chat-empty { align-self: center; max-width: 44ch; text-align: center; font-size: calc(15px * var(--fs)); color: var(--ink-faint); }
+.chat-msg { display: flex; align-items: flex-start; gap: 10px; max-width: min(100%, 72ch); }
+.chat-msg.is-user { align-self: flex-end; flex-direction: row-reverse; }
+.chat-face { flex: none; width: 40px; height: 40px; image-rendering: pixelated; background: var(--panel); border: 2px solid var(--line); }
+.chat-bubble { display: grid; gap: 6px; min-width: 0; padding: 8px 12px; background: var(--night); border: 2px solid var(--line); }
+.chat-msg.is-user .chat-bubble { background: var(--panel-2); border-color: var(--sky); }
+.chat-who { margin: 0; font-family: var(--font-display); font-size: calc(9px * var(--fs)); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lantern); }
+.chat-msg.is-user .chat-who { color: var(--sky); }
+.chat-text { margin: 0; font-size: calc(17px * var(--fs)); line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
+.chat-quote { margin: 0; padding-left: 8px; border-left: 3px solid var(--sky); font-family: var(--font-code); font-size: calc(17px * var(--fs)); color: var(--ink-dim); overflow-wrap: anywhere; }
+.chat-diagram { justify-self: start; margin-left: 0; }
+.chat-code { margin: 0; min-width: 0; background: var(--code-bg); border: 2px solid var(--line); }
+.chat-code figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 4px 4px 4px 8px; border-bottom: 2px solid var(--line); }
+.chat-code-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: calc(13px * var(--fs)); color: var(--ink-dim); }
+.chat-snippet {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin: 0;
+  padding: 6px 8px 8px 0;
+  overflow-x: auto;
+  font-family: var(--font-code);
+  font-size: calc(18px * var(--fs));
+  line-height: 1.2;
+  tab-size: 4;
+}
+.chat-snippet code { font: inherit; white-space: pre; }
+.chat-snippet .ln { padding-left: 8px; }
+.chat-more { grid-column: 2; color: var(--ink-faint); }
+.dialog-code .chat-snippet { max-height: calc(6 * 1.2em + 14px); overflow-y: auto; }
+
 /* ---------- Dialogo ---------- */
 .dialog {
   display: grid;
@@ -843,8 +912,8 @@ button.board-node:hover { color: var(--lantern); }
   .board-pop .board-badge { display: none; }
   .board-pop.has-size { width: 100%; height: auto; max-height: 88%; }
   .board-grip { display: none; }
-  .titlebar-name { display: none; }
-  .titlebar { gap: 8px; padding-inline: 8px; }
+  .titlebar-name, .win-dots { display: none; }
+  .titlebar { gap: 6px; padding-inline: 8px; }
   .titlebar .chip-btn { white-space: nowrap; padding-inline: 7px; }
   .sidebar { border-right: 0; border-bottom: 2px solid var(--line); overflow: visible; }
   .splitter { display: none; }
@@ -890,6 +959,16 @@ button.board-node:hover { color: var(--lantern); }
   .guide-actions .pix-btn { flex: 1; }
   .title-actions .pix-btn { width: 100%; }
   .menu-tab { padding: 10px 8px; }
+  .app.is-chat .main.has-board {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 0.9fr) minmax(0, 1fr) auto;
+    grid-template-areas: "board" "log" "dialog";
+  }
+  .app.is-chat .main.has-board .editor-wrap { margin: 6px 6px 0; }
+  .app.is-chat .dialog { max-height: 55vh; }
+  /* sul telefono il fumetto tiene solo il nome del file: l'estratto si legge nello storico */
+  .dialog-code .chat-snippet { display: none; }
+  .chat-log { padding-inline: 8px; }
   .reader-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .track-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sound-slider { flex: 1 1 100%; }

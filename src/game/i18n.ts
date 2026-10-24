@@ -19,6 +19,10 @@ type Info = { label: string; hint: string };
 
 const en = {
   ui: {
+    chat: "Chat with the guide: hides the code (C key)",
+    chatLog: "Messages",
+    chatEmpty: "Past messages show up here. The code arrives in cards: “Open in code” brings back the editor.",
+    openInCode: "Open in code",
     audio: "♪ Audio",
     audioTitle: "Audio (M key)",
     fullscreen: "Full screen",
@@ -151,6 +155,9 @@ const en = {
   kinds: { flusso: "Flow", sequenza: "Sequence" } satisfies Record<DiagramKind, string>,
   msg: {
     defaultGuide: "Guide",
+    lineRange: (a: number, b: number) => (a === b ? `line ${a}` : `lines ${a}–${b}`),
+    moreLines: (n: number) => (n === 1 ? "…1 more line" : `…${n} more lines`),
+    showDiagram: (title: string) => `Board: ${title}`,
     tagline: (name: string) => `${name} walks you through the code, one program step at a time.`,
     askPlaceholder: (name: string) => `Ask ${name} something about this code…`,
     askSelectedPlaceholder: "What do you want to know about the selected text?",
@@ -247,6 +254,10 @@ type Dict = typeof en;
 
 const it: Dict = {
   ui: {
+    chat: "Chat con la guida: nasconde il codice (tasto C)",
+    chatLog: "Messaggi",
+    chatEmpty: "Qui compaiono i messaggi passati. Il codice arriva in schede: «Apri nel codice» riporta l'editor.",
+    openInCode: "Apri nel codice",
     audio: "♪ Audio",
     audioTitle: "Audio (tasto M)",
     fullscreen: "Schermo intero",
@@ -379,6 +390,9 @@ const it: Dict = {
   kinds: { flusso: "Flusso", sequenza: "Sequenza" },
   msg: {
     defaultGuide: "Guida",
+    lineRange: (a, b) => (a === b ? `riga ${a}` : `righe ${a}–${b}`),
+    moreLines: (n) => (n === 1 ? "…ancora 1 riga" : `…altre ${n} righe`),
+    showDiagram: (title) => `Lavagna: ${title}`,
     tagline: (name) => `${name} ti accompagna dentro il codice, un passo del programma alla volta.`,
     askPlaceholder: (name) => `Chiedi a ${name} qualcosa su questo codice…`,
     askSelectedPlaceholder: "Cosa vuoi sapere del testo selezionato?",

@@ -30,6 +30,7 @@ Already working:
 - settings saved in SQLite on your computer, the same across all projects;
 - diagram board: the agent draws flows and sequences in pixel art, piece by piece while it explains; the diagram pops up in a window and stays as an editor tab (and in the "Diagrams" list);
 - comfortable reading: A− / A+ in the title bar (or the + and − keys) change the text size; drag the dividers to widen the code, shrink the guide panel or close the explorer, and drag the corner of the board window to make the diagram bigger (double click resets); the corners button in the title bar (or the F key, F11 in the app) switches to full screen; in the menu, Window picks a wide window or the classic narrower one with the starry sky around it, which you resize from its bottom right corner;
+- chat mode: the speech bubble button in the title bar (or the C key) hides the code and the explorer. Past messages stack up like a chat, the code arrives in cards with a short excerpt and "Open in code", and the board gets its own column next to the chat (above it on a phone). Switching back finds the editor as you left it;
 - phone layout;
 - optional desktop app (Tauri): the game in its own window, which finds the open session by itself;
 - sample project `examples/packet-server` (a TCP server in Python) with an 11-step tour, including a real DoS flaw.
