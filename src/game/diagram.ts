@@ -500,12 +500,12 @@ export class Board {
     if (this.diagram) void this.show(this.diagram, this.pieces, false);
   }
 
-  /** Scala più grande (3 o 2 pixel per pixel d'arte) con cui lo schema entra in larghezza. */
+  /** Scala più grande (da 4 a 2 pixel per pixel d'arte) con cui lo schema entra in larghezza. */
   private fitScale(d: Diagram): number {
     const avail = this.el.clientWidth - 8;
     if (avail <= 0) return window.matchMedia("(max-width: 760px)").matches ? 2 : 3;
-    const l3 = d.kind === "sequenza" ? layoutSequence(d, 3) : layoutFlow(d, 3);
-    return l3.w * 3 <= avail ? 3 : 2;
+    const fits = (s: number) => (d.kind === "sequenza" ? layoutSequence(d, s) : layoutFlow(d, s)).w * s <= avail;
+    return fits(4) ? 4 : fits(3) ? 3 : 2;
   }
 
   private build(): void {

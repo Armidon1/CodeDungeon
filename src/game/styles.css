@@ -326,6 +326,31 @@ button { cursor: pointer; }
   animation: pop-in 0.24s steps(4);
 }
 .board-pop.is-folded .board { display: none; }
+.board-pop.has-size { width: var(--pop-w); max-height: none; height: var(--pop-h); }
+.board-pop.has-size .board { flex: 1; }
+.board-pop.has-size.is-folded { height: auto; }
+.board-pop.is-folded .board-grip { display: none; }
+/* maniglia in basso a sinistra: la finestra è ancorata in alto a destra */
+.board-grip {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  --grip: var(--ink-dim);
+  cursor: nesw-resize;
+  touch-action: none;
+  background:
+    linear-gradient(var(--grip), var(--grip)) 4px 4px / 2px 2px no-repeat,
+    linear-gradient(var(--grip), var(--grip)) 4px 8px / 2px 2px no-repeat,
+    linear-gradient(var(--grip), var(--grip)) 8px 8px / 2px 2px no-repeat,
+    linear-gradient(var(--grip), var(--grip)) 4px 12px / 2px 2px no-repeat,
+    linear-gradient(var(--grip), var(--grip)) 8px 12px / 2px 2px no-repeat,
+    linear-gradient(var(--grip), var(--grip)) 12px 12px / 2px 2px no-repeat;
+}
+.board-grip:hover, .board-grip:focus-visible, .board-grip.is-dragging { --grip: var(--lantern); }
+.board-grip:focus-visible { outline-offset: -2px; }
 @keyframes pop-in { from { transform: translateY(-12px); opacity: 0; } }
 .board-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .board-head .chip-btn { margin-left: 0; }
@@ -679,6 +704,8 @@ button.board-node:hover { color: var(--lantern); }
   .tab { padding: 0 10px; font-size: calc(14px * var(--fs)); }
   .board-pop { top: auto; right: 0; bottom: 0; width: 100%; max-height: 88%; }
   .board-pop .board-badge { display: none; }
+  .board-pop.has-size { width: 100%; height: auto; max-height: 88%; }
+  .board-grip { display: none; }
   .titlebar-name { display: none; }
   .titlebar { gap: 8px; padding-inline: 8px; }
   .titlebar .chip-btn { white-space: nowrap; padding-inline: 7px; }
