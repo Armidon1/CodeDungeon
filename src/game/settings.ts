@@ -57,6 +57,13 @@ function readGuide(g: Partial<GuideChoice> | undefined): GuideChoice {
 }
 
 /** Impostazioni valide da un oggetto qualsiasi (localStorage, database): i valori sconosciuti tornano predefiniti. */
+/** Misura che prende il testo di chi aveva scelto l'aiuto "Testo più grande", ora unito ad A− / A+. */
+const BIG_TEXT = 1.3;
+const bigText = (s: Partial<Settings>): boolean => {
+  const aids = (s.reader as { aids?: unknown } | undefined)?.aids;
+  return Array.isArray(aids) && aids.includes("testo_grande");
+};
+
 function parseSettings(raw: unknown): Settings {
   const s = (raw ?? {}) as Partial<Settings>;
   return {
@@ -66,7 +73,7 @@ function parseSettings(raw: unknown): Settings {
     guide: readGuide(s.guide),
     reader: cleanReader(s.reader),
     sound: cleanSound(s.sound),
-    textScale: cleanTextScale(s.textScale),
+    textScale: bigText(s) ? Math.max(BIG_TEXT, cleanTextScale(s.textScale)) : cleanTextScale(s.textScale),
     // "libera" non c'è più: era la classica con la maniglia
     frame: (s.frame as string) === "libera" ? "classica" : s.frame && FRAMES.includes(s.frame) ? s.frame : DEFAULTS.frame,
   };

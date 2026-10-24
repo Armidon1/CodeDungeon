@@ -91,7 +91,7 @@ export function diagramPieces(d: Diagram): number {
 // ---------- Accessibilità: cosa aiuta chi legge ----------
 
 /** Aiuti scelti nel questionario. Alcuni cambiano il gioco (etichette in src/game/i18n.ts), altri il modo in cui scrive l'agente. */
-export const AIDS = ["frasi_brevi", "poco_testo", "piu_schemi", "esempi", "termini", "font_leggibile", "testo_grande", "meno_movimento"] as const;
+export const AIDS = ["frasi_brevi", "poco_testo", "piu_schemi", "esempi", "termini", "font_leggibile", "meno_movimento"] as const;
 export type Aid = (typeof AIDS)[number];
 
 /** Cosa chiede ogni aiuto all'agente. Gli aiuti senza voce li applica solo il gioco. */

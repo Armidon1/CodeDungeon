@@ -1,4 +1,4 @@
-// Adattamenti del gioco scelti nel questionario: font, dimensione del testo, movimento, fumetti a pagine.
+// Adattamenti del gioco scelti nel questionario: font, movimento, fumetti a pagine (la dimensione del testo è textScale).
 // Gli altri aiuti (frasi brevi, schemi, esempi, termini) li applica l'agente quando scrive.
 
 import type { ReaderProfile } from "../shared/types";
@@ -9,7 +9,6 @@ export function applyReader(p: ReaderProfile): void {
   profile = p;
   const root = document.documentElement.classList;
   root.toggle("font-leggibile", p.aids.includes("font_leggibile"));
-  root.toggle("testo-grande", p.aids.includes("testo_grande"));
   root.toggle("meno-movimento", p.aids.includes("meno_movimento"));
 }
 

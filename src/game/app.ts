@@ -327,8 +327,6 @@ export class App {
       fsBtn.addEventListener("click", () => this.toggleFullscreen());
       onFullscreenChange((on) => fsBtn.setAttribute("aria-pressed", String(on)));
     }
-    $("text-smaller").addEventListener("click", () => this.changeTextScale(-1));
-    $("text-bigger").addEventListener("click", () => this.changeTextScale(1));
     this.syncSoundOptions();
   }
 
@@ -368,8 +366,11 @@ export class App {
   private applyTextScale(): void {
     const scale = this.settings.textScale;
     document.documentElement.style.setProperty("--fs", String(scale));
-    $<HTMLButtonElement>("text-smaller").disabled = scale <= TEXT_SCALE_MIN;
-    $<HTMLButtonElement>("text-bigger").disabled = scale >= TEXT_SCALE_MAX;
+    // A− / A+ della barra del titolo e del questionario
+    for (const b of document.querySelectorAll<HTMLButtonElement>("[data-text-step]")) {
+      b.disabled = b.dataset.textStep === "1" ? scale >= TEXT_SCALE_MAX : scale <= TEXT_SCALE_MIN;
+    }
+    for (const v of document.querySelectorAll<HTMLElement>(".size-value")) v.textContent = `${Math.round(scale * 100)}%`;
   }
 
   private changeTextScale(dir: 1 | -1): void {
@@ -410,6 +411,19 @@ export class App {
         </label>`,
       );
     }
+    // la dimensione del testo sta con gli aiuti, ma è la stessa di A− / A+
+    box.insertAdjacentHTML(
+      "beforeend",
+      `<div class="option size-option" role="group" aria-labelledby="size-option-name">
+        <span class="option-name" id="size-option-name" data-i18n="ui.textSize"></span>
+        <span class="option-hint" data-i18n="ui.textSizeHint"></span>
+        <span class="text-size">
+          <button type="button" class="chip-btn" data-text-step="-1" data-i18n-aria-label="ui.textSmaller" data-i18n-title="ui.textSmaller">A−</button>
+          <output class="size-value" aria-live="polite"></output>
+          <button type="button" class="chip-btn" data-text-step="1" data-i18n-aria-label="ui.textBigger" data-i18n-title="ui.textBigger">A+</button>
+        </span>
+      </div>`,
+    );
     const note = $<HTMLTextAreaElement>("reader-note");
     note.maxLength = READER_NOTE_MAX;
     box.addEventListener("change", () => {
@@ -426,6 +440,7 @@ export class App {
       this.syncReaderOptions();
     });
     this.syncReaderOptions();
+    this.applyTextScale();
   }
 
   private syncReaderOptions(): void {
@@ -1660,6 +1675,9 @@ export class App {
       this.next();
     });
     this.layout = initLayout(() => this.relayout());
+    for (const b of document.querySelectorAll<HTMLButtonElement>("[data-text-step]")) {
+      b.addEventListener("click", () => this.changeTextScale(b.dataset.textStep === "1" ? 1 : -1));
+    }
     const saved = this.layout.panel() as Panel;
     this.showPanel(PANELS.includes(saved) ? saved : "files", { open: false });
     for (const btn of document.querySelectorAll<HTMLButtonElement>(".act-btn")) {

@@ -26,6 +26,7 @@ const en = {
     textSize: "Text size",
     textSmaller: "Smaller text (− key)",
     textBigger: "Bigger text (+ key)",
+    textSizeHint: "Speech bubble, code and menu. Also with A− / A+ in the title bar.",
     resizeSide: "Resize the explorer (arrows, Enter closes it, double click resets)",
     resizeDialog: "Resize the guide panel (arrows, Enter resets)",
     resizeBoard: "Resize the board (arrows, Enter resets)",
@@ -122,7 +123,6 @@ const en = {
     esempi: { label: "Concrete examples", hint: "An example or a metaphor for every concept." },
     termini: { label: "Explain the terms", hint: "Every technical word explained the first time." },
     font_leggibile: { label: "Highly legible font", hint: "Atkinson Hyperlegible instead of pixel letters." },
-    testo_grande: { label: "Larger text", hint: "Bigger speech bubble, code and menu." },
     meno_movimento: { label: "Fewer animations", hint: "No letter-by-letter typing, fades or walking." },
   } satisfies Record<Aid, Info>,
   tracks: {
@@ -253,6 +253,7 @@ const it: Dict = {
     textSize: "Dimensione del testo",
     textSmaller: "Testo più piccolo (tasto −)",
     textBigger: "Testo più grande (tasto +)",
+    textSizeHint: "Fumetto, codice e menu. Anche con A− / A+ nella barra del titolo.",
     resizeSide: "Ridimensiona l'esplora file (frecce, Invio lo chiude, doppio clic ripristina)",
     resizeDialog: "Ridimensiona il pannello della guida (frecce, Invio ripristina)",
     resizeBoard: "Ridimensiona la lavagna (frecce, Invio ripristina)",
@@ -349,7 +350,6 @@ const it: Dict = {
     esempi: { label: "Esempi concreti", hint: "Un esempio o una metafora per ogni concetto." },
     termini: { label: "Spiega i termini", hint: "Ogni parola tecnica spiegata la prima volta." },
     font_leggibile: { label: "Font ad alta leggibilità", hint: "Atkinson Hyperlegible al posto dei caratteri pixel." },
-    testo_grande: { label: "Testo più grande", hint: "Fumetto, codice e menu più grandi." },
     meno_movimento: { label: "Meno animazioni", hint: "Niente scrittura lettera per lettera, dissolvenze e camminate." },
   },
   tracks: {

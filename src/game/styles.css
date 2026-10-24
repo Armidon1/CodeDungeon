@@ -750,6 +750,10 @@ button.board-node:hover { color: var(--lantern); }
 .reader-intro { margin: 0 0 10px; color: var(--ink-dim); font-size: calc(15px * var(--fs)); }
 .reader-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .option.check:has(input:checked) .option-name::before { content: "✓ "; }
+/* dimensione del testo nel questionario: gli stessi A− / A+ della barra del titolo */
+.size-option { cursor: default; }
+.size-option .text-size { margin: 6px 0 0; align-items: center; gap: 0; }
+.size-value { min-width: 5ch; padding: 0 8px; text-align: center; color: var(--ink); }
 .reader-note { display: grid; gap: 6px; margin-top: 12px; color: var(--ink-dim); }
 .reader-note textarea {
   width: 100%;
@@ -870,7 +874,6 @@ button.board-node:hover { color: var(--lantern); }
   .track-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sound-slider { flex: 1 1 100%; }
   .sound-slider input { flex: 1; width: auto; }
-  .testo-grande .dialog-text { font-size: calc(21px * var(--fs)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -890,12 +893,3 @@ button.board-node:hover { color: var(--lantern); }
 .font-leggibile .choice { font-size: calc(16px * var(--fs)); }
 .font-leggibile .dialog-text { line-height: 1.6; }
 
-.testo-grande .dialog-text { font-size: calc(24px * var(--fs)); max-height: 11em; }
-.testo-grande .dialog-note, .testo-grande .option-hint, .testo-grande .step-title { font-size: calc(17px * var(--fs)); }
-.testo-grande .option-name { font-size: calc(21px * var(--fs)); }
-.testo-grande .choice { font-size: calc(23px * var(--fs)); }
-.testo-grande .editor { font-size: calc(25px * var(--fs)); }
-.testo-grande.font-leggibile .editor { font-size: calc(20px * var(--fs)); }
-.testo-grande.font-leggibile .choice { font-size: calc(19px * var(--fs)); }
-.testo-grande .ask input, .testo-grande .reader-note textarea { font-size: calc(19px * var(--fs)); }
-.testo-grande .pix-btn { font-size: calc(11px * var(--fs)); }
