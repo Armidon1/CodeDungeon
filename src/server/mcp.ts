@@ -97,9 +97,13 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     if (asks.length) meta.aiuti = asks.join("; ");
     // se il client non ha attivato il canale la notifica viene ignorata e la domanda resta per get_user_questions
     // un seguito porta con sé le domande e risposte precedenti della conversazione
-    const content = q.previous?.length
-      ? `${q.text}\n\n(Seguito di una conversazione. Prima:\n${q.previous.map((p) => `D: ${p.question}\nR: ${p.answers.join(" ") || "(nessuna risposta)"}`).join("\n")})`
+    // il testo selezionato fa parte della domanda: senza, "cosa fa questo?" non si capisce
+    const selected = q.context.selection
+      ? `${q.text}\n\nTesto selezionato dall'utente${q.context.file && q.context.lines ? ` (${q.context.file}, righe ${q.context.lines[0]}-${q.context.lines[1]})` : ""}:\n«${q.context.selection}»`
       : q.text;
+    const content = q.previous?.length
+      ? `${selected}\n\n(Seguito di una conversazione. Prima:\n${q.previous.map((p) => `D: ${p.question}\nR: ${p.answers.join(" ") || "(nessuna risposta)"}`).join("\n")})`
+      : selected;
     server.server
       .notification({ method: "notifications/claude/channel", params: { content, meta } })
       .catch((e: unknown) => log(`notifica della domanda non inviata: ${String(e)}`));
@@ -255,7 +259,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     {
       title: "Leggi le domande dell'utente",
       description:
-        "Restituisce (e svuota) le domande senza risposta che l'utente ha scritto nel gioco, ognuna con il contesto: livello, file, righe e passo. " +
+        "Restituisce (e svuota) le domande senza risposta che l'utente ha scritto nel gioco, ognuna con il contesto: livello, file, righe e passo; selection è il testo che l'utente ha selezionato e su cui chiede. " +
         "Rispondi a ciascuna con show_dialog, eventualmente usando highlight_lines.",
       inputSchema: {},
     },

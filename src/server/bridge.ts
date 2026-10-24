@@ -8,7 +8,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { ClientMessage, Conversation, ConversationTurn, GameContext, ReaderProfile, ServerMessage, SessionInfo, UserQuestion } from "../shared/types.js";
+import { SELECTION_MAX, type ClientMessage, type Conversation, type ConversationTurn, type GameContext, type ReaderProfile, type ServerMessage, type SessionInfo, type UserQuestion } from "../shared/types.js";
 import { conversationSummary, type Project } from "./project.js";
 import type { Store } from "./store.js";
 import { log } from "./log.js";
@@ -338,10 +338,13 @@ export class Bridge {
     if (msg.type === "question") {
       const text = String(msg.text ?? "").slice(0, 2000).trim();
       if (!text) return;
-      const q: UserQuestion = { id: randomUUID().slice(0, 8), text, askedAt: new Date().toISOString(), context: msg.context };
+      const context = { ...msg.context };
+      if (typeof context.selection === "string") context.selection = context.selection.slice(0, SELECTION_MAX);
+      else delete context.selection;
+      const q: UserQuestion = { id: randomUUID().slice(0, 8), text, askedAt: new Date().toISOString(), context };
       await this.addTurn(q, typeof msg.conversation === "string" ? msg.conversation : undefined);
       this.questions.push(q);
-      this.lastContext = msg.context;
+      this.lastContext = context;
       log(`domanda dall'utente: ${text}`);
       if (this.waiter) this.waiter(this.deliver());
       else {

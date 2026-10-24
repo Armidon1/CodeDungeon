@@ -22,10 +22,22 @@ export interface Settings {
   reader: ReaderProfile;
   /** Musica, effetti e voce della guida. */
   sound: SoundSettings;
+  /** Moltiplicatore della dimensione del testo (A− / A+). */
+  textScale: number;
+}
+
+export const TEXT_SCALE_MIN = 0.8;
+export const TEXT_SCALE_MAX = 1.6;
+export const TEXT_SCALE_STEP = 0.1;
+
+/** Scala del testo valida: tra minimo e massimo, a passi di un decimo. */
+export function cleanTextScale(v: unknown): number {
+  const n = typeof v === "number" && Number.isFinite(v) ? v : 1;
+  return Math.round(Math.min(TEXT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, n)) * 10) / 10;
 }
 
 const KEY = "code-dungeon:settings";
-const DEFAULTS: Settings = { lang: "en", level: "medio", generation: "istantanea", guide: { id: "lumen", name: GUIDE_INFO.lumen.name }, reader: { aids: [] }, sound: SOUND_DEFAULTS };
+const DEFAULTS: Settings = { lang: "en", level: "medio", generation: "istantanea", guide: { id: "lumen", name: GUIDE_INFO.lumen.name }, reader: { aids: [] }, sound: SOUND_DEFAULTS, textScale: 1 };
 const defaults = (): Settings => structuredClone(DEFAULTS);
 
 /** Nome proposto per una guida: quello del ritratto predefinito, "Guide"/"Guida" per un'immagine propria. */
@@ -49,6 +61,7 @@ function parseSettings(raw: unknown): Settings {
     guide: readGuide(s.guide),
     reader: cleanReader(s.reader),
     sound: cleanSound(s.sound),
+    textScale: cleanTextScale(s.textScale),
   };
 }
 
@@ -78,5 +91,5 @@ export function fromStored(p: StoredPrefs): Settings {
 }
 
 export function toStored(s: Settings): StoredPrefs {
-  return { settings: { lang: s.lang, level: s.level, generation: s.generation, guide: s.guide, sound: s.sound }, reader: s.reader };
+  return { settings: { lang: s.lang, level: s.level, generation: s.generation, guide: s.guide, sound: s.sound, textScale: s.textScale }, reader: s.reader };
 }

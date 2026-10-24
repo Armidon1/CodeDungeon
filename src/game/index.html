@@ -14,6 +14,10 @@
         <span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="titlebar-name">Code Dungeon</span>
         <button type="button" class="titlebar-project" id="project-name" title="Switch session" data-i18n-title="ui.switchSession"></button>
+        <span class="text-size" role="group" aria-label="Text size" data-i18n-aria-label="ui.textSize">
+          <button type="button" class="chip-btn" id="text-smaller" title="Smaller text (− key)" data-i18n-title="ui.textSmaller" data-i18n-aria-label="ui.textSmaller" aria-label="Smaller text (− key)">A−</button>
+          <button type="button" class="chip-btn" id="text-bigger" title="Bigger text (+ key)" data-i18n-title="ui.textBigger" data-i18n-aria-label="ui.textBigger" aria-label="Bigger text (+ key)">A+</button>
+        </span>
         <button type="button" class="chip-btn" id="sound-btn" aria-pressed="false" title="Audio (M key)" data-i18n="ui.audio" data-i18n-title="ui.audioTitle">♪ Audio</button>
         <button type="button" class="chip-btn" id="menu-btn" aria-label="Open the menu" data-i18n="ui.menu" data-i18n-aria-label="ui.openMenu">Menu</button>
       </header>
@@ -38,6 +42,7 @@
           <div class="sidebar-title sidebar-tours" data-i18n="ui.questions">Questions</div>
           <ul class="tour-list" id="conversation-list"></ul>
         </aside>
+        <div class="splitter splitter-side" id="split-side" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize the explorer (arrows, Enter closes it, double click resets)" title="Drag to resize · double click resets" data-i18n-aria-label="ui.resizeSide" data-i18n-title="ui.resizeTitle"></div>
 
         <main class="main">
           <div class="tabs" id="tabs" role="group" aria-label="Open tabs" data-i18n-aria-label="ui.openTabs"></div>
@@ -66,6 +71,7 @@
             </section>
           </div>
 
+          <div class="splitter splitter-dialog" id="split-dialog" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize the guide panel (arrows, Enter resets)" title="Drag to resize · double click resets" data-i18n-aria-label="ui.resizeDialog" data-i18n-title="ui.resizeTitle"></div>
           <section class="dialog" id="dialog" aria-label="Dialog with the guide" data-i18n-aria-label="ui.dialog">
             <div class="portrait-frame">
               <canvas class="portrait" id="portrait" aria-hidden="true"></canvas>
@@ -87,6 +93,11 @@
               </div>
             </div>
             <form class="ask" id="ask-form" autocomplete="off">
+              <p class="ask-quote" id="ask-quote" hidden>
+                <span class="ask-quote-label" id="ask-quote-label"></span>
+                <span class="ask-quote-text" id="ask-quote-text"></span>
+                <button type="button" class="link-btn" id="ask-quote-clear" aria-label="Remove the selected text" data-i18n-aria-label="ui.clearSelection">✕</button>
+              </p>
               <label class="sr-only" for="ask-input" data-i18n="ui.askLabel">Question for the guide</label>
               <input id="ask-input" name="question" type="text" maxlength="500" placeholder="Ask something about this code…" />
               <button type="submit" class="pix-btn" data-i18n="ui.ask">Ask</button>
@@ -94,6 +105,8 @@
           </section>
         </main>
       </div>
+
+      <button type="button" class="pix-btn ask-sel" id="ask-sel" data-i18n="ui.askSelection" hidden>? Ask about this</button>
 
       <footer class="statusbar">
         <span class="status-conn" id="status-conn"></span>
@@ -205,7 +218,7 @@
           <p class="title-source"><span id="title-source"></span> <button type="button" class="link-btn" id="session-btn" data-i18n="ui.switchSession" hidden>Switch session</button></p>
           <button type="button" class="pix-btn big" id="start-btn">Enter the dungeon ▶</button>
         </div>
-        <p class="title-keys" data-i18n="menu.keys">Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · M audio</p>
+        <p class="title-keys" data-i18n="menu.keys">Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · M audio · + − text size</p>
       </div>
     </div>
 

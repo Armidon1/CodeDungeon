@@ -4,6 +4,7 @@ import {
   AIDS,
   LEVELS,
   READER_NOTE_MAX,
+  SELECTION_MAX,
   type ConversationTurn,
   type Diagram,
   type Expression,
@@ -22,9 +23,17 @@ import { GuidePicker } from "./guide";
 import { DEFAULT_GUIDE_NAMES, LANGS, LANG_INFO, setLang, t, type Lang } from "./i18n";
 import { Portrait, drawMiniGuide, setGuideLook } from "./portrait";
 import { applyReader, pages, reducedMotion } from "./reader";
-import { fromStored, isEmpty, loadSettings, saveSettings, toStored, type Settings } from "./settings";
+import { TEXT_SCALE_MAX, TEXT_SCALE_MIN, TEXT_SCALE_STEP, cleanTextScale, fromStored, isEmpty, loadSettings, saveSettings, toStored, type Settings } from "./settings";
 import { isDesktopApp, type AgentCommand, type ConnectionState, type GameSource } from "./source";
 import { pickSession, switchSession } from "./sessions";
+import { initLayout } from "./layout";
+
+/** Testo selezionato nel codice o nel fumetto, allegato alla prossima domanda. */
+interface Quote {
+  text: string;
+  file?: string;
+  lines?: [number, number];
+}
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -85,6 +94,8 @@ export class App {
   private liveQueue: DialogLine[] = [];
   /** Conversazione delle risposte sul fumetto: una domanda fatta mentre le leggi la continua. */
   private conversation: string | undefined;
+  /** Testo selezionato che accompagna la prossima domanda ("Chiedi su questo"). */
+  private quote: Quote | undefined;
   /** Passo del tour da riprendere dopo le risposte dal vivo. */
   private resumeStep: number | undefined;
   /** Suggerimento se l'agente tarda a rispondere a una domanda. */
@@ -105,6 +116,7 @@ export class App {
 
   constructor(private source: GameSource) {
     applyReader(this.settings.reader);
+    this.applyTextScale();
     sound.configure(this.settings.sound);
     this.buildTitleScreen();
     this.buildSoundOptions();
@@ -206,6 +218,7 @@ export class App {
     saveSettings(this.settings);
     if (before.lang !== this.settings.lang) this.applyLang();
     applyReader(this.settings.reader);
+    this.applyTextScale();
     sound.configure(this.settings.sound);
     this.syncSoundOptions();
     setGuideLook(this.guidePicker.refresh());
@@ -239,6 +252,7 @@ export class App {
     if (radio) radio.checked = true;
     this.guidePicker.relabel();
     this.renderGuide();
+    this.setQuote(this.quote);
     this.renderStatus();
     this.renderTitleSource();
     this.syncTitleOptions();
@@ -283,6 +297,8 @@ export class App {
       sound.blip(this.settings.guide.id, "felice");
     });
     $("sound-btn").addEventListener("click", () => this.toggleMute());
+    $("text-smaller").addEventListener("click", () => this.changeTextScale(-1));
+    $("text-bigger").addEventListener("click", () => this.changeTextScale(1));
     this.syncSoundOptions();
   }
 
@@ -303,6 +319,31 @@ export class App {
     sound.configure(this.settings.sound);
     this.syncSoundOptions();
     if (save) this.persist();
+  }
+
+  /** Dimensione del testo: --fs moltiplica ogni font-size di styles.css. */
+  private applyTextScale(): void {
+    const scale = this.settings.textScale;
+    document.documentElement.style.setProperty("--fs", String(scale));
+    $<HTMLButtonElement>("text-smaller").disabled = scale <= TEXT_SCALE_MIN;
+    $<HTMLButtonElement>("text-bigger").disabled = scale >= TEXT_SCALE_MAX;
+  }
+
+  private changeTextScale(dir: 1 | -1): void {
+    const next = cleanTextScale(this.settings.textScale + dir * TEXT_SCALE_STEP);
+    if (next === this.settings.textScale) return;
+    this.settings.textScale = next;
+    this.applyTextScale();
+    this.persist();
+    sound.play("select");
+    this.relayout();
+  }
+
+  /** Righe e lavagne si rimisurano dopo un cambio di dimensioni (finestra o testo). */
+  private relayout(): void {
+    if (this.currentFile) void this.walkTo(this.currentFile);
+    if (!$("board-pop").hidden) this.popBoard.refresh();
+    if (this.view !== undefined) this.tabBoard.refresh();
   }
 
   private toggleMute(): void {
@@ -1129,9 +1170,13 @@ export class App {
     const q = text.trim();
     if (!q) return;
     // chi chiede mentre legge una risposta continua quella conversazione
-    const sent = this.source.ask(q, this.context(), this.liveAnswer ? this.conversation : undefined);
+    const ctx = this.context();
+    const quote = this.quote;
+    const context: GameContext = quote ? { ...ctx, selection: quote.text, file: quote.file ?? ctx.file, lines: quote.lines ?? ctx.lines } : ctx;
+    const sent = this.source.ask(q, context, this.liveAnswer ? this.conversation : undefined);
     sound.play(sent ? "ask" : "error");
     if (sent) {
+      this.setQuote(undefined);
       this.say({ text: t().msg.asked, expression: "pensieroso" });
       this.portrait.set({ talking: false });
       this.waitHint = window.setTimeout(() => {
@@ -1240,10 +1285,72 @@ export class App {
     }
   }
 
-  /** Il campo delle domande dice se la prossima continua la conversazione. */
+  /** Il campo delle domande dice se la prossima continua la conversazione o riguarda il testo selezionato. */
   private renderAskHint(): void {
     const name = this.settings.guide.name;
-    $<HTMLInputElement>("ask-input").placeholder = this.liveAnswer && this.conversation ? t().msg.followUp : t().msg.askPlaceholder(name);
+    $<HTMLInputElement>("ask-input").placeholder = this.quote
+      ? t().msg.askSelectedPlaceholder
+      : this.liveAnswer && this.conversation
+        ? t().msg.followUp
+        : t().msg.askPlaceholder(name);
+  }
+
+  // ---------- Testo selezionato ----------
+
+  /** La selezione corrente, se sta tutta nel codice o tutta nel fumetto. */
+  private readSelection(): { quote: Quote; range: Range } | undefined {
+    const sel = getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return undefined;
+    const range = sel.getRangeAt(0);
+    const area = (n: Node) => (n instanceof Element ? n : n.parentElement)?.closest("#editor, #dialog-text");
+    const where = area(range.startContainer);
+    if (!where || where !== area(range.endContainer)) return undefined;
+    if (where.id === "dialog-text") {
+      const text = sel.toString().trim();
+      return text ? { quote: { text: text.slice(0, SELECTION_MAX) }, range } : undefined;
+    }
+    // nel codice: niente numeri di riga, una riga di testo per ogni riga dell'editor
+    const frag = range.cloneContents();
+    const rows = [...frag.querySelectorAll(".line")];
+    const raw = rows.length ? rows.map((r) => r.querySelector("code")?.textContent ?? "") : [frag.textContent ?? ""];
+    // via il rientro comune: conta la forma del codice, non quanto è annidato
+    const indent = Math.min(...raw.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
+    const text = raw.map((l) => l.slice(Number.isFinite(indent) ? indent : 0)).join("\n").replace(/\s+$/, "");
+    if (!text.trim()) return undefined;
+    const lineOf = (n: Node) => Number((n instanceof Element ? n : n.parentElement)?.closest<HTMLElement>(".line")?.dataset.n);
+    const a = lineOf(range.startContainer);
+    const b = lineOf(range.endContainer);
+    const lines: [number, number] | undefined = a && b ? [Math.min(a, b), Math.max(a, b)] : undefined;
+    return { quote: { text: text.slice(0, SELECTION_MAX), file: this.currentFile, lines }, range };
+  }
+
+  /** Mostra "Chiedi su questo" accanto alla selezione, o lo nasconde. */
+  private placeAskSelection(): void {
+    const btn = $("ask-sel");
+    const found = $("title-screen").hidden ? this.readSelection() : undefined;
+    if (!found) {
+      btn.hidden = true;
+      return;
+    }
+    const rects = found.range.getClientRects();
+    const r = rects[rects.length - 1] ?? found.range.getBoundingClientRect();
+    btn.hidden = false;
+    const w = btn.offsetWidth;
+    const h = btn.offsetHeight;
+    const below = r.bottom + 6 + h < innerHeight - 8;
+    btn.style.left = `${Math.max(8, Math.min(r.right - w / 2, innerWidth - w - 8))}px`;
+    btn.style.top = `${below ? r.bottom + 6 : Math.max(8, r.top - h - 6)}px`;
+  }
+
+  private setQuote(quote: Quote | undefined): void {
+    this.quote = quote;
+    $("ask-quote").hidden = !quote;
+    if (quote) {
+      $("ask-quote-label").textContent = t().msg.quoteFrom(quote.file, quote.lines);
+      $("ask-quote-text").textContent = quote.text.replace(/\s+/g, " ");
+      $("ask-quote-text").title = quote.text;
+    }
+    this.renderAskHint();
   }
 
   private showLive(line: DialogLine, queue: DialogLine[]): void {
@@ -1368,7 +1475,38 @@ export class App {
   private bindControls(): void {
     $("next-btn").addEventListener("click", () => this.next());
     $("prev-btn").addEventListener("click", () => this.prev());
-    $("dialog-text").addEventListener("click", () => this.next());
+    // un clic avanza, ma non quando si sta selezionando del testo da chiedere
+    $("dialog-text").addEventListener("click", () => {
+      if (!getSelection()?.isCollapsed) return;
+      this.next();
+    });
+    initLayout(() => this.relayout());
+    const askSel = $("ask-sel");
+    // il clic sul pulsante non deve togliere la selezione prima di leggerla
+    askSel.addEventListener("pointerdown", (e) => e.preventDefault());
+    askSel.addEventListener("click", () => {
+      const found = this.readSelection();
+      askSel.hidden = true;
+      if (!found) return;
+      this.setQuote(found.quote);
+      getSelection()?.removeAllRanges();
+      sound.play("select");
+      $("ask-input").focus();
+    });
+    $("ask-quote-clear").addEventListener("click", () => {
+      this.setQuote(undefined);
+      $("ask-input").focus();
+    });
+    document.addEventListener("pointerup", (e) => {
+      if (e.target !== askSel) setTimeout(() => this.placeAskSelection());
+    });
+    document.addEventListener("keyup", (e) => {
+      if (e.shiftKey || e.key === "Shift") this.placeAskSelection();
+    });
+    document.addEventListener("selectionchange", () => {
+      if (getSelection()?.isCollapsed) askSel.hidden = true;
+    });
+    $("editor").addEventListener("scroll", () => (askSel.hidden = true));
     $("menu-btn").addEventListener("click", () => this.openTitle());
     $("project-name").addEventListener("click", () => void this.chooseSession());
     $("session-btn").addEventListener("click", () => void this.chooseSession());
@@ -1397,6 +1535,10 @@ export class App {
         this.toggleMute();
         return;
       }
+      if ((e.key === "+" || e.key === "=" || e.key === "-") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        this.changeTextScale(e.key === "-" ? -1 : 1);
+        return;
+      }
       if (!$("title-screen").hidden) return;
       if ((e.target as HTMLElement).closest("button") && (e.key === "Enter" || e.key === " ")) return;
       if (e.key === "Enter" || e.key === " " || e.key === "ArrowRight") {
@@ -1412,11 +1554,7 @@ export class App {
         }
       }
     });
-    window.addEventListener("resize", () => {
-      if (this.currentFile) void this.walkTo(this.currentFile);
-      if (!$("board-pop").hidden) this.popBoard.refresh();
-      if (this.view !== undefined) this.tabBoard.refresh();
-    });
+    window.addEventListener("resize", () => this.relayout());
     this.updateNav();
   }
 

@@ -20,6 +20,14 @@ const en = {
   ui: {
     audio: "♪ Audio",
     audioTitle: "Audio (M key)",
+    textSize: "Text size",
+    textSmaller: "Smaller text (− key)",
+    textBigger: "Bigger text (+ key)",
+    resizeSide: "Resize the explorer (arrows, Enter closes it, double click resets)",
+    resizeDialog: "Resize the guide panel (arrows, Enter resets)",
+    resizeTitle: "Drag to resize · double click resets",
+    askSelection: "? Ask about this",
+    clearSelection: "Remove the selected text",
     menu: "Menu",
     openMenu: "Open the menu",
     explorer: "Explorer",
@@ -81,7 +89,7 @@ const en = {
     readerClear: "Clear answers",
     enter: "Enter the dungeon ▶",
     resume: "Resume exploring ▶",
-    keys: "Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · M audio",
+    keys: "Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · M audio · + − text size",
   },
   levels: {
     facile: { label: "Easy", hint: "For non-programmers. Metaphors, no jargon." },
@@ -130,6 +138,9 @@ const en = {
     defaultGuide: "Guide",
     tagline: (name: string) => `${name} walks you through the code, one program step at a time.`,
     askPlaceholder: (name: string) => `Ask ${name} something about this code…`,
+    askSelectedPlaceholder: "What do you want to know about the selected text?",
+    quoteFrom: (file: string | undefined, lines: [number, number] | undefined) =>
+      file && lines ? `${file}, ${lines[0] === lines[1] ? `line ${lines[0]}` : `lines ${lines[0]}–${lines[1]}`}:` : "Selected text:",
     helloAgent: (name: string) =>
       `Hi, I'm ${name}! This project has no tour yet. Ask your agent to create one with the Code Dungeon tools, or write me a question below.`,
     helloNoAgent: (name: string) => `Hi, I'm ${name}! I can't find any saved tours in this project. Start Code Dungeon from your agent (see the README) to create one.`,
@@ -215,6 +226,14 @@ const it: Dict = {
   ui: {
     audio: "♪ Audio",
     audioTitle: "Audio (tasto M)",
+    textSize: "Dimensione del testo",
+    textSmaller: "Testo più piccolo (tasto −)",
+    textBigger: "Testo più grande (tasto +)",
+    resizeSide: "Ridimensiona l'esplora file (frecce, Invio lo chiude, doppio clic ripristina)",
+    resizeDialog: "Ridimensiona il pannello della guida (frecce, Invio ripristina)",
+    resizeTitle: "Trascina per ridimensionare · doppio clic ripristina",
+    askSelection: "? Chiedi su questo",
+    clearSelection: "Togli il testo selezionato",
     menu: "Menu",
     openMenu: "Apri il menu",
     explorer: "Esplora",
@@ -276,7 +295,7 @@ const it: Dict = {
     readerClear: "Cancella le risposte",
     enter: "Entra nel dungeon ▶",
     resume: "Riprendi l'esplorazione ▶",
-    keys: "Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu · M audio",
+    keys: "Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu · M audio · + − dimensione del testo",
   },
   levels: {
     facile: { label: "Facile", hint: "Per chi non programma. Metafore, niente gergo." },
@@ -325,6 +344,9 @@ const it: Dict = {
     defaultGuide: "Guida",
     tagline: (name) => `${name} ti accompagna dentro il codice, un passo del programma alla volta.`,
     askPlaceholder: (name) => `Chiedi a ${name} qualcosa su questo codice…`,
+    askSelectedPlaceholder: "Cosa vuoi sapere del testo selezionato?",
+    quoteFrom: (file, lines) =>
+      file && lines ? `${file}, ${lines[0] === lines[1] ? `riga ${lines[0]}` : `righe ${lines[0]}–${lines[1]}`}:` : "Testo selezionato:",
     helloAgent: (name) =>
       `Ciao, sono ${name}! Questo progetto non ha ancora un tour. Chiedi al tuo agente di crearne uno con gli strumenti di Code Dungeon, oppure scrivimi qui sotto una domanda.`,
     helloNoAgent: (name) => `Ciao, sono ${name}! Non trovo tour salvati in questo progetto. Avvia Code Dungeon dal tuo agente (vedi il README) per crearne uno.`,

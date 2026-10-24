@@ -146,6 +146,19 @@ const loaded = received.find((m) => m.reqId === "c1")?.data;
 check(loaded?.turns?.[1]?.answers?.[0]?.text === "Sarebbe al contrario." && loaded.turns[0].code === undefined, "il gioco rilegge la conversazione");
 check(received.find((m) => m.reqId === "c2")?.ok === false, "id della conversazione fuori dal progetto rifiutato");
 
+// domanda su un testo selezionato: la selezione arriva all'agente insieme alla domanda
+const selection = "ptype, payload = read_packet(conn)";
+game.send(
+  JSON.stringify({ type: "question", text: "Cosa fa questo?", context: { level: "medio", file: "server.py", lines: [17, 17], selection: selection + "x".repeat(3000) } }),
+);
+await new Promise((res) => setTimeout(res, 150));
+const ev3 = pushed.at(-1);
+check(
+  /^Cosa fa questo\?/.test(ev3?.content) && ev3.content.includes(`(server.py, righe 17-17):\n«${selection}`) && ev3.content.length < 2200,
+  "la domanda porta il testo selezionato (tagliato se troppo lungo)",
+);
+await client.callTool({ name: "show_dialog", arguments: { text: "Legge un pacchetto.", question_id: ev3?.meta.question_id } });
+
 // agente in ascolto: wait_for_question si sblocca alla domanda, che non viene anche spinta
 const before = pushed.length;
 const waiting = client.callTool({ name: "wait_for_question", arguments: { timeout_seconds: 30 } });

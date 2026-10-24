@@ -155,7 +155,12 @@ export interface GameContext {
   guide?: string;
   /** Lingua dell'interfaccia scelta dall'utente ("en" o "it"): scrivi tour e risposte in questa lingua. */
   lang?: string;
+  /** Testo che l'utente ha selezionato (nel codice o nel fumetto) e su cui fa la domanda; file e lines sono i suoi. */
+  selection?: string;
 }
+
+/** Lunghezza massima del testo selezionato che accompagna una domanda. */
+export const SELECTION_MAX = 2000;
 
 export interface UserQuestion {
   id: string;
