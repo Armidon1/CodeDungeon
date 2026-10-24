@@ -338,7 +338,7 @@ export class App {
   }
 
   /** Dimensione del testo: --fs moltiplica ogni font-size di styles.css. */
-  /** Finestra larga, classica o libera: classe sul body; nella libera la misura la tiene layout.ts. */
+  /** Finestra larga o classica: classe sul body; nella classica la misura scelta la tiene layout.ts. */
   private applyFrame(): void {
     for (const f of FRAMES) document.body.classList.toggle(`frame-${f}`, f === this.settings.frame);
     this.layout?.refreshFrame();

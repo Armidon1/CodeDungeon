@@ -109,8 +109,7 @@ const en = {
   } satisfies Record<GenerationMode, Info>,
   frames: {
     larga: { label: "Wide", hint: "Almost the whole screen: more room for the code." },
-    classica: { label: "Classic", hint: "Narrower, with the starry sky around it." },
-    libera: { label: "Free", hint: "Drag the bottom right corner to choose the size." },
+    classica: { label: "Classic", hint: "Narrower, with the starry sky around it. Drag the bottom right corner to resize it." },
   } satisfies Record<Frame, Info>,
   aids: {
     frasi_brevi: { label: "Short sentences", hint: "One idea per sentence." },
@@ -325,8 +324,7 @@ const it: Dict = {
   },
   frames: {
     larga: { label: "Larga", hint: "Quasi tutto lo schermo: più spazio per il codice." },
-    classica: { label: "Classica", hint: "Più stretta, con il cielo stellato intorno." },
-    libera: { label: "Libera", hint: "Trascina l'angolo in basso a destra per sceglierne la misura." },
+    classica: { label: "Classica", hint: "Più stretta, con il cielo stellato intorno. Trascina l'angolo in basso a destra per cambiarne la misura." },
   },
   aids: {
     frasi_brevi: { label: "Frasi brevi", hint: "Una idea per frase." },

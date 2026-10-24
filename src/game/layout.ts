@@ -1,5 +1,5 @@
 // Sezioni ridimensionabili: larghezza dell'esplora file, altezza del pannello della guida, finestra della lavagna
-// e, con la finestra "libera" del menu, la finestra intera del gioco.
+// e, con la finestra "classica" del menu, la finestra intera del gioco.
 // Si trascina il divisore (o si usano le frecce quando ha il fuoco); doppio clic torna alla misura iniziale.
 // Le misure restano in questo browser: sono una comodità di chi guarda, non un'impostazione del progetto.
 
@@ -19,7 +19,7 @@ const POP_MIN_H = 180;
 const POP_GAP = 10;
 const FRAME_MIN_W = 600;
 const FRAME_MIN_H = 420;
-/** Spazio minimo tra la finestra libera e il bordo dello schermo. */
+/** Spazio minimo tra la finestra classica e il bordo dello schermo. */
 const FRAME_GAP = 6;
 
 interface Layout {
@@ -131,7 +131,7 @@ export function initLayout(onChange: () => void): LayoutControls {
     return { w: r.width, h: r.height };
   };
 
-  // finestra libera: centrata, la maniglia in basso a destra la allarga dai due lati insieme
+  // finestra classica: centrata, la maniglia in basso a destra la allarga dai due lati insieme
   const clampFrame = (f: Size): Size => ({
     w: Math.round(Math.max(FRAME_MIN_W, Math.min(innerWidth - 2 * FRAME_GAP, f.w))),
     h: Math.round(Math.max(FRAME_MIN_H, Math.min(innerHeight - 2 * FRAME_GAP, f.h))),
@@ -140,29 +140,21 @@ export function initLayout(onChange: () => void): LayoutControls {
     const r = app.getBoundingClientRect();
     return { w: r.width, h: r.height };
   };
+  /** Senza misura salvata (o nella finestra larga, o sul telefono) valgono quelle di styles.css. */
   const applyFrame = () => {
-    if (!document.body.classList.contains("frame-libera")) {
+    const free = document.body.classList.contains("frame-classica") && !matchMedia("(max-width: 760px)").matches;
+    if (!free || !layout.frame) {
       app.style.removeProperty("--frame-w");
       app.style.removeProperty("--frame-h");
       return;
     }
-    // la prima volta parte dalla misura che la finestra ha adesso (sul telefono la finestra resta piena)
-    if (!layout.frame && !matchMedia("(max-width: 760px)").matches) layout.frame = clampFrame(frameSize());
-    if (!layout.frame) return;
     const f = clampFrame(layout.frame);
     app.style.setProperty("--frame-w", `${f.w}px`);
     app.style.setProperty("--frame-h", `${f.h}px`);
   };
+  /** undefined: torna alla misura classica. */
   const setFrame = (f: Size | undefined) => {
     layout.frame = f && clampFrame(f);
-    if (!f) {
-      // ripristino: torna alla misura della finestra larga
-      app.style.removeProperty("--frame-w");
-      app.style.removeProperty("--frame-h");
-      document.body.classList.remove("frame-libera");
-      layout.frame = clampFrame(frameSize());
-      document.body.classList.add("frame-libera");
-    }
     applyFrame();
     onChange();
   };

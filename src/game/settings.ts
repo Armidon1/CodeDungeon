@@ -24,11 +24,11 @@ export interface Settings {
   sound: SoundSettings;
   /** Moltiplicatore della dimensione del testo (A− / A+). */
   textScale: number;
-  /** Finestra del gioco: larga, classica (più stretta, si vede lo sfondo) o libera (si ridimensiona dall'angolo). */
+  /** Finestra del gioco: larga o classica (più stretta, si vede lo sfondo, si ridimensiona dall'angolo). */
   frame: Frame;
 }
 
-export const FRAMES = ["larga", "classica", "libera"] as const;
+export const FRAMES = ["larga", "classica"] as const;
 export type Frame = (typeof FRAMES)[number];
 
 export const TEXT_SCALE_MIN = 0.8;
@@ -67,7 +67,8 @@ function parseSettings(raw: unknown): Settings {
     reader: cleanReader(s.reader),
     sound: cleanSound(s.sound),
     textScale: cleanTextScale(s.textScale),
-    frame: s.frame && FRAMES.includes(s.frame) ? s.frame : DEFAULTS.frame,
+    // "libera" non c'è più: era la classica con la maniglia
+    frame: (s.frame as string) === "libera" ? "classica" : s.frame && FRAMES.includes(s.frame) ? s.frame : DEFAULTS.frame,
   };
 }
 

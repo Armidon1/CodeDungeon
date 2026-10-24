@@ -82,18 +82,25 @@ button { cursor: pointer; }
   clip-path: var(--notch);
 }
 
-/* finestra classica: quella di prima, più stretta, con il cielo stellato ai lati */
+/* finestra classica: più stretta, centrata sul cielo stellato; la maniglia ne sceglie la misura (layout.ts) */
 body.frame-classica {
+  display: grid;
+  /* una sola cella grande quanto la pagina: l'altezza al 100% della finestra si risolve su di lei */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  place-items: center;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-body.frame-classica .app { max-width: 1440px; }
-/* finestra libera: centrata, misura scelta con la maniglia (layout.ts) */
-body.frame-libera { display: grid; place-items: center; padding: 6px; }
-body.frame-libera .app { position: relative; width: var(--frame-w, 100%); height: var(--frame-h, 100%); max-width: 100%; max-height: 100%; }
-body.frame-libera .statusbar { padding-right: 26px; }
+body.frame-classica .app {
+  position: relative;
+  width: var(--frame-w, min(100%, 1440px));
+  height: var(--frame-h, 100%);
+  max-width: 100%;
+  max-height: 100%;
+}
+body.frame-classica .statusbar { padding-right: 26px; }
 .frame-grip { display: none; }
-body.frame-libera .frame-grip {
+body.frame-classica .frame-grip {
   --grip: var(--night);
   display: block;
   position: absolute;
@@ -112,10 +119,10 @@ body.frame-libera .frame-grip {
     linear-gradient(var(--grip), var(--grip)) 8px 12px / 2px 2px no-repeat,
     linear-gradient(var(--grip), var(--grip)) 12px 12px / 2px 2px no-repeat;
 }
-body.frame-libera .frame-grip:hover,
-body.frame-libera .frame-grip:focus-visible,
-body.frame-libera .frame-grip.is-dragging { --grip: var(--ink); }
-body.frame-libera .frame-grip:focus-visible { outline-offset: -2px; }
+body.frame-classica .frame-grip:hover,
+body.frame-classica .frame-grip:focus-visible,
+body.frame-classica .frame-grip.is-dragging { --grip: var(--ink); }
+body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 
 .titlebar {
   display: flex;
@@ -613,7 +620,7 @@ button.board-node:hover { color: var(--lantern); }
 .option-grid { display: grid; gap: 10px; }
 .level-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .gen-grid, .lang-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.frame-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.frame-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .option {
   position: relative;
   display: grid;
@@ -794,10 +801,10 @@ button.board-node:hover { color: var(--lantern); }
   .level-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gen-grid, .frame-grid { grid-template-columns: minmax(0, 1fr); }
   /* sul telefono la finestra usa sempre tutto lo schermo */
-  body.frame-classica, body.frame-libera { display: block; padding-inline: 6px; }
-  body.frame-libera .app { width: auto; height: 100%; }
-  body.frame-libera .frame-grip { display: none; }
-  body.frame-libera .statusbar { padding-right: 10px; }
+  body.frame-classica { display: block; padding-inline: 6px; }
+  body.frame-classica .app { width: auto; height: 100%; }
+  body.frame-classica .frame-grip { display: none; }
+  body.frame-classica .statusbar { padding-right: 10px; }
   .guide-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .guide-option { padding: 10px 6px; }
   .guide-option .option-hint { font-size: calc(13px * var(--fs)); }
