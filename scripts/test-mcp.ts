@@ -2,8 +2,8 @@
 // (client MCP su stdio) e come il gioco (WebSocket), e verifica che i comandi arrivino.
 //   npm run test:mcp
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { Client } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -32,12 +32,14 @@ const transport = new StdioClientTransport({
   stderr: "pipe",
   env,
 });
+// il primo agente apre con initialize: il ripiego sul protocollo 2025 (quello che usa il canale di Claude Code)
 const client = new Client({ name: "test-agente", version: "0.0.1" });
 const pushed: any[] = [];
 client.fallbackNotificationHandler = async (n) => {
   if (n.method === "notifications/claude/channel") pushed.push(n.params);
 };
 await client.connect(transport);
+check(client.getProtocolEra() === "legacy", "un client 2025 viene servito col protocollo 2025");
 check((client.getServerCapabilities()?.experimental as any)?.["claude/channel"], "il server si dichiara canale di Claude Code");
 
 const tools = (await client.listTools()).tools.map((t) => t.name).sort();
@@ -198,8 +200,11 @@ const second = new StdioClientTransport({
   stderr: "pipe",
   env,
 });
-const client2 = new Client({ name: "test-agente-2", version: "0.0.1" });
+// il secondo agente parla solo MCP 2026-07-28: niente initialize, versione nel _meta di ogni richiesta
+const client2 = new Client({ name: "test-agente-2", version: "0.0.1" }, { versionNegotiation: { mode: { pin: "2026-07-28" } } });
 await client2.connect(second);
+check(client2.getProtocolEra() === "modern", "un client 2026-07-28 viene servito senza handshake");
+check((await client2.listTools()).tools.some((t) => t.name === "wait_for_question"), "strumenti esposti anche col protocollo 2026-07-28");
 r = await client2.callTool({ name: "get_game_state", arguments: {} });
 check(text(r).includes(`127.0.0.1:${PORT + 1}`), "con la porta occupata il secondo server usa la successiva");
 
@@ -227,6 +232,20 @@ const hello2 = await new Promise<any>((res) => ws2.once("message", (d) => res(JS
 ws2.close();
 check(hello2.prefs?.settings?.level === "facile" && hello2.prefs.reader?.aids.includes("piu_schemi"), "le preferenze valgono anche per un altro server (stesso database)");
 await client2.close();
+
+// un agente in modalità auto chiede server/discover e sceglie da solo il protocollo più recente
+const third = new StdioClientTransport({
+  command: "npx",
+  args: ["tsx", "src/server/cli.ts", "mcp", "--project", project, "--port", String(PORT)],
+  stderr: "pipe",
+  env,
+});
+const client3 = new Client({ name: "test-agente-3", version: "0.0.1" }, { versionNegotiation: { mode: "auto" } });
+await client3.connect(third);
+check(client3.getProtocolEra() === "modern", "in modalità auto si sceglie il protocollo 2026-07-28");
+r = await client3.callTool({ name: "list_tours", arguments: {} });
+check(!r.isError && text(r).length > 0, "uno strumento risponde anche col protocollo 2026-07-28");
+await client3.close();
 
 game.send(JSON.stringify({ type: "question", text: "Spiegami il login", context: { level: "facile" } }));
 await new Promise((res) => setTimeout(res, 150));

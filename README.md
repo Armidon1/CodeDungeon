@@ -147,7 +147,7 @@ If the file already has other settings, add only the `code-dungeon` entry inside
 
 **Other MCP clients**
 
-The server speaks MCP over stdio. Command `node`, arguments `["/path/to/code-dungeon/dist/server/cli.js", "mcp"]`. For a project other than the working folder, add `"--project", "/path/to/the/project"`.
+The server speaks MCP over stdio, in two versions: the stateless 2026-07-28 protocol (no handshake, `server/discover`) and, for clients that still open with `initialize`, the 2025 protocol. Each connection gets the one its client asks for. Command `node`, arguments `["/path/to/code-dungeon/dist/server/cli.js", "mcp"]`. For a project other than the working folder, add `"--project", "/path/to/the/project"`.
 
 ### 5. Your first tour
 

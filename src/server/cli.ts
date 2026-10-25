@@ -7,7 +7,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { Bridge } from "./bridge.js";
 import { createMcpServer } from "./mcp.js";
 import { Project } from "./project.js";
@@ -82,9 +82,10 @@ async function main(): Promise<void> {
   }
 
   if (mode === "mcp") {
-    const server = createMcpServer(project, bridge);
-    await server.connect(new StdioServerTransport());
-    log("server MCP pronto su stdio");
+    // doppio standard: MCP 2026-07-28 (stateless, versione nel _meta di ogni richiesta, server/discover);
+    // se il client apre con initialize si ricade sul protocollo 2025. La fabbrica crea un server per connessione.
+    serveStdio(() => createMcpServer(project, bridge), { onerror: (e) => log(`errore MCP: ${e.message}`) });
+    log("server MCP pronto su stdio (2026-07-28, con ripiego sul 2025)");
   }
 }
 

@@ -24,6 +24,7 @@ Leggi `docs/progetto.md`: specifica completa e roadmap a tappe. Lavora una tappa
 ## Regole
 
 - In modalità MCP lo stdout è del protocollo: log solo con `log()` (stderr).
+- MCP a doppio standard: `serveStdio` serve il protocollo 2026-07-28 (stateless) e ricade sul 2025 per i client che aprono con `initialize`. Ogni strumento deve funzionare in tutte e due: niente stato legato alla connessione, niente richieste dal server al client (sampling, elicitation, roots). `npm run test:mcp` li prova entrambi.
 - Ogni accesso a file del progetto passa da `Project.resolveInside()`. Non aggiungere letture o scritture fuori da lì. L'unica eccezione è il database di `store.ts`, a percorso fisso.
 - Il ponte resta su 127.0.0.1 con controllo dell'origine dei WebSocket.
 - Testi dell'interfaccia in `src/game/i18n.ts`, in inglese e in italiano (stesse chiavi, niente testo letterale nei componenti: `t()` in TS, `data-i18n` in HTML). Messaggi degli strumenti MCP in italiano. Sempre frasi brevi e concrete.

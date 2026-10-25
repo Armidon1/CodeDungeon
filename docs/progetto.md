@@ -52,7 +52,7 @@ Pubblico: dal non programmatore che ha generato uno script e non sa cosa fa, fin
 | Linguaggio | TypeScript |
 | App desktop | Tauri 2 (`src-tauri/`): solo la finestra del gioco, che cerca le sessioni sulle porte 7337-7356 (`GET /session`) e chiede quale seguire se sono più d'una |
 | Grafica | DOM + canvas per sprite ed effetti; PixiJS o Phaser se servirà un motore |
-| Server MCP | SDK ufficiale MCP per TypeScript |
+| Server MCP | SDK ufficiale MCP per TypeScript v2 (`@modelcontextprotocol/server`): protocollo 2026-07-28 con ripiego sul 2025 |
 | Tour | JSON in `.tour/` nel progetto spiegato (cartella da mettere nel `.gitignore`) |
 | Audio | Web Audio API, suoni sintetizzati nel gioco (nessun file audio) |
 | Impostazioni | SQLite (`node:sqlite`) nella cartella dati dell'utente; copia in localStorage per la demo |

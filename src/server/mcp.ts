@@ -1,6 +1,6 @@
 // Server MCP: gli strumenti con cui un agente (Claude Code, Codex, Gemini CLI, ...) pilota il gioco.
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -303,8 +303,8 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         timeout_seconds: z.number().int().min(5).max(1800).optional().describe("Quanto aspettare al massimo. Predefinito: 300."),
       },
     },
-    async ({ timeout_seconds }, extra) => {
-      const q = await bridge.waitQuestions((timeout_seconds ?? 300) * 1000, extra.signal);
+    async ({ timeout_seconds }, ctx) => {
+      const q = await bridge.waitQuestions((timeout_seconds ?? 300) * 1000, ctx.mcpReq.signal);
       if (q.length === 0) return ok("Nessuna domanda nel frattempo. Richiama subito wait_for_question: l'utente è ancora nel gioco.");
       return ok(
         `${q.length === 1 ? "1 domanda" : `${q.length} domande`}. Rispondi ora nel gioco con show_dialog passando question_id, poi richiama wait_for_question.${readerNote()}`,
