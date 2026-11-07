@@ -1,0 +1,30 @@
+# Controlli a ogni push e pull request: tipi, server MCP (protocollo 2026-07-28 e 2025) e gioco nel browser.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:mcp
+      - run: npm run build
+      # Chrome è già installato sui runner Ubuntu di GitHub
+      - run: npm run test:game
+        env:
+          CHROME_PATH: google-chrome

@@ -42,7 +42,8 @@
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:build": "tauri build",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "test:game": "tsx scripts/test-game.ts"
   },
   "engines": {
     "node": ">=22.13"

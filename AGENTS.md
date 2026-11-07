@@ -16,7 +16,8 @@ Leggi `docs/progetto.md`: specifica completa e roadmap a tappe. Lavora una tappa
 
 ## Comandi
 
-- `npm run typecheck` e `npm run test:mcp` prima di considerare finito un cambiamento.
+- `npm run typecheck`, `npm run test:mcp` e, se tocchi il gioco, `npm run build:game && npm run test:game` prima di considerare finito un cambiamento. La CI (`.github/workflows/ci.yml`) li esegue a ogni push.
+- `test:game` pilota Chromium headless via DevTools Protocol (senza dipendenze): quando aggiungi una funzione del gioco, aggiungi lì un controllo, anche a 390 px.
 - `npm run dev` + `npm run play -- --project examples/packet-server` per lavorare sul gioco.
 - `npm run app:build` compila l'app desktop (serve Rust); `npm run app:dev` la apre su `npm run dev`.
 - `npm run build:demo` produce `dist/demo/index.html`, un file unico senza ponte.

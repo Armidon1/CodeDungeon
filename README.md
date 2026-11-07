@@ -298,11 +298,14 @@ Prompt: `crea_tour` (full guide in [docs/come-fare-un-tour.md](docs/come-fare-un
 npm run dev          # game with hot reload on http://localhost:5173 (finds the open sessions like the desktop app)
 npm run play -- --project examples/packet-server    # in another terminal
 npm run typecheck
-npm run test:mcp     # end-to-end test: fake agent + fake game
+npm run test:mcp     # end-to-end test: fake agents (2026-07-28 and 2025 protocol) + fake game
+npm run build:game && npm run test:game   # the game in headless Chromium: menu, tour, chat mode, layout at 1400 and 390 px
 npm run build:demo   # a single HTML file with the sample embedded, no bridge
 npm run app:dev      # desktop app (Tauri) connected to `npm run dev`
 npm run app:build    # desktop app built, packages in src-tauri/target/release/bundle/
 ```
+
+GitHub Actions runs typecheck and both tests on every push and pull request (`.github/workflows/ci.yml`). It also builds the desktop app for Linux, Windows and macOS when the game or `src-tauri/` change (`.github/workflows/app.yml`): the unsigned packages are in the run's artifacts.
 
 ## Security
 
