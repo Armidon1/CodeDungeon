@@ -339,6 +339,9 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 .tour-item:hover { border-color: var(--lantern); }
 .tour-title { font-size: calc(15px * var(--fs)); }
 .tour-meta { font-size: calc(13px * var(--fs)); color: var(--ink-dim); }
+.tour-item.is-asked { border-left-color: var(--sky); }
+.conv-diagrams { display: flex; flex-wrap: wrap; gap: 4px; margin: -2px 0 8px 10px; }
+.conv-diagram { margin-left: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; }
 
 /* ---------- Editor ---------- */
 .main {
@@ -544,6 +547,8 @@ button.board-node:hover { color: var(--lantern); }
   min-height: 0;
 }
 .chat-log > :first-child { margin-top: auto; }
+.chat-sep { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; font-size: calc(13px * var(--fs)); color: var(--ink-faint); }
+.chat-sep .chip-btn { margin-left: 0; }
 .chat-empty { align-self: center; max-width: 44ch; text-align: center; font-size: calc(15px * var(--fs)); color: var(--ink-faint); }
 .chat-msg { display: flex; align-items: flex-start; gap: 10px; max-width: min(100%, 72ch); }
 .chat-msg.is-user { align-self: flex-end; flex-direction: row-reverse; }

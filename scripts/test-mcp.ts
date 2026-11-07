@@ -8,6 +8,8 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { WebSocket } from "ws";
+import { conversationSummary } from "../src/server/project";
+import type { Conversation } from "../src/shared/types";
 
 const PORT = 7400 + Math.floor(Math.random() * 500); // porta casuale: evita conflitti con esecuzioni precedenti
 const project = path.resolve("examples/packet-server");
@@ -140,7 +142,15 @@ const ev2 = pushed.at(-1);
 check(ev2?.meta.conversation === convId && /E little-endian\?/.test(ev2.content) && /lo dice il protocollo/.test(ev2.content), "il seguito arriva all'agente con le risposte precedenti");
 await client.callTool({ name: "show_dialog", arguments: { text: "Sarebbe al contrario.", question_id: ev2?.meta.question_id } });
 await new Promise((res) => setTimeout(res, 150));
-check(received.some((m) => m.type === "conversation" && m.summary.id === convId && m.summary.turns === 2), "il gioco viene avvisato della conversazione aggiornata");
+check(received.some((m) => m.type === "conversation" && m.summary.id === convId && m.summary.turns === 2 && Array.isArray(m.summary.diagrams)), "il gioco viene avvisato della conversazione aggiornata");
+{
+  const q = (id: string) => ({ id, text: id, askedAt: "", context: {} });
+  const sum = conversationSummary({
+    version: 1, id: "x", title: "x", startedAt: "", updatedAt: "",
+    turns: [{ question: q("a"), answers: [], diagram: { id: "strati" } }, { question: q("b"), answers: [] }, { question: q("c"), answers: [], diagram: { id: "strati", upto: 2 } }, { question: q("d"), answers: [], diagram: { id: "header" } }],
+  } as Conversation);
+  check(sum.diagrams.join() === "strati,header", "il riassunto della conversazione elenca i suoi schemi senza doppioni");
+}
 game.send(JSON.stringify({ type: "request", reqId: "c1", op: "load_conversation", id: convId }));
 game.send(JSON.stringify({ type: "request", reqId: "c2", op: "load_conversation", id: "../../package" }));
 await new Promise((res) => setTimeout(res, 150));

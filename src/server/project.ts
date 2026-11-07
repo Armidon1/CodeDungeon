@@ -242,7 +242,8 @@ export class Project {
 }
 
 export function conversationSummary(c: Conversation): ConversationSummary {
-  return { id: c.id, title: c.title, updatedAt: c.updatedAt, turns: c.turns.length };
+  const diagrams = [...new Set(c.turns.flatMap((turn) => (turn.diagram ? [turn.diagram.id] : [])))];
+  return { id: c.id, title: c.title, updatedAt: c.updatedAt, turns: c.turns.length, diagrams };
 }
 
 function isWithin(root: string, target: string): boolean {

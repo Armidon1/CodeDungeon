@@ -1,5 +1,5 @@
 // Prova del gioco nel browser: avvia il ponte in modalità play sul progetto d'esempio, apre Chromium headless
-// e lo pilota via DevTools Protocol (menu, tour, modalità chat, divisori, layout a 1400 e a 390 px).
+// e lo pilota via DevTools Protocol (menu, tour, modalità chat e storico salvato, divisori, layout a 1400 e a 390 px).
 //   npm run build:game && npm run test:game
 // Il browser si sceglie con CHROME_PATH; altrimenti si cerca chromium o google-chrome nel PATH.
 
@@ -237,6 +237,14 @@ try {
   await load();
   check(await evaluate(`document.getElementById("app").classList.contains("is-chat")`), "la modalità chat resta dopo il ricaricamento");
   check(await evaluate(`document.documentElement.lang === "it"`), "la lingua resta dopo il ricaricamento");
+  check(
+    await waitFor(`document.querySelectorAll("#chat-log .chat-msg").length > 0 && !!document.querySelector("#chat-log .chat-sep")`),
+    "lo storico della chat resta dopo il ricaricamento, separato dai messaggi nuovi",
+  );
+  await click("#chat-clear");
+  check(await evaluate(`document.querySelectorAll("#chat-log .chat-msg").length === 0 && !!document.querySelector("#chat-log .chat-empty")`), "Svuota cancella lo storico della chat");
+  await load();
+  check(await evaluate(`document.querySelectorAll("#chat-log .chat-msg").length === 0`), "lo storico svuotato resta vuoto dopo il ricaricamento");
 
   // ---------- telefono ----------
   await viewport(390, 844);
@@ -246,6 +254,15 @@ try {
   await waitFor(`document.getElementById("title-screen").hidden`);
   await waitFor(`document.getElementById("dialog-text").textContent.trim().length > 0`, 8000);
   check(await noOverflow(), "chat senza scorrimento orizzontale a 390 px");
+  await evaluate(`document.activeElement?.blur()`);
+  await press("ArrowRight");
+  await press("ArrowRight");
+  await waitFor(`document.querySelectorAll("#chat-log .chat-msg").length > 0`);
+  await load();
+  check(await waitFor(`!!document.querySelector("#chat-log .chat-sep")`), "a 390 px lo storico resta dopo il ricaricamento");
+  check(await noOverflow(), "storico salvato senza scorrimento orizzontale a 390 px");
+  await click("#start-btn");
+  await waitFor(`document.getElementById("title-screen").hidden`);
   check(await inView("ask-input"), "a 390 px il campo della domanda resta visibile");
   await evaluate(`document.activeElement?.blur()`);
   await press("c");

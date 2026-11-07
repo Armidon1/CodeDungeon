@@ -149,7 +149,7 @@ export class App {
       this.setChat(false);
       void this.goToFile(code.file, code.lines);
     },
-    openDiagram: (id) => void this.loadDiagram(id).then((d) => this.openPop(d, undefined)),
+    openDiagram: (id) => void this.openDiagramPop(id),
   });
   /** Codice e schema mostrati dall'agente prima del suo prossimo fumetto. */
   private pendingCode: ChatCode | undefined;
@@ -203,6 +203,7 @@ export class App {
     if (stored && !isEmpty(stored)) this.applyStored(stored);
     else if (stored) this.persist();
     $("project-name").textContent = this.source.projectName;
+    this.chat.restore(this.source.projectName);
     this.renderFileList();
     await Promise.all([this.renderTourList(), this.renderDiagramList(), this.renderConversationList()]);
     this.renderTitleSource();
@@ -677,8 +678,14 @@ export class App {
 
   private async renderDiagramList(): Promise<void> {
     const list = $("diagram-list");
+    const [diagrams, convs] = await Promise.all([
+      this.source.listDiagrams().catch(() => []),
+      this.source.listConversations().catch(() => []),
+    ]);
     list.innerHTML = "";
-    const diagrams = await this.source.listDiagrams().catch(() => []);
+    // schema → conversazione che l'ha disegnato (la più recente, se più d'una)
+    const askedIn = new Map<string, string>();
+    for (const c of convs) for (const id of c.diagrams ?? []) if (!askedIn.has(id)) askedIn.set(id, c.title);
     if (diagrams.length === 0) {
       list.innerHTML = `<li class="muted small">${t().msg.noDiagrams}</li>`;
       return;
@@ -690,7 +697,9 @@ export class App {
       btn.className = "tour-item";
       btn.innerHTML = `<span class="tour-title"></span><span class="tour-meta"></span>`;
       btn.querySelector(".tour-title")!.textContent = d.title;
-      btn.querySelector(".tour-meta")!.textContent = t().kinds[d.kind];
+      const from = askedIn.get(d.id);
+      btn.querySelector(".tour-meta")!.textContent = from ? `${t().kinds[d.kind]} · ${t().msg.fromQuestion(from)}` : t().kinds[d.kind];
+      if (from) btn.classList.add("is-asked");
       btn.addEventListener("click", () => void this.openDiagramTab(d.id));
       li.append(btn);
       list.append(li);
@@ -699,7 +708,11 @@ export class App {
 
   private async renderConversationList(): Promise<void> {
     const list = $("conversation-list");
-    const convs = await this.source.listConversations().catch(() => []);
+    const [convs, diagrams] = await Promise.all([
+      this.source.listConversations().catch(() => []),
+      this.source.listDiagrams().catch(() => []),
+    ]);
+    const titles = new Map(diagrams.map((d) => [d.id, d.title]));
     list.innerHTML = "";
     if (convs.length === 0) {
       list.innerHTML = `<li class="muted small">${t().msg.noConversations}</li>`;
@@ -716,6 +729,21 @@ export class App {
       btn.querySelector(".tour-meta")!.textContent = `${t().msg.questions(c.turns)} · ${date.format(new Date(c.updatedAt))}`;
       btn.addEventListener("click", () => void this.openConversation(c.id));
       li.append(btn);
+      // gli schemi disegnati nelle risposte, sotto la loro conversazione
+      const drawn = (c.diagrams ?? []).filter((id) => titles.has(id));
+      if (drawn.length > 0) {
+        const chips = document.createElement("div");
+        chips.className = "conv-diagrams";
+        for (const id of drawn) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "chip-btn conv-diagram";
+          chip.textContent = t().msg.showDiagram(titles.get(id)!);
+          chip.addEventListener("click", () => void this.openDiagramTab(id));
+          chips.append(chip);
+        }
+        li.append(chips);
+      }
       list.append(li);
     }
   }
@@ -1064,6 +1092,15 @@ export class App {
     const d = await this.source.loadDiagram(id);
     this.diagramCache.set(id, d);
     return d;
+  }
+
+  /** Schema dalla chat: nella finestra della lavagna sopra il codice. */
+  private async openDiagramPop(id: string): Promise<void> {
+    try {
+      await this.openPop(await this.loadDiagram(id), undefined);
+    } catch (e) {
+      this.say({ text: t().msg.cantOpenDiagram(e instanceof Error ? e.message : String(e)), expression: "preoccupato" });
+    }
   }
 
   private async openDiagramTab(id: string): Promise<void> {
@@ -1557,6 +1594,7 @@ export class App {
       case "conversation":
         this.conversation = cmd.summary.id;
         void this.renderConversationList();
+        if (cmd.summary.diagrams?.length) void this.renderDiagramList();
         break;
     }
   }

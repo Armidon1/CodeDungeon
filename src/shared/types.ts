@@ -206,6 +206,8 @@ export interface ConversationSummary {
   title: string;
   updatedAt: string;
   turns: number;
+  /** Schemi disegnati nelle risposte (id, senza doppioni, in ordine). */
+  diagrams: string[];
 }
 
 // ---------- Protocollo WebSocket tra ponte e gioco ----------
