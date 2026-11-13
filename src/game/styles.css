@@ -473,6 +473,55 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 }
 .code-input::selection { color: transparent; background: color-mix(in srgb, var(--sky) 35%, transparent); }
 .editor.is-editable:focus-within .ln { color: var(--ink-dim); }
+
+/* Segni della guida (mark_lines): ondina sotto le righe, pulsante nel margine, commento sotto la riga */
+.line.mark code { text-decoration: underline wavy; text-decoration-skip-ink: none; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.line.mark-error code { text-decoration-color: var(--ember); }
+.line.mark-warning code { text-decoration-color: var(--lantern); }
+.line.mark-hint code { text-decoration-color: var(--sky); }
+.mark-pin {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  z-index: 3;
+  transform: translateY(-50%);
+  width: 1.6ch;
+  height: 1.1em;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  font-size: 0.8em;
+  line-height: 1.1em;
+  text-align: center;
+  color: var(--night);
+  cursor: pointer;
+  clip-path: var(--notch);
+}
+.mark-pin-error { background: var(--ember); }
+.mark-pin-warning { background: var(--lantern); }
+.mark-pin-hint { background: var(--sky); }
+.mark-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.mark-note {
+  position: absolute;
+  z-index: 4;
+  max-width: min(46ch, calc(100vw - 8ch - 24px));
+  margin: 2px 0 0;
+  padding: 6px 10px;
+  font-family: var(--font-body);
+  font-size: calc(14px * var(--fs));
+  line-height: 1.4;
+  color: var(--ink);
+  background: var(--panel-2);
+  border-left: 4px solid var(--ink-faint);
+  box-shadow: 0 0 0 2px var(--line);
+  white-space: normal;
+  pointer-events: none;
+}
+.mark-note p { margin: 0; }
+.mark-note p + p { margin-top: 4px; }
+.mark-note .mark-note-error b { color: var(--ember); }
+.mark-note .mark-note-warning b { color: var(--lantern); }
+.mark-note .mark-note-hint b { color: var(--sky); }
 /* "Chiedi ▾ → Errore": riquadro sotto la barra per incollare l'output del terminale */
 .edit-error {
   position: absolute;

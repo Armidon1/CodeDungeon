@@ -51,9 +51,39 @@ await fs.cp(path.resolve("examples/packet-server"), project, { recursive: true }
 // modalità mcp con lo stdin aperto e muto: il gioco vede un agente collegato e le domande partono davvero
 const server = spawn("npx", ["tsx", "src/server/cli.ts", "mcp", "--project", project, "--port", String(PORT)], {
   env: { ...process.env, CODE_DUNGEON_DATA: path.join(tmp, "data") },
-  stdio: ["pipe", "ignore", "pipe"],
+  stdio: ["pipe", "pipe", "pipe"],
 });
 children.push(server);
+// l'agente finto parla MCP (2025) sullo stdin: serve per mandare al gioco i comandi degli strumenti
+let rpcId = 0;
+const rpcWaiting = new Map<number, (msg: any) => void>();
+let rpcBuf = "";
+server.stdout!.on("data", (d) => {
+  rpcBuf += String(d);
+  let nl: number;
+  while ((nl = rpcBuf.indexOf("\n")) >= 0) {
+    const line = rpcBuf.slice(0, nl);
+    rpcBuf = rpcBuf.slice(nl + 1);
+    try {
+      const msg = JSON.parse(line);
+      rpcWaiting.get(msg.id)?.(msg);
+      rpcWaiting.delete(msg.id);
+    } catch {}
+  }
+});
+const rpc = (method: string, params: unknown): Promise<any> => {
+  const id = ++rpcId;
+  server.stdin!.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+  return new Promise((resolve) => rpcWaiting.set(id, resolve));
+};
+let mcpReady: Promise<unknown> | undefined;
+const callTool = async (name: string, args: unknown): Promise<any> => {
+  mcpReady ??= rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test-game", version: "0" } }).then(() =>
+    server.stdin!.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n"),
+  );
+  await mcpReady;
+  return (await rpc("tools/call", { name, arguments: args })).result;
+};
 await new Promise<void>((resolve, reject) => {
   const timer = setTimeout(() => reject(new Error("il ponte non parte")), 30_000);
   server.stderr!.on("data", (d) => {
@@ -389,6 +419,44 @@ try {
   check(await waitFor(`document.getElementById("edit-state").dataset.msg === "ok"`), "Sovrascrivi salva");
   check((await fs.readFile(path.join(project, "protocol.py"), "utf8")).endsWith('"prova"m#!'), "il file sovrascritto ha il testo dell'editor");
 
+  // segni della guida: ondina, pulsante nel margine col commento; seguono le righe e spariscono se le cambi
+  const marked = await callTool("mark_lines", {
+    path: "protocol.py",
+    marks: [
+      { line: 3, kind: "error", message: "Guarda le parentesi." },
+      { line: 5, kind: "hint", message: "Ripassa gli import." },
+    ],
+  });
+  check(!marked?.isError && (await waitFor(`document.querySelector('#editor .line[data-n="3"]').classList.contains("mark-error") && document.querySelector('#editor .line[data-n="5"]').classList.contains("mark-hint")`)), "mark_lines sottolinea le righe nell'editor");
+  check(
+    await evaluate(`(() => {
+      const pin = document.querySelector('#editor .line[data-n="3"] .mark-pin');
+      pin.scrollIntoView({ block: "center" });
+      const r = pin.getBoundingClientRect();
+      return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === pin && !document.getElementById("edit-marks-clear").hidden;
+    })()`),
+    "il pulsante del segno sta sopra l'editor modificabile e compare Pulisci segni",
+  );
+  await evaluate(`document.querySelector('#editor .line[data-n="3"] .mark-pin').dispatchEvent(new PointerEvent("pointerover", { bubbles: true }))`);
+  check(await waitFor(`!document.getElementById("mark-note").hidden && /parentesi/.test(document.getElementById("mark-note").textContent)`), "al passaggio del mouse si legge il commento");
+  await evaluate(`(() => { const ta = document.getElementById("code-input"); ta.focus(); ta.setSelectionRange(0, 0); })()`);
+  check(await waitFor(`document.getElementById("mark-note").hidden`), "il commento si chiude tornando a scrivere");
+  await press("Enter");
+  check(
+    await waitFor(`document.querySelector('#editor .line[data-n="4"]').classList.contains("mark-error") && document.querySelector('#editor .line[data-n="6"]').classList.contains("mark-hint") && !document.querySelector('#editor .line[data-n="3"]').classList.contains("mark")`),
+    "i segni seguono le righe quando ne aggiungi sopra",
+  );
+  await evaluate(`(() => { const ta = document.getElementById("code-input"); const lines = ta.value.split("\\n"); const end = lines.slice(0, 4).join("\\n").length; ta.setSelectionRange(end, end); })()`);
+  await typeText(" ");
+  check(
+    await waitFor(`!document.querySelector('#editor .line.mark-error') && document.querySelector('#editor .line[data-n="6"]').classList.contains("mark-hint")`),
+    "modificare una riga segnata toglie il suo segno, gli altri restano",
+  );
+  await click("#edit-marks-clear");
+  check(await waitFor(`!document.querySelector('#editor .line.mark') && document.getElementById("edit-marks-clear").hidden`), "Pulisci segni toglie tutti i segni");
+  await press("s", 2);
+  await waitFor(`document.getElementById("edit-state").dataset.msg === "ok"`);
+
   await click("#edit-new-btn");
   await evaluate(`document.getElementById("edit-new-name").value = "solve.py"`);
   await evaluate(`document.getElementById("edit-new").requestSubmit()`);
@@ -412,6 +480,13 @@ try {
   await click(`#file-list .file[data-path="protocol.py"]`);
   check(await waitFor(`document.getElementById("code-input")`), "a 390 px l'editor è modificabile");
   check(await inView("edit-save"), "a 390 px il pulsante Salva è visibile");
+  await callTool("mark_lines", { path: "protocol.py", marks: [{ line: 2, kind: "warning", message: "Un commento lungo abbastanza da andare a capo sullo schermo stretto del telefono." }] });
+  await waitFor(`document.querySelector('#editor .line[data-n="2"] .mark-pin')`);
+  await click(`#editor .line[data-n="2"] .mark-pin`);
+  check(
+    await waitFor(`(() => { const n = document.getElementById("mark-note"); const r = n.getBoundingClientRect(); return !n.hidden && r.right <= innerWidth && r.left >= 0; })()`),
+    "a 390 px il commento del segno sta nello schermo",
+  );
   check(await noOverflow(), "tutor senza scorrimento orizzontale a 390 px");
   await click("#edit-ask-btn");
   check(

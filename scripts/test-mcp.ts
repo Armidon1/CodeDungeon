@@ -46,7 +46,7 @@ check((client.getServerCapabilities()?.experimental as any)?.["claude/channel"],
 
 const tools = (await client.listTools()).tools.map((t) => t.name).sort();
 console.log("strumenti:", tools.join(", "));
-check(tools.includes("highlight_lines") && tools.includes("add_step") && tools.includes("get_user_questions"), "strumenti esposti");
+check(tools.includes("highlight_lines") && tools.includes("mark_lines") && tools.includes("add_step") && tools.includes("get_user_questions"), "strumenti esposti");
 
 const prompt = await client.getPrompt({ name: "crea_tour", arguments: { flusso: "il login" } });
 const promptText = (prompt.messages[0]?.content as { text?: string }).text ?? "";
@@ -200,10 +200,20 @@ check(
 );
 r = await client.callTool({ name: "get_game_state", arguments: {} });
 check(/"mode": "tutor"/.test(text(r)) && !/print\(/.test(text(r)), "lo stato del gioco non si porta dietro il codice della domanda");
+// mark_lines: ondina e commento sulle righe, con il testo del file a cui si riferiscono; righe fuori dal file rifiutate
+r = await client.callTool({ name: "mark_lines", arguments: { path: "protocol.py", marks: [{ line: 30, endLine: 31, kind: "error", message: "Quante parentesi apri?" }, { line: 32, kind: "hint", message: "Ripassa i cicli." }], question_id: ev4?.meta.question_id } });
+const marksMsg = received.findLast((m) => m.type === "marks");
+check(
+  !r.isError && marksMsg?.type === "marks" && marksMsg.path === "protocol.py" && marksMsg.marks.length === 2 && marksMsg.marks[0].endLine === 31 && marksMsg.content.length > 0,
+  "mark_lines arriva al gioco con i segni e il testo del file",
+);
+r = await client.callTool({ name: "mark_lines", arguments: { path: "protocol.py", marks: [{ line: 9999, kind: "warning", message: "x" }] } });
+check(r.isError, "mark_lines rifiuta righe fuori dal file");
 await client.callTool({ name: "show_dialog", arguments: { text: "Guarda le parentesi della riga 2.", question_id: ev4?.meta.question_id } });
 const tutorConv = JSON.parse(await fs.readFile(path.join(convDir, `${ev4?.meta.conversation}.json`), "utf8")) as Conversation;
 const savedBuffer = tutorConv.turns[0]?.question.context.buffer;
 check(savedBuffer?.file === "solve.py" && savedBuffer.dirty && savedBuffer.content === "", "la conversazione salvata non duplica il codice dell'editor");
+check(tutorConv.turns[0]?.marks?.file === "protocol.py" && tutorConv.turns[0].marks.marks.length === 2, "i segni restano nella conversazione");
 // in flusso i campi del tutor vengono tolti
 game.send(JSON.stringify({ type: "question", text: "E qui?", context: { level: "medio", buffer: { file: "a.py", content: "segreto", dirty: false }, output: "x" } }));
 await new Promise((res) => setTimeout(res, 150));

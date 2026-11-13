@@ -1,6 +1,6 @@
 // Modalità tutor: cosa accompagna una domanda (buffer dell'editor, righe cambiate) e le scelte rapide.
 
-import { BUFFER_MAX, CHANGED_MAX, type TutorBuffer } from "../shared/types";
+import { BUFFER_MAX, CHANGED_MAX, type LineMark, type TutorBuffer } from "../shared/types";
 
 export const QUICK_ASKS = ["hint", "check", "error"] as const;
 export type QuickAsk = (typeof QUICK_ASKS)[number];
@@ -69,6 +69,64 @@ export function changedLines(before: string, after: string): [number, number][] 
     else ranges.push([l, l]);
   }
   return ranges.slice(0, CHANGED_MAX);
+}
+
+/**
+ * Per ogni riga di `before` (da 0), dove si trova ora in `after` (da 0), o -1 se è stata cambiata o tolta.
+ * Stessa sottosequenza comune di changedLines; sui file enormi le righe in mezzo contano come cambiate.
+ */
+export function lineMap(before: string, after: string): Int32Array {
+  const a = before.split("\n");
+  const b = after.split("\n");
+  const map = new Int32Array(a.length).fill(-1);
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) {
+    map[start] = start;
+    start++;
+  }
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA--;
+    endB--;
+    map[endA] = endB;
+  }
+  const n = endA - start;
+  const m = endB - start;
+  if (!n || !m || n * m > LCS_MAX_CELLS) return map;
+  const t = new Uint32Array((n + 1) * (m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      t[i * (m + 1) + j] = a[start + i] === b[start + j] ? t[(i + 1) * (m + 1) + j + 1] + 1 : Math.max(t[(i + 1) * (m + 1) + j], t[i * (m + 1) + j + 1]);
+    }
+  }
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[start + i] === b[start + j]) map[start + i++] = start + j++;
+    else if (t[i * (m + 1) + j + 1] >= t[(i + 1) * (m + 1) + j]) j++;
+    else i++;
+  }
+  return map;
+}
+
+/**
+ * I segni spostati sul testo nuovo: seguono le righe se ne aggiungi o togli altre,
+ * spariscono se cambi una delle loro righe.
+ */
+export function remapMarks(marks: LineMark[], before: string, after: string): LineMark[] {
+  if (before === after || !marks.length) return marks;
+  const map = lineMap(before, after);
+  const out: LineMark[] = [];
+  for (const mk of marks) {
+    const end = mk.endLine ?? mk.line;
+    let ok = true;
+    for (let l = mk.line; l <= end && ok; l++) ok = (map[l - 1] ?? -1) >= 0 && (l === mk.line || map[l - 1] === map[l - 2] + 1);
+    if (!ok) continue;
+    const line = map[mk.line - 1] + 1;
+    out.push(end === mk.line ? { ...mk, line } : { ...mk, line, endLine: map[end - 1] + 1 });
+  }
+  return out;
 }
 
 /** Il buffer da allegare a una domanda, tagliato a BUFFER_MAX. */

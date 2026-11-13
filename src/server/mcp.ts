@@ -10,9 +10,13 @@ import {
   DIAGRAM_SHAPES,
   EXPRESSIONS,
   LEVELS,
+  MARK_KINDS,
+  MARK_MESSAGE_MAX,
+  MARKS_MAX,
   diagramPieces,
   type Diagram,
   type GameContext,
+  type LineMark,
   type StepDiagram,
   type Tour,
   type TourStep,
@@ -217,6 +221,43 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         await checkLines(path, start, end);
         const content = await project.readFile(path);
         return ok(`Righe ${start}-${end} di ${path} evidenziate. ${delivered(bridge.send({ type: "highlight", path, content, start, end }))}`);
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "mark_lines",
+    {
+      title: "Segna righe",
+      description:
+        "Sottolinea righe di un file con un'ondina e un commento a margine (error, warning, hint), come un correttore. " +
+        "Non cambia il testo. In tutor serve a indicare dove guardare senza dare la soluzione. " +
+        "I segni spariscono quando l'utente modifica quelle righe; marks vuoto li toglie. Poi spiega con show_dialog.",
+      inputSchema: {
+        path: z.string(),
+        marks: z
+          .array(
+            z.object({
+              line: z.number().int().min(1),
+              endLine: z.number().int().min(1).optional(),
+              kind: z.enum(MARK_KINDS),
+              message: z.string().min(1).max(MARK_MESSAGE_MAX).describe("Commento breve: cosa guardare, non la correzione."),
+            }),
+          )
+          .max(MARKS_MAX),
+        question_id: z.string().max(64).optional().describe("Id della domanda a cui rispondi."),
+      },
+    },
+    async ({ path, marks, question_id }) => {
+      try {
+        for (const m of marks) await checkLines(path, m.line, m.endLine ?? m.line);
+        const content = await project.readFile(path);
+        if (question_id) bridge.answer(question_id);
+        const clean: LineMark[] = marks.map((m) => (m.endLine && m.endLine !== m.line ? m : { line: m.line, kind: m.kind, message: m.message }));
+        const what = clean.length ? `${clean.length} segni su ${path}.` : `Segni di ${path} tolti.`;
+        return ok(`${what} ${delivered(bridge.send({ type: "marks", path, content, marks: clean }))}${clean.length ? " Ora spiegali con show_dialog." : ""}`);
       } catch (e) {
         return fail(e);
       }
@@ -620,7 +661,7 @@ export const TUTOR_RULES =
   'Domande con context.mode "tutor": l\'utente scrive codice da solo e tu fai da insegnante. ' +
   "Non scrivere la soluzione: un aiuto per richiesta, a livelli (domanda guida, poi concetto, poi frammento minimo; soluzione completa solo se la chiede esplicitamente). " +
   "Leggi context.buffer (codice attuale, anche non salvato) e parti dalle righe in context.changed; context.output è l'errore del terminale. " +
-  "Correggi con highlight_lines sulla riga e spiega il perché; se il codice è giusto dillo in breve. Non modificare mai i file dell'utente. " +
+  "Correggi con highlight_lines o mark_lines (ondina e commento sulla riga, senza la correzione) e spiega il perché; se il codice è giusto dillo in breve. Non modificare mai i file dell'utente. " +
   "Regole complete nel prompt tutor.";
 
 /** Buffer, righe cambiate e output di una domanda in tutor, come testo per il canale. */

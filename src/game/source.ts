@@ -5,7 +5,7 @@
 import { t } from "./i18n";
 import type { Conversation, ConversationSummary, Diagram, DiagramSummary, GameContext, ServerMessage, StoredPrefs, Tour, TourSummary } from "../shared/types";
 
-export type AgentCommand = Extract<ServerMessage, { type: "open_file" | "highlight" | "dialog" | "play_tour" | "diagram" | "conversation" }>;
+export type AgentCommand = Extract<ServerMessage, { type: "open_file" | "highlight" | "marks" | "dialog" | "play_tour" | "diagram" | "conversation" }>;
 
 export type ConnectionState = "demo" | "connecting" | "connected" | "offline";
 

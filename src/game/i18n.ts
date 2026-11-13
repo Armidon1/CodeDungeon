@@ -3,7 +3,7 @@
 // setLang li riscrive tutti. I testi che cambiano a runtime usano `t()` e vanno ridisegnati dopo un cambio di lingua.
 // I testi dei tour e le risposte dell'agente restano nella lingua in cui sono scritti.
 
-import type { Aid, DiagramKind, Expression, GenerationMode, Level, Mode } from "../shared/types";
+import type { Aid, DiagramKind, Expression, GenerationMode, Level, MarkKind, Mode } from "../shared/types";
 import type { Frame } from "./settings";
 import type { QuickAsk } from "./tutor";
 
@@ -90,6 +90,8 @@ const en = {
     useOutput: "Ask about it",
     outputLabel: "Terminal output:",
     clearOutput: "Remove the output",
+    clearMarks: "Clear marks",
+    clearMarksTitle: "Remove the guide's marks from this file",
   },
   menu: {
     mode: "Mode",
@@ -183,6 +185,7 @@ const en = {
     sorpreso: "Surprised",
   } satisfies Record<Expression, string>,
   kinds: { flusso: "Flow", sequenza: "Sequence" } satisfies Record<DiagramKind, string>,
+  marks: { error: "Error", warning: "Warning", hint: "Hint" } satisfies Record<MarkKind, string>,
   msg: {
     defaultGuide: "Guide",
     lineRange: (a: number, b: number) => (a === b ? `line ${a}` : `lines ${a}–${b}`),
@@ -364,6 +367,8 @@ const it: Dict = {
     useOutput: "Chiedi",
     outputLabel: "Output del terminale:",
     clearOutput: "Togli l'output",
+    clearMarks: "Pulisci segni",
+    clearMarksTitle: "Togli i segni della guida da questo file",
   },
   menu: {
     mode: "Modalità",
@@ -457,6 +462,7 @@ const it: Dict = {
     sorpreso: "Sorpreso",
   },
   kinds: { flusso: "Flusso", sequenza: "Sequenza" },
+  marks: { error: "Errore", warning: "Attenzione", hint: "Suggerimento" },
   msg: {
     defaultGuide: "Guida",
     lineRange: (a, b) => (a === b ? `riga ${a}` : `righe ${a}–${b}`),

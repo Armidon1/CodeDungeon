@@ -72,6 +72,7 @@
               <span class="edit-actions" id="edit-actions">
                 <button type="button" class="chip-btn" id="edit-ask-btn" title="Ask the guide about your code" data-i18n="ui.askGuide" data-i18n-title="ui.askGuideTitle">Ask ▾</button>
                 <button type="button" class="chip-btn" id="edit-new-btn" data-i18n="ui.newFile">+ New file</button>
+                <button type="button" class="chip-btn" id="edit-marks-clear" title="Remove the guide's marks from this file" data-i18n="ui.clearMarks" data-i18n-title="ui.clearMarksTitle" hidden>Clear marks</button>
                 <button type="button" class="chip-btn" id="edit-save" title="Save the file (Ctrl+S)" data-i18n="ui.save" data-i18n-title="ui.saveTitle">Save</button>
               </span>
               <span class="edit-actions" id="edit-ask" hidden>
@@ -99,7 +100,7 @@
                 <button type="button" class="chip-btn" id="edit-error-cancel" data-i18n="ui.cancel">Cancel</button>
               </span>
             </form>
-            <div class="editor" id="editor" role="region" aria-label="Code editor" data-i18n-aria-label="ui.codeEditor" tabindex="0"></div>
+            <div class="editor" id="editor" role="region" aria-label="Code editor" data-i18n-aria-label="ui.codeEditor" tabindex="0"><div class="mark-note" id="mark-note" role="tooltip" hidden></div></div>
             <div class="editor-empty" id="editor-empty">
               <p data-i18n="ui.noFile">No file open.</p>
               <p class="muted" data-i18n="ui.noFileHint">Pick a tour, or ask the agent to open a file.</p>

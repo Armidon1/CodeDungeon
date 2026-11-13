@@ -11,6 +11,7 @@ import {
   type Expression,
   type GameContext,
   type Level,
+  type LineMark,
   type Mode,
   type StepLink,
   type StoredPrefs,
@@ -22,7 +23,7 @@ import { TRACK_IDS, type SoundSettings } from "./audio";
 import { ChatLog, type ChatCode } from "./chat";
 import { Board } from "./diagram";
 import { EditLayer } from "./editing";
-import { changedLines, tutorBuffer, type QuickAsk } from "./tutor";
+import { changedLines, remapMarks, tutorBuffer, type QuickAsk } from "./tutor";
 import { highlightLines, langLabel, langOf } from "./highlight";
 import { GuidePicker } from "./guide";
 import { DEFAULT_GUIDE_NAMES, LANGS, LANG_INFO, setLang, t, type Lang } from "./i18n";
@@ -110,6 +111,8 @@ export class App {
   private askedText = new Map<string, string>();
   /** Tutor: output del terminale da allegare alla prossima domanda ("Spiegami l'errore"). */
   private output: string | undefined;
+  /** Segni dell'agente (mark_lines) per file, con il testo a cui si riferiscono i numeri di riga. */
+  private marks = new Map<string, { base: string; marks: LineMark[] }>();
   private editLayer = new EditLayer($("editor"), { onInput: (text) => this.onEdit(text) });
   private rehighlight = 0;
   private navigating = Promise.resolve();
@@ -994,6 +997,69 @@ export class App {
       this.currentLines.map((html, i) => `<div class="line" data-n="${i + 1}"><span class="ln">${i + 1}</span><code>${html || " "}</code></div>`).join(""),
     );
     this.applyHighlight();
+    this.applyMarks();
+  }
+
+  // ---------- Segni dell'agente sulle righe ----------
+
+  /** Nuovi segni per un file: i numeri di riga si riferiscono a `base` e seguono le modifiche fatte da allora. */
+  private setMarks(file: string, marks: LineMark[], base: string): void {
+    const now = this.bufferOf(file) ?? base;
+    const list = remapMarks(marks, base, now);
+    if (list.length) this.marks.set(file, { base: now, marks: list });
+    else this.marks.delete(file);
+    if (file === this.currentFile) {
+      this.applyMarks();
+      this.renderEditBar();
+    }
+  }
+
+  /** Ondina sulle righe segnate e, sulla prima, un pulsante nel margine col commento. */
+  private applyMarks(): void {
+    const editor = $("editor");
+    for (const el of editor.querySelectorAll(".mark-pin")) el.remove();
+    for (const el of editor.querySelectorAll(".line.mark")) el.classList.remove("mark", "mark-error", "mark-warning", "mark-hint");
+    this.showMarkNote(undefined);
+    const list = this.currentFile ? this.marks.get(this.currentFile)?.marks : undefined;
+    list?.forEach((mk, i) => {
+      for (let l = mk.line; l <= (mk.endLine ?? mk.line); l++) editor.querySelector(`.line[data-n="${l}"]`)?.classList.add("mark", `mark-${mk.kind}`);
+      const ln = editor.querySelector(`.line[data-n="${mk.line}"] .ln`);
+      if (!ln || ln.querySelector(".mark-pin")) return;
+      const pin = document.createElement("button");
+      pin.type = "button";
+      pin.className = `mark-pin mark-pin-${mk.kind}`;
+      pin.dataset.mark = String(i);
+      pin.textContent = mk.kind === "hint" ? "?" : "!";
+      pin.setAttribute("aria-label", `${t().marks[mk.kind]}: ${mk.message}`);
+      ln.append(pin);
+    });
+  }
+
+  /** Il commento di un segno sotto la sua riga (undefined: lo nasconde). */
+  private showMarkNote(pin: HTMLElement | undefined): void {
+    const note = $("mark-note");
+    const list = this.currentFile ? this.marks.get(this.currentFile)?.marks : undefined;
+    const line = pin?.closest<HTMLElement>(".line");
+    const mk = pin && list?.[Number(pin.dataset.mark)];
+    if (!mk || !line) {
+      note.hidden = true;
+      return;
+    }
+    // tutti i segni che partono da questa riga
+    const here = list!.filter((m) => m.line === mk.line);
+    note.replaceChildren(
+      ...here.map((m) => {
+        const p = document.createElement("p");
+        p.className = `mark-note-${m.kind}`;
+        const b = document.createElement("b");
+        b.textContent = `${t().marks[m.kind]}: `;
+        p.append(b, m.message);
+        return p;
+      }),
+    );
+    note.style.top = `${line.offsetTop + line.offsetHeight}px`;
+    note.style.left = `calc(var(--gutter, 4ch) + ${$("editor").scrollLeft}px)`;
+    note.hidden = false;
   }
 
   // ---------- Modalità tutor: editor modificabile ----------
@@ -1031,6 +1097,14 @@ export class App {
     const file = this.currentFile;
     if (!file) return;
     const wasDirty = this.isDirty(file);
+    // i segni seguono le righe; quelli sulle righe cambiate spariscono
+    const mk = this.marks.get(file);
+    if (mk) {
+      const list = remapMarks(mk.marks, mk.base, text);
+      if (list.length) this.marks.set(file, { base: text, marks: list });
+      else this.marks.delete(file);
+      if (!list.length) this.renderEditBar();
+    }
     this.drafts.set(file, text);
     if (!this.isDirty(file)) this.drafts.delete(file);
     const state = $("edit-state");
@@ -1052,6 +1126,7 @@ export class App {
     if (bar.hidden) $("edit-error").hidden = true;
     $("editor").parentElement!.classList.toggle("has-edit-bar", !bar.hidden);
     $<HTMLButtonElement>("edit-save").disabled = !this.currentFile;
+    $("edit-marks-clear").hidden = !this.currentFile || !this.marks.has(this.currentFile);
     const state = $("edit-state");
     const dirty = this.isDirty();
     if (!state.dataset.msg) state.textContent = dirty ? t().msg.unsaved : "";
@@ -1848,6 +1923,16 @@ export class App {
         this.pendingCode = { file: cmd.path, lines: [cmd.start, cmd.end] };
         await this.goToFile(cmd.path, [cmd.start, cmd.end], cmd.content);
         break;
+      case "marks": {
+        const first = cmd.marks[0];
+        if (first) {
+          const lines = cmd.marks.flatMap((m) => [m.line, m.endLine ?? m.line]);
+          this.pendingCode ??= { file: cmd.path, lines: [Math.min(...lines), Math.max(...lines)] };
+          if (cmd.path !== this.currentFile) await this.goToFile(cmd.path, undefined, this.drafts.has(cmd.path) ? undefined : cmd.content);
+        }
+        this.setMarks(cmd.path, cmd.marks, cmd.content.replace(/\r\n/g, "\n"));
+        break;
+      }
       case "dialog": {
         sound.play("answer");
         const line: DialogLine = {
@@ -1882,6 +1967,7 @@ export class App {
         // i file con modifiche non salvate tengono la versione su disco con cui confrontarle
         for (const f of [...this.fileCache.keys()]) if (!this.drafts.has(f)) this.fileCache.delete(f);
         this.diagramCache.clear();
+        this.marks.clear();
         await this.playTour(cmd.tour.id, cmd.fromStep, cmd.tour);
         await this.renderTourList();
         break;
@@ -1935,6 +2021,13 @@ export class App {
   /** Il codice e lo schema che l'agente aveva mostrato rispondendo. */
   private async showAnswerScene(turn: ConversationTurn): Promise<void> {
     if (turn.code) await this.goToFile(turn.code.file, turn.code.lines);
+    if (turn.marks) {
+      if (turn.marks.file !== this.currentFile) await this.goToFile(turn.marks.file);
+      // i numeri di riga sono quelli di allora: si rimettono sul testo di adesso, se ci stanno
+      const now = this.bufferOf(turn.marks.file) ?? "";
+      const count = now.split("\n").length;
+      this.setMarks(turn.marks.file, turn.marks.marks.filter((m) => (m.endLine ?? m.line) <= count), now);
+    }
     if (!turn.diagram) return;
     try {
       await this.openPop(await this.loadDiagram(turn.diagram.id), turn.diagram.upto);
@@ -2221,6 +2314,32 @@ export class App {
       this.editLayer.area.focus();
     });
     $("edit-new-btn").addEventListener("click", () => this.openNewFile(true));
+    $("edit-marks-clear").addEventListener("click", () => {
+      if (this.currentFile) this.setMarks(this.currentFile, [], "");
+      sound.play("select");
+    });
+    // commento dei segni: al passaggio del mouse, al tocco o col fuoco da tastiera
+    const editor = $("editor");
+    const pinOf = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>(".mark-pin") ?? undefined;
+    editor.addEventListener("pointerover", (e) => {
+      const pin = pinOf(e);
+      if (pin) this.showMarkNote(pin);
+    });
+    editor.addEventListener("pointerout", (e) => {
+      const pin = pinOf(e);
+      if (pin && document.activeElement !== pin) this.showMarkNote(undefined);
+    });
+    // tornando a scrivere il commento si chiude
+    editor.addEventListener("focusin", (e) => this.showMarkNote(pinOf(e)));
+    editor.addEventListener("focusout", (e) => {
+      if (pinOf(e)) this.showMarkNote(undefined);
+    });
+    editor.addEventListener("click", (e) => {
+      const pin = pinOf(e);
+      if (!pin) return;
+      pin.focus();
+      this.showMarkNote(pin);
+    });
     $("edit-ask-btn").addEventListener("click", () => this.showAskMenu(true));
     for (const b of $("edit-ask").querySelectorAll<HTMLButtonElement>("[data-quick]")) {
       b.addEventListener("click", () => this.quickAsk(b.dataset.quick as QuickAsk));

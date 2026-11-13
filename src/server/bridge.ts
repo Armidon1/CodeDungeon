@@ -189,6 +189,7 @@ export class Bridge {
     if (msg.type === "dialog") a.turn.answers.push({ text: msg.text, expression: msg.expression, at: new Date().toISOString() });
     else if (msg.type === "highlight") a.turn.code = { file: msg.path, lines: [msg.start, msg.end] };
     else if (msg.type === "open_file") a.turn.code = { file: msg.path };
+    else if (msg.type === "marks") a.turn.marks = { file: msg.path, marks: msg.marks };
     else if (msg.type === "diagram") a.turn.diagram = msg.upto === undefined ? { id: msg.diagram.id } : { id: msg.diagram.id, upto: msg.upto };
     else return;
     this.saveConversation(a.conversation);
@@ -236,6 +237,7 @@ export class Bridge {
     this.saveConversation(c);
   }
 
+  /** La scena da rimandare a chi si collega. I segni (marks) no: l'utente può averli tolti o aver cambiato quelle righe; restano nella conversazione. */
   private remember(msg: ServerMessage): void {
     if (msg.type === "play_tour") {
       this.scene = [msg];

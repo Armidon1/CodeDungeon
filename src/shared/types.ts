@@ -237,6 +237,21 @@ export interface ConversationAnswer {
   at: string;
 }
 
+// ---------- Segni sulle righe (mark_lines) ----------
+
+export const MARK_KINDS = ["error", "warning", "hint"] as const;
+export type MarkKind = (typeof MARK_KINDS)[number];
+export const MARKS_MAX = 20;
+export const MARK_MESSAGE_MAX = 300;
+
+/** Un'ondina sotto le righe line..endLine (da 1) con un commento a margine. Non cambia il testo. */
+export interface LineMark {
+  line: number;
+  endLine?: number;
+  kind: MarkKind;
+  message: string;
+}
+
 /** Una domanda e ciò che l'agente ha mostrato per rispondere. */
 export interface ConversationTurn {
   question: { id: string; text: string; askedAt: string; context: GameContext };
@@ -245,6 +260,8 @@ export interface ConversationTurn {
   code?: { file: string; lines?: [number, number] };
   /** Ultimo schema mostrato nella risposta. */
   diagram?: StepDiagram;
+  /** Ultimi segni messi sulle righe nella risposta. */
+  marks?: { file: string; marks: LineMark[] };
 }
 
 /** Conversazione salvata in .tour/conversazioni/<id>.json: l'id è quello della prima domanda. */
@@ -282,6 +299,8 @@ export type ServerMessage =
   | { type: "prefs"; prefs: StoredPrefs }
   | { type: "open_file"; path: string; content: string }
   | { type: "highlight"; path: string; content: string; start: number; end: number }
+  /** Segni sulle righe di un file (vuoto: li toglie). content: il file su disco a cui si riferiscono i numeri di riga. */
+  | { type: "marks"; path: string; content: string; marks: LineMark[] }
   | { type: "dialog"; text: string; expression?: Expression; speaker?: string }
   | { type: "play_tour"; tour: Tour; fromStep?: string }
   | { type: "diagram"; diagram: Diagram; upto?: number }
