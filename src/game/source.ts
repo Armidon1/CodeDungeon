@@ -20,6 +20,8 @@ export interface GameSource {
   /** Impostazioni salvate dal ponte (arrivano con hello); undefined nella demo. */
   prefs: StoredPrefs | undefined;
   readFile(path: string): Promise<string>;
+  /** Modalità tutor: salva (o crea) un file del progetto; risolve con l'elenco aggiornato dei file. */
+  writeFile(path: string, content: string): Promise<string[]>;
   listTours(): Promise<TourSummary[]>;
   loadTour(id: string): Promise<Tour>;
   listDiagrams(): Promise<DiagramSummary[]>;
@@ -140,6 +142,10 @@ export class BridgeSource implements GameSource {
 
   readFile(path: string): Promise<string> {
     return this.request<string>({ op: "read_file", path });
+  }
+  async writeFile(path: string, content: string): Promise<string[]> {
+    this.files = await this.request<string[]>({ op: "write_file", path, content });
+    return this.files;
   }
   listTours(): Promise<TourSummary[]> {
     return this.request<TourSummary[]>({ op: "list_tours" });

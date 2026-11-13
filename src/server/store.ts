@@ -6,7 +6,7 @@ import { mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { cleanReader, type StoredPrefs } from "../shared/types.js";
+import { cleanMode, cleanReader, type StoredPrefs } from "../shared/types.js";
 import { log } from "./log.js";
 
 /** Limite delle impostazioni del gioco salvate (JSON). */
@@ -69,6 +69,8 @@ export class Store {
     const out: StoredPrefs = {};
     if (settings && typeof settings === "object" && !Array.isArray(settings)) out.settings = settings as Record<string, unknown>;
     if (reader !== undefined) out.reader = cleanReader(reader);
+    const mode = this.get("mode");
+    if (mode !== undefined) out.mode = cleanMode(mode);
     return out;
   }
 
@@ -77,6 +79,7 @@ export class Store {
     const s = prefs.settings;
     if (s && typeof s === "object" && !Array.isArray(s) && JSON.stringify(s).length <= MAX_SETTINGS) this.set("settings", s);
     if (prefs.reader !== undefined) this.set("reader", cleanReader(prefs.reader));
+    if (prefs.mode !== undefined) this.set("mode", cleanMode(prefs.mode));
     return this.load();
   }
 }

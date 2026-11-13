@@ -67,6 +67,23 @@
         <main class="main">
           <div class="tabs" id="tabs" role="group" aria-label="Open tabs" data-i18n-aria-label="ui.openTabs"></div>
           <div class="editor-wrap">
+            <div class="edit-bar" id="edit-bar" role="toolbar" aria-label="File editing" data-i18n-aria-label="ui.editBar" hidden>
+              <span class="edit-state" id="edit-state" role="status"></span>
+              <span class="edit-actions" id="edit-actions">
+                <button type="button" class="chip-btn" id="edit-new-btn" data-i18n="ui.newFile">+ New file</button>
+                <button type="button" class="chip-btn" id="edit-save" title="Save the file (Ctrl+S)" data-i18n="ui.save" data-i18n-title="ui.saveTitle">Save</button>
+              </span>
+              <span class="edit-actions" id="edit-confirm" hidden>
+                <span class="edit-question" data-i18n="ui.changedOnDisk">Changed on disk. Overwrite?</span>
+                <button type="button" class="chip-btn" id="edit-overwrite" data-i18n="ui.overwrite">Overwrite</button>
+                <button type="button" class="chip-btn" id="edit-confirm-cancel" data-i18n="ui.cancel">Cancel</button>
+              </span>
+              <form class="edit-actions edit-new" id="edit-new" hidden>
+                <input id="edit-new-name" type="text" maxlength="128" autocomplete="off" spellcheck="false" aria-label="New file name" placeholder="solve.py" data-i18n-aria-label="ui.newFileName" />
+                <button type="submit" class="chip-btn" data-i18n="ui.create">Create</button>
+                <button type="button" class="chip-btn" id="edit-new-cancel" data-i18n="ui.cancel">Cancel</button>
+              </form>
+            </div>
             <div class="editor" id="editor" role="region" aria-label="Code editor" data-i18n-aria-label="ui.codeEditor" tabindex="0"></div>
             <div class="editor-empty" id="editor-empty">
               <p data-i18n="ui.noFile">No file open.</p>
@@ -139,6 +156,7 @@
         <span class="status-step" id="status-step"></span>
         <span class="status-right">
           <span id="status-level"></span>
+          <span id="status-mode" class="status-mode"></span>
           <span id="status-gen"></span>
           <span id="status-lang"></span>
         </span>
@@ -163,6 +181,11 @@
         </div>
 
         <div class="menu-panel" role="tabpanel" id="menu-panel-gioco" data-tab="gioco" aria-labelledby="menu-tab-gioco">
+        <fieldset class="menu-group">
+          <legend data-i18n="menu.mode">Mode</legend>
+          <div class="option-grid mode-grid" id="mode-options"></div>
+        </fieldset>
+
         <fieldset class="menu-group">
           <legend data-i18n="menu.language">Language</legend>
           <div class="option-grid lang-grid" id="lang-options"></div>

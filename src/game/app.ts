@@ -3,6 +3,7 @@
 import {
   AIDS,
   LEVELS,
+  MODES,
   READER_NOTE_MAX,
   SELECTION_MAX,
   type ConversationTurn,
@@ -10,6 +11,7 @@ import {
   type Expression,
   type GameContext,
   type Level,
+  type Mode,
   type StepLink,
   type StoredPrefs,
   type Tour,
@@ -19,6 +21,7 @@ import * as sound from "./audio";
 import { TRACK_IDS, type SoundSettings } from "./audio";
 import { ChatLog, type ChatCode } from "./chat";
 import { Board } from "./diagram";
+import { EditLayer } from "./editing";
 import { highlightLines, langLabel, langOf } from "./highlight";
 import { GuidePicker } from "./guide";
 import { DEFAULT_GUIDE_NAMES, LANGS, LANG_INFO, setLang, t, type Lang } from "./i18n";
@@ -98,7 +101,12 @@ export class App {
   private currentFile: string | undefined;
   private currentLines: string[] = [];
   private highlight: [number, number] | undefined;
+  /** Contenuto dei file come sono su disco (l'ultima versione letta o salvata). */
   private fileCache = new Map<string, string>();
+  /** Modalità tutor: testo modificato e non ancora salvato, per file. */
+  private drafts = new Map<string, string>();
+  private editLayer = new EditLayer($("editor"), { onInput: (text) => this.onEdit(text) });
+  private rehighlight = 0;
   private navigating = Promise.resolve();
 
   private tour: Tour | undefined;
@@ -166,6 +174,7 @@ export class App {
     this.buildLevelSwitch();
     this.bindControls();
     this.applyLang();
+    this.applyMode();
     // il browser lascia suonare solo dopo un gesto dell'utente
     const unlock = () => {
       sound.unlock();
@@ -265,6 +274,11 @@ export class App {
       this.showStep(this.stepIndex >= 0 ? this.stepIndex : 0, false);
       return;
     }
+    if (this.tutor) {
+      // in tutor guida l'utente: nessun tour automatico (restano nella lista)
+      this.say({ text: t().msg.helloTutor(this.settings.guide.name), expression: "felice" });
+      return;
+    }
     const tours = await this.source.listTours().catch(() => []);
     if (tours.length > 0) {
       await this.playTour(tours[0].id);
@@ -292,7 +306,8 @@ export class App {
   /** Impostazioni arrivate dal ponte (all'avvio o da un'altra finestra). */
   private applyStored(p: StoredPrefs): void {
     const before = this.settings;
-    this.settings = fromStored(p);
+    // preferenze di un server più vecchio, senza modalità: si tiene quella scelta qui
+    this.settings = fromStored({ ...p, mode: p.mode ?? before.mode });
     saveSettings(this.settings);
     if (before.lang !== this.settings.lang) this.applyLang();
     applyReader(this.settings.reader);
@@ -305,6 +320,7 @@ export class App {
     this.syncLevelSwitch();
     this.syncTitleOptions();
     this.syncReaderOptions();
+    if (before.mode !== this.settings.mode) this.applyMode();
     this.renderStatus();
     // durante un tour il passo si rilegge con il nuovo livello o con le pagine
     const changed = before.level !== this.settings.level || before.reader.aids.includes("poco_testo") !== this.settings.reader.aids.includes("poco_testo");
@@ -427,6 +443,7 @@ export class App {
       b.disabled = b.dataset.textStep === "1" ? scale >= TEXT_SCALE_MAX : scale <= TEXT_SCALE_MIN;
     }
     for (const v of document.querySelectorAll<HTMLElement>(".size-value")) v.textContent = `${Math.round(scale * 100)}%`;
+    this.editLayer.fit();
   }
 
   private changeTextScale(dir: 1 | -1): void {
@@ -442,6 +459,7 @@ export class App {
   /** Righe e lavagne si rimisurano dopo un cambio di dimensioni (finestra o testo). */
   private relayout(): void {
     this.renderActivity();
+    this.editLayer.fit();
     if (this.currentFile) void this.walkTo(this.currentFile);
     if (!$("board-pop").hidden) this.popBoard.refresh();
     if (this.view !== undefined) this.tabBoard.refresh();
@@ -507,6 +525,7 @@ export class App {
   private setReader(reader: Settings["reader"]): void {
     this.settings.reader = reader;
     applyReader(reader);
+    this.editLayer.fit();
     this.persist();
   }
 
@@ -549,6 +568,18 @@ export class App {
         </label>`,
       );
     }
+    const modes = $("mode-options");
+    for (const m of MODES) {
+      const id = `opt-mode-${m}`;
+      modes.insertAdjacentHTML(
+        "beforeend",
+        `<label class="option" for="${id}">
+          <input type="radio" name="mode" id="${id}" value="${m}">
+          <span class="option-name" data-i18n="modes.${m}.label"></span>
+          <span class="option-hint" data-i18n="modes.${m}.hint"></span>
+        </label>`,
+      );
+    }
     const frames = $("frame-options");
     for (const f of FRAMES) {
       const id = `opt-frame-${f}`;
@@ -571,6 +602,11 @@ export class App {
         this.persist();
         this.applyFrame();
       }
+      if (input.name === "mode") {
+        this.settings.mode = input.value as Mode;
+        this.persist();
+        this.applyMode();
+      }
       if (input.name === "generation") {
         this.settings.generation = input.value as Settings["generation"];
         this.persist();
@@ -586,6 +622,8 @@ export class App {
     const gen = document.getElementById(`opt-gen-${this.settings.generation}`) as HTMLInputElement | null;
     const frame = document.getElementById(`opt-frame-${this.settings.frame}`) as HTMLInputElement | null;
     if (frame) frame.checked = true;
+    const mode = document.getElementById(`opt-mode-${this.settings.mode}`) as HTMLInputElement | null;
+    if (mode) mode.checked = true;
     const lang = document.getElementById(`opt-lang-${this.settings.lang}`) as HTMLInputElement | null;
     if (lv) lv.checked = true;
     if (gen) gen.checked = true;
@@ -912,7 +950,7 @@ export class App {
   private async doGoToFile(path: string, lines?: [number, number], content?: string): Promise<void> {
     if (content !== undefined) this.fileCache.set(path, content);
     if (this.view !== undefined) this.setView(undefined);
-    const text = await this.readFile(path);
+    const text = this.drafts.get(path) ?? (await this.readFile(path));
     const changing = path !== this.currentFile;
     if (changing) {
       const walk = this.walkTo(path);
@@ -931,18 +969,172 @@ export class App {
   }
 
   private renderEditor(text: string): void {
+    this.renderLines(text);
+    $("editor-empty").hidden = true;
+    this.renderTabs();
+    $("status-lang").textContent = langLabel(langOf(this.currentFile ?? ""));
+    this.syncEditable();
+  }
+
+  /** Righe evidenziate del file; la textarea della modalità tutor (se c'è) resta al suo posto. */
+  private renderLines(text: string): void {
     const lang = langOf(this.currentFile ?? "");
     this.currentLines = highlightLines(text, lang);
     const editor = $("editor");
     const digits = String(this.currentLines.length).length;
     editor.style.setProperty("--gutter", `${digits + 3.6}ch`);
-    editor.innerHTML = this.currentLines
-      .map((html, i) => `<div class="line" data-n="${i + 1}"><span class="ln">${i + 1}</span><code>${html || " "}</code></div>`)
-      .join("");
-    $("editor-empty").hidden = true;
-    this.renderTabs();
-    $("status-lang").textContent = langLabel(lang);
+    for (const el of editor.querySelectorAll(".line")) el.remove();
+    editor.insertAdjacentHTML(
+      "afterbegin",
+      this.currentLines.map((html, i) => `<div class="line" data-n="${i + 1}"><span class="ln">${i + 1}</span><code>${html || " "}</code></div>`).join(""),
+    );
     this.applyHighlight();
+  }
+
+  // ---------- Modalità tutor: editor modificabile ----------
+
+  private get tutor(): boolean {
+    return this.settings.mode === "tutor";
+  }
+
+  /** Testo del file come lo vede l'utente: la bozza se c'è, se no quello su disco. */
+  private bufferOf(file: string): string | undefined {
+    return this.drafts.get(file) ?? this.fileCache.get(file)?.replace(/\r\n/g, "\n");
+  }
+
+  private isDirty(file: string | undefined = this.currentFile): boolean {
+    if (!file || !this.drafts.has(file)) return false;
+    return this.drafts.get(file) !== this.fileCache.get(file)?.replace(/\r\n/g, "\n");
+  }
+
+  private applyMode(): void {
+    $("app").classList.toggle("is-tutor", this.tutor);
+    this.syncEditable();
+    this.renderStatus();
+    this.reportState();
+  }
+
+  /** In tutor l'editor del file aperto diventa modificabile; in flusso torna in sola lettura. */
+  private syncEditable(): void {
+    const text = this.currentFile ? this.bufferOf(this.currentFile) : undefined;
+    if (this.tutor && text !== undefined) this.editLayer.attach(text);
+    else this.editLayer.detach();
+    this.renderEditBar();
+  }
+
+  private onEdit(text: string): void {
+    const file = this.currentFile;
+    if (!file) return;
+    const wasDirty = this.isDirty(file);
+    this.drafts.set(file, text);
+    if (!this.isDirty(file)) this.drafts.delete(file);
+    const state = $("edit-state");
+    if (state.dataset.msg) this.setEditMessage("");
+    else if (wasDirty !== this.isDirty(file)) this.renderEditBar();
+    if (wasDirty !== this.isDirty(file)) this.renderTabs();
+    // ri-evidenziazione una volta per fotogramma, anche se si scrive veloce
+    cancelAnimationFrame(this.rehighlight);
+    this.rehighlight = requestAnimationFrame(() => {
+      if (this.currentFile !== file) return;
+      this.renderLines(this.editLayer.value);
+      this.editLayer.fit();
+    });
+  }
+
+  private renderEditBar(): void {
+    const bar = $("edit-bar");
+    bar.hidden = !this.tutor || this.view !== undefined;
+    $("editor").parentElement!.classList.toggle("has-edit-bar", !bar.hidden);
+    $<HTMLButtonElement>("edit-save").disabled = !this.currentFile;
+    const state = $("edit-state");
+    const dirty = this.isDirty();
+    if (!state.dataset.msg) state.textContent = dirty ? t().msg.unsaved : "";
+    state.classList.toggle("is-dirty", dirty && !state.dataset.msg);
+  }
+
+  /** Messaggio nella barra (salvato, errore…) fino alla prossima modifica; vuoto = torna lo stato delle modifiche. */
+  private setEditMessage(text: string, kind: "ok" | "error" = "ok"): void {
+    const state = $("edit-state");
+    if (text) state.dataset.msg = kind;
+    else delete state.dataset.msg;
+    state.textContent = text;
+    this.renderEditBar();
+  }
+
+  /** Ctrl+S o "Salva": se il file è cambiato su disco da quando l'hai aperto, chiede prima di sovrascrivere. */
+  private async saveFile(force = false): Promise<void> {
+    const file = this.currentFile;
+    if (!this.tutor || !file) return;
+    const content = this.bufferOf(file);
+    if (content === undefined) return;
+    const known = this.fileCache.get(file);
+    if (!force && known !== undefined) {
+      const disk = await this.source.readFile(file).catch(() => undefined);
+      if (disk !== undefined && disk !== known) {
+        this.showConfirm(true);
+        return;
+      }
+    }
+    this.showConfirm(false);
+    // i fine riga restano quelli del file
+    const out = known?.includes("\r\n") ? content.replace(/\n/g, "\r\n") : content;
+    const before = this.source.files.join("\n");
+    try {
+      const files = await this.source.writeFile(file, out);
+      this.fileCache.set(file, out);
+      if (this.drafts.get(file) === content) this.drafts.delete(file);
+      if (files.join("\n") !== before) this.renderFileList();
+      this.markActiveFile();
+      this.renderTabs();
+      sound.play("select");
+      this.setEditMessage(t().msg.saved(file.split("/").pop()!));
+    } catch (e) {
+      this.setEditMessage(t().msg.saveFailed(e instanceof Error ? e.message : String(e)), "error");
+    }
+  }
+
+  /** Barra: conferma di sovrascrittura, campo del nuovo file o pulsanti normali. */
+  private showConfirm(open: boolean): void {
+    $("edit-confirm").hidden = !open;
+    $("edit-new").hidden = true;
+    $("edit-actions").hidden = open;
+    if (open) $<HTMLButtonElement>("edit-overwrite").focus();
+  }
+
+  private openNewFile(open: boolean): void {
+    $("edit-confirm").hidden = true;
+    $("edit-new").hidden = !open;
+    $("edit-actions").hidden = open;
+    const input = $<HTMLInputElement>("edit-new-name");
+    if (open) {
+      input.value = "";
+      input.focus();
+    }
+  }
+
+  /** Nuovo file nella radice del progetto, vuoto, aperto subito nell'editor. */
+  private async createFile(raw: string): Promise<void> {
+    const name = raw.trim();
+    if (!/^\w[\w.-]{0,127}$/.test(name)) {
+      this.setEditMessage(t().msg.badFileName, "error");
+      return;
+    }
+    if (this.source.files.includes(name)) {
+      this.setEditMessage(t().msg.fileExists(name), "error");
+      return;
+    }
+    try {
+      await this.source.writeFile(name, "");
+    } catch (e) {
+      this.setEditMessage(t().msg.saveFailed(e instanceof Error ? e.message : String(e)), "error");
+      return;
+    }
+    this.fileCache.set(name, "");
+    this.openNewFile(false);
+    this.renderFileList();
+    this.setEditMessage(t().msg.created(name));
+    await this.goToFile(name);
+    this.editLayer.area.focus();
   }
 
   private applyHighlight(): void {
@@ -1027,7 +1219,10 @@ export class App {
       return btn;
     };
     if (this.currentFile) {
-      tab(this.currentFile.split("/").pop()!, `file-icon ext-${langOf(this.currentFile)}`, this.view === undefined, () => this.setView(undefined));
+      const name = this.currentFile.split("/").pop()!;
+      const dirty = this.isDirty();
+      const btn = tab(dirty ? `● ${name}` : name, `file-icon ext-${langOf(this.currentFile)}`, this.view === undefined, () => this.setView(undefined));
+      if (dirty) btn.title = t().msg.unsaved;
     }
     for (const d of this.boardTabs) {
       const btn = tab(d.title, "tab-board-icon", this.view === d.id, () => this.setView(d.id));
@@ -1067,6 +1262,7 @@ export class App {
       void this.tabBoard.show(d, undefined, false);
     }
     this.renderTabs();
+    this.renderEditBar();
   }
 
   private addBoardTab(d: Diagram): void {
@@ -1586,7 +1782,8 @@ export class App {
         void this.renderDiagramList();
         break;
       case "play_tour":
-        this.fileCache.clear();
+        // i file con modifiche non salvate tengono la versione su disco con cui confrontarle
+        for (const f of [...this.fileCache.keys()]) if (!this.drafts.has(f)) this.fileCache.delete(f);
         this.diagramCache.clear();
         await this.playTour(cmd.tour.id, cmd.fromStep, cmd.tour);
         await this.renderTourList();
@@ -1760,6 +1957,7 @@ export class App {
       live: this.liveAnswer,
       guide: this.settings.guide.name,
       lang: this.settings.lang,
+      mode: this.settings.mode,
     };
   }
 
@@ -1784,6 +1982,7 @@ export class App {
     $("status-step").textContent = step && !this.liveAnswer ? this.stepCounter() : "";
     $("status-level").textContent = t().msg.statusLevel(t().levels[this.settings.level].label);
     $("status-gen").textContent = t().generation[this.settings.generation].label;
+    $("status-mode").textContent = this.tutor ? t().modes.tutor.label : "";
   }
 
   /** Indici dei passi che possono seguire il passo i. */
@@ -1918,6 +2117,29 @@ export class App {
       const d = this.popBoard.current;
       if (d) this.setView(d.id);
     });
+    $("edit-save").addEventListener("click", () => void this.saveFile());
+    $("edit-overwrite").addEventListener("click", () => void this.saveFile(true));
+    $("edit-confirm-cancel").addEventListener("click", () => {
+      this.showConfirm(false);
+      this.editLayer.area.focus();
+    });
+    $("edit-new-btn").addEventListener("click", () => this.openNewFile(true));
+    $("edit-new-cancel").addEventListener("click", () => this.openNewFile(false));
+    $("edit-new").addEventListener("submit", (e) => {
+      e.preventDefault();
+      void this.createFile($<HTMLInputElement>("edit-new-name").value);
+    });
+    $("edit-new-name").addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        this.openNewFile(false);
+      }
+    });
+    // chiudere la pagina con modifiche non salvate: il browser chiede conferma
+    window.addEventListener("beforeunload", (e) => {
+      if ([...this.drafts.keys()].some((f) => this.isDirty(f))) e.preventDefault();
+    });
+    void document.fonts?.ready.then(() => this.editLayer.fit());
     $("ask-form").addEventListener("submit", (e) => {
       e.preventDefault();
       const input = $<HTMLInputElement>("ask-input");
@@ -1936,6 +2158,11 @@ export class App {
       if (e.key === "F11" && isDesktopApp()) {
         e.preventDefault();
         this.toggleFullscreen();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "s" || e.key === "S") && this.tutor && $("title-screen").hidden) {
+        e.preventDefault();
+        void this.saveFile();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === "f" || e.key === "g") && $("title-screen").hidden && !isPhone()) {

@@ -1,7 +1,7 @@
 // Impostazioni del giocatore. Con il ponte stanno in SQLite (vedi src/server/store.ts) e valgono per tutti i progetti;
 // localStorage ne tiene una copia, usata nella demo e finché il ponte non risponde.
 
-import { LEVELS, cleanReader, type GenerationMode, type Level, type ReaderProfile, type StoredPrefs } from "../shared/types";
+import { LEVELS, cleanMode, cleanReader, type GenerationMode, type Level, type Mode, type ReaderProfile, type StoredPrefs } from "../shared/types";
 import { SOUND_DEFAULTS, cleanSound, type SoundSettings } from "./audio";
 import { LANGS, t, type Lang } from "./i18n";
 import { BUILTIN_GUIDES, GUIDE_INFO, type BuiltinGuide } from "./portrait";
@@ -26,6 +26,8 @@ export interface Settings {
   textScale: number;
   /** Finestra del gioco: larga o classica (più stretta, si vede lo sfondo, si ridimensiona dall'angolo). */
   frame: Frame;
+  /** Flusso (si legge il tour) o tutor (si scrive, la guida aiuta su richiesta). */
+  mode: Mode;
 }
 
 export const FRAMES = ["larga", "classica"] as const;
@@ -42,7 +44,7 @@ export function cleanTextScale(v: unknown): number {
 }
 
 const KEY = "code-dungeon:settings";
-const DEFAULTS: Settings = { lang: "en", level: "medio", generation: "istantanea", guide: { id: "lumen", name: GUIDE_INFO.lumen.name }, reader: { aids: [] }, sound: SOUND_DEFAULTS, textScale: 1, frame: "larga" };
+const DEFAULTS: Settings = { lang: "en", level: "medio", generation: "istantanea", guide: { id: "lumen", name: GUIDE_INFO.lumen.name }, reader: { aids: [] }, sound: SOUND_DEFAULTS, textScale: 1, frame: "larga", mode: "flusso" };
 const defaults = (): Settings => structuredClone(DEFAULTS);
 
 /** Nome proposto per una guida: quello del ritratto predefinito, "Guide"/"Guida" per un'immagine propria. */
@@ -76,6 +78,7 @@ function parseSettings(raw: unknown): Settings {
     textScale: bigText(s) ? Math.max(BIG_TEXT, cleanTextScale(s.textScale)) : cleanTextScale(s.textScale),
     // "libera" non c'è più: era la classica con la maniglia
     frame: (s.frame as string) === "libera" ? "classica" : s.frame && FRAMES.includes(s.frame) ? s.frame : DEFAULTS.frame,
+    mode: cleanMode(s.mode),
   };
 }
 
@@ -97,13 +100,13 @@ export function saveSettings(s: Settings): void {
 }
 
 /** true se il database del ponte non ha ancora niente: si parte da quello che c'è in questo browser. */
-export const isEmpty = (p: StoredPrefs): boolean => !p.settings && !p.reader;
+export const isEmpty = (p: StoredPrefs): boolean => !p.settings && !p.reader && !p.mode;
 
 /** Le impostazioni salvate dal ponte. */
 export function fromStored(p: StoredPrefs): Settings {
-  return parseSettings({ ...p.settings, reader: p.reader });
+  return parseSettings({ ...p.settings, reader: p.reader, mode: p.mode });
 }
 
 export function toStored(s: Settings): StoredPrefs {
-  return { settings: { lang: s.lang, level: s.level, generation: s.generation, guide: s.guide, sound: s.sound, textScale: s.textScale, frame: s.frame }, reader: s.reader };
+  return { settings: { lang: s.lang, level: s.level, generation: s.generation, guide: s.guide, sound: s.sound, textScale: s.textScale, frame: s.frame }, reader: s.reader, mode: s.mode };
 }

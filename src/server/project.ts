@@ -1,6 +1,8 @@
-// Accesso in sola lettura ai file del progetto da spiegare, più la cartella .tour/.
+// Accesso ai file del progetto da spiegare, più la cartella .tour/.
 // Ogni percorso passa da resolveInside(): niente "../", link simbolici o percorsi assoluti
 // che escono dalla radice del progetto.
+// L'unica scrittura nei file dell'utente è writeFile(), usata dal gioco in modalità tutor (op "write_file"
+// del ponte): solo file di testo, entro MAX_FILE_BYTES, mai dentro .tour/ o .git/, scrittura atomica.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -14,6 +16,8 @@ const MAX_FILES = 2000;
 const TOUR_DIR = ".tour";
 const DIAGRAM_DIR = "schemi"; // dentro .tour/
 const CONVERSATION_DIR = "conversazioni"; // dentro .tour/
+/** Nome di un file nuovo: niente separatori o caratteri di controllo. */
+const FILE_NAME = /^[^\\/:*?"<>|\x00-\x1f]{1,128}$/;
 const TOUR_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 export class Project {
@@ -59,6 +63,41 @@ export class Project {
     const buf = await fs.readFile(abs);
     if (buf.includes(0)) throw new Error(`Sembra un file binario: ${relPath}`);
     return buf.toString("utf8");
+  }
+
+  /**
+   * Salva un file di testo dell'utente (modalità tutor). Il file può non esistere ancora, ma la sua cartella sì.
+   * Restituisce il percorso relativo normalizzato (con "/").
+   */
+  async writeFile(relPath: string, content: string): Promise<string> {
+    if (typeof content !== "string") throw new Error("Contenuto non valido.");
+    if (content.includes("\0")) throw new Error("Solo file di testo: il contenuto ha byte nulli.");
+    const bytes = Buffer.byteLength(content, "utf8");
+    if (bytes > MAX_FILE_BYTES) throw new Error(`File troppo grande (${bytes} byte, massimo ${MAX_FILE_BYTES}).`);
+    const root = await this.getRealRoot();
+    let abs: string;
+    try {
+      abs = await this.resolveInside(relPath);
+      if (!(await fs.stat(abs)).isFile()) throw new Error(`Non è un file: ${relPath}`);
+    } catch (e) {
+      if (!(e instanceof Error) || !e.message.startsWith("File non trovato")) throw e;
+      // file nuovo: la cartella deve esistere dentro il progetto
+      const name = path.basename(relPath);
+      if (!name || name === "." || name === ".." || !FILE_NAME.test(name)) throw new Error(`Nome di file non valido: ${relPath}`);
+      const dir = path.dirname(relPath);
+      abs = path.join(dir === "." ? root : await this.resolveInside(dir), name);
+    }
+    const rel = path.relative(root, abs).split(path.sep);
+    if (rel.some((part) => part === TOUR_DIR || part === ".git")) throw new Error("Non si scrive dentro .tour/ o .git/.");
+    const tmp = `${abs}.${process.pid}.tmp`;
+    try {
+      await fs.writeFile(tmp, content, "utf8");
+      await fs.rename(tmp, abs);
+    } catch (e) {
+      await fs.rm(tmp, { force: true });
+      throw e;
+    }
+    return rel.join("/");
   }
 
   async lineCount(relPath: string): Promise<number> {

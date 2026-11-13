@@ -409,6 +409,73 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 .tk-builtin { color: var(--tk-builtin); }
 .tk-dec { color: var(--plum); }
 
+/* ---------- Modalità tutor: barra del file e editor modificabile ---------- */
+.edit-bar {
+  --edit-bar: calc(20px + 16px * var(--fs));
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--edit-bar);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  background: var(--panel);
+  border-bottom: 2px solid var(--line);
+  z-index: 4;
+  overflow: hidden;
+}
+.edit-bar[hidden] { display: none; }
+.editor-wrap.has-edit-bar :is(.editor, .editor-empty) { top: calc(20px + 16px * var(--fs)); }
+.edit-state { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(15px * var(--fs)); color: var(--ink-dim); }
+.edit-state.is-dirty { color: var(--lantern); }
+.edit-state[data-msg="ok"] { color: var(--moss); }
+.edit-state[data-msg="error"] { color: var(--ember); }
+.edit-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.edit-actions[hidden] { display: none; }
+.edit-actions .chip-btn { margin-left: 0; padding: 4px 8px; }
+.edit-actions .chip-btn:disabled { color: var(--ink-faint); border-color: var(--line); cursor: default; }
+.edit-question { font-size: calc(15px * var(--fs)); color: var(--lantern); white-space: nowrap; }
+.edit-new { flex: 1; min-width: 0; justify-content: flex-end; }
+.edit-new input {
+  flex: 1;
+  min-width: 0;
+  max-width: 260px;
+  font-family: var(--font-code);
+  font-size: calc(18px * var(--fs));
+  color: var(--ink);
+  background: var(--night);
+  border: 2px solid var(--line);
+  padding: 2px 6px;
+}
+.edit-new input:focus { outline: none; border-color: var(--lantern); }
+/* la textarea copre le righe evidenziate: si vede il cursore, il testo è quello delle righe sotto */
+.editor.is-editable .line { min-width: max-content; }
+.editor.is-editable .line code { white-space: pre; overflow-wrap: normal; }
+.code-input {
+  position: absolute;
+  left: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 16px 0 var(--gutter, 4ch);
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  tab-size: inherit;
+  color: transparent;
+  background: transparent;
+  caret-color: var(--lantern);
+}
+.code-input::selection { color: transparent; background: color-mix(in srgb, var(--sky) 35%, transparent); }
+.editor.is-editable:focus-within .ln { color: var(--ink-dim); }
+.status-mode:empty { display: none; }
+.status-mode { color: var(--moss); }
+
 .editor-empty { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 16px; }
 .editor-empty p { margin: 4px 0; }
 .wipe { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; z-index: 3; }
@@ -514,7 +581,7 @@ button.board-node:hover { color: var(--lantern); }
 .app.is-chat .workbench { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .splitter-chat { display: none; cursor: col-resize; }
 .splitter-chat::after { left: 2px; top: 50%; width: 2px; height: 28px; transform: translateY(-50%); }
-.app.is-chat :is(.activitybar, .sidebar, .splitter-side, .tabs, .editor, .editor-empty, .wipe, .board-view, .board-grip, #board-pop-fold, #board-pop-tab) { display: none; }
+.app.is-chat :is(.activitybar, .sidebar, .splitter-side, .tabs, .editor, .editor-empty, .wipe, .edit-bar, .board-view, .board-grip, #board-pop-fold, #board-pop-tab) { display: none; }
 .app.is-chat .main {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto auto;

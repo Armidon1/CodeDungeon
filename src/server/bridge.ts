@@ -359,6 +359,11 @@ export class Bridge {
         const p = this.opts.project;
         let data: unknown;
         if (msg.op === "read_file") data = await p.readFile(msg.path);
+        else if (msg.op === "write_file") {
+          const saved = await p.writeFile(msg.path, msg.content);
+          log(`file salvato dal gioco: ${saved}`);
+          data = await p.listFiles();
+        }
         else if (msg.op === "list_tours") data = await p.listTours();
         else if (msg.op === "load_tour") data = await p.loadTour(msg.id);
         else if (msg.op === "list_diagrams") data = await p.listDiagrams();

@@ -1,5 +1,6 @@
 // Prova del gioco nel browser: avvia il ponte in modalità play sul progetto d'esempio, apre Chromium headless
-// e lo pilota via DevTools Protocol (menu, tour, modalità chat e storico salvato, divisori, layout a 1400 e a 390 px).
+// e lo pilota via DevTools Protocol (menu, tour, modalità chat e storico salvato, divisori, modalità tutor, layout a 1400 e a 390 px).
+// Il progetto è una copia temporanea: la modalità tutor ci scrive.
 //   npm run build:game && npm run test:game
 // Il browser si sceglie con CHROME_PATH; altrimenti si cerca chromium o google-chrome nel PATH.
 
@@ -10,7 +11,6 @@ import path from "node:path";
 import { WebSocket } from "ws";
 
 const PORT = 7400 + Math.floor(Math.random() * 500);
-const project = path.resolve("examples/packet-server");
 const URL_GAME = `http://127.0.0.1:${PORT}/`;
 
 if (!existsSync("dist/game/index.html")) {
@@ -44,6 +44,9 @@ const cleanup = async () => {
 };
 
 // ---------- ponte ----------
+
+const project = path.join(tmp, "packet-server");
+await fs.cp(path.resolve("examples/packet-server"), project, { recursive: true });
 
 const server = spawn("npx", ["tsx", "src/server/cli.ts", "play", "--project", project, "--port", String(PORT)], {
   env: { ...process.env, CODE_DUNGEON_DATA: path.join(tmp, "data") },
@@ -95,6 +98,7 @@ await new Promise((r) => ws.once("open", r));
 let nextId = 1;
 const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
 const errors: string[] = [];
+const dialogs: string[] = [];
 ws.on("message", (d) => {
   const msg = JSON.parse(String(d));
   if (msg.id && pending.has(msg.id)) {
@@ -102,6 +106,10 @@ ws.on("message", (d) => {
     pending.delete(msg.id);
     if (msg.error) p.reject(new Error(msg.error.message));
     else p.resolve(msg.result);
+  } else if (msg.method === "Page.javascriptDialogOpening") {
+    // es. "lasciare la pagina?" con modifiche non salvate: si conta e si accetta, se no la navigazione resta ferma
+    dialogs.push(msg.params.type);
+    void send("Page.handleJavaScriptDialog", { accept: true });
   } else if (msg.method === "Runtime.exceptionThrown") {
     errors.push(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text);
   }
@@ -134,12 +142,17 @@ const waitFor = async (expression: string, ms = 5000): Promise<boolean> => {
   return false;
 };
 const KEYS: Record<string, number> = { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Enter: 13, Escape: 27 };
-const press = async (key: string) => {
-  const code = KEYS[key] ?? key.toUpperCase().charCodeAt(0);
-  const text = key.length === 1 ? key : undefined;
-  await send("Input.dispatchKeyEvent", { type: text ? "keyDown" : "rawKeyDown", key, windowsVirtualKeyCode: code, text });
-  await send("Input.dispatchKeyEvent", { type: "keyUp", key, windowsVirtualKeyCode: code });
+/** modifiers: 2 = Ctrl, 8 = Maiusc. */
+const press = async (key: string, modifiers = 0) => {
+  const code = KEYS[key] ?? (key === "Tab" ? 9 : key.toUpperCase().charCodeAt(0));
+  const text = key.length === 1 && !(modifiers & 2) ? key : key === "Enter" ? "\r" : undefined;
+  await send("Input.dispatchKeyEvent", { type: text ? "keyDown" : "rawKeyDown", key, windowsVirtualKeyCode: code, text, modifiers });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key, windowsVirtualKeyCode: code, modifiers });
   await sleep(120);
+};
+const typeText = async (text: string) => {
+  await send("Input.insertText", { text });
+  await sleep(150);
 };
 const click = (selector: string) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
 // larghezza emulata: con l'emulazione mobile Chromium allarga innerWidth fino al contenuto che sborda
@@ -268,6 +281,80 @@ try {
   await press("c");
   check(await evaluate(`!document.getElementById("app").classList.contains("is-chat")`), "il tasto C torna alla vista classica");
   check(await noOverflow(), "vista classica senza scorrimento orizzontale a 390 px");
+
+  // ---------- modalità tutor ----------
+  await viewport(1400, 900);
+  await load();
+  await click(`#mode-options input[value="tutor"]`);
+  await click("#start-btn");
+  await waitFor(`document.getElementById("title-screen").hidden`);
+  check(
+    (await waitFor(`/tutor/i.test(document.getElementById("dialog-text").textContent)`, 8000)) &&
+      (await evaluate(`!document.querySelector("#tabs .tab") && !document.getElementById("edit-bar").hidden`)),
+    "in tutor Inizia non avvia un tour: saluto della guida e barra del file pronta",
+  );
+  await click(`#file-list .file[data-path="protocol.py"]`);
+  await waitFor(`document.querySelector("#file-list .file.is-active")?.dataset.path === "protocol.py"`);
+  check(await waitFor(`document.getElementById("code-input") && !document.getElementById("edit-bar").hidden`), "in tutor l'editor diventa modificabile, con la barra del file");
+  const aligned = () =>
+    evaluate<boolean>(`(() => {
+      const ta = document.getElementById("code-input");
+      const lines = document.querySelectorAll("#editor .line");
+      const last = lines[lines.length - 1];
+      const rows = ta.value.split("\\n").length;
+      return rows === lines.length && Math.abs(ta.offsetTop - lines[0].offsetTop) <= 1 && Math.abs(ta.offsetTop + ta.offsetHeight - last.offsetTop - last.offsetHeight) <= 1;
+    })()`);
+  check(await aligned(), "la textarea è allineata alle righe evidenziate");
+  const original = await fs.readFile(path.join(project, "protocol.py"), "utf8");
+  const muted = await evaluate<string>(`document.getElementById("sound-btn").getAttribute("aria-pressed")`);
+  await evaluate(`(() => { const ta = document.getElementById("code-input"); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); })()`);
+  await press("Enter");
+  await typeText("def tutor():");
+  await press("Enter");
+  await press("Tab");
+  await typeText("return \"prova\"");
+  await press("m");
+  check(await evaluate(`document.getElementById("sound-btn").getAttribute("aria-pressed")`) === muted, "il tasto M non scatta mentre si scrive nell'editor");
+  check(await waitFor(`document.getElementById("edit-state").classList.contains("is-dirty")`), "si vede l'indicatore delle modifiche non salvate");
+  check(await waitFor(`[...document.querySelectorAll("#editor .line code")].some((c) => c.textContent === '    return "prova"m')`), "le righe si ri-evidenziano mentre si scrive, Tab indenta");
+  check(await aligned(), "la textarea resta allineata dopo le nuove righe");
+  await press("s", 2);
+  check(await waitFor(`document.getElementById("edit-state").dataset.msg === "ok"`), "Ctrl+S salva il file");
+  const saved = await fs.readFile(path.join(project, "protocol.py"), "utf8");
+  check(saved === original + '\ndef tutor():\n    return "prova"m', "il file su disco ha il testo scritto (Invio mantiene l'indentazione)");
+
+  await fs.writeFile(path.join(project, "protocol.py"), "# cambiato fuori\n");
+  await typeText("!");
+  await press("s", 2);
+  check(await waitFor(`!document.getElementById("edit-confirm").hidden`), "se il file è cambiato su disco chiede prima di sovrascrivere");
+  await click("#edit-overwrite");
+  check(await waitFor(`document.getElementById("edit-state").dataset.msg === "ok"`), "Sovrascrivi salva");
+  check((await fs.readFile(path.join(project, "protocol.py"), "utf8")).endsWith('"prova"m!'), "il file sovrascritto ha il testo dell'editor");
+
+  await click("#edit-new-btn");
+  await evaluate(`document.getElementById("edit-new-name").value = "solve.py"`);
+  await evaluate(`document.getElementById("edit-new").requestSubmit()`);
+  check(await waitFor(`document.querySelector('#file-list .file.is-active')?.dataset.path === "solve.py"`), "Nuovo file crea e apre il file nella radice");
+  check(existsSync(path.join(project, "solve.py")), "il nuovo file esiste su disco");
+  check(await waitFor(`document.activeElement?.id === "code-input"`), "il nuovo file è pronto per scrivere (cursore nell'editor)");
+  await typeText("print(1)");
+  check(await evaluate(`document.querySelector("#editor .line code").textContent === "print(1)"`), "nel nuovo file si scrive");
+
+  await viewport(390, 844);
+  check(await load(), "a 390 px il gioco si apre in tutor");
+  check(dialogs.includes("beforeunload"), "lasciare la pagina con modifiche non salvate chiede conferma");
+  await click("#start-btn");
+  await waitFor(`document.getElementById("title-screen").hidden`);
+  await waitFor(`document.getElementById("app").classList.contains("is-chat")`, 1000);
+  if (await evaluate(`document.getElementById("app").classList.contains("is-chat")`)) {
+    await evaluate(`document.activeElement?.blur()`);
+    await press("c");
+  }
+  await sleep(800);
+  await click(`#file-list .file[data-path="protocol.py"]`);
+  check(await waitFor(`document.getElementById("code-input")`), "a 390 px l'editor è modificabile");
+  check(await inView("edit-save"), "a 390 px il pulsante Salva è visibile");
+  check(await noOverflow(), "tutor senza scorrimento orizzontale a 390 px");
 
   check(errors.length === 0, `nessun errore JavaScript nella pagina${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } catch (e) {

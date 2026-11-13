@@ -39,6 +39,12 @@ export class DemoSource implements GameSource {
     if (text === undefined) throw new Error(t().msg.notFound(path));
     return text;
   }
+  /** Nella demo le modifiche restano in memoria: si perdono ricaricando la pagina. */
+  async writeFile(path: string, content: string): Promise<string[]> {
+    this.contents.set(path, content);
+    this.files = [...this.contents.keys()].sort();
+    return this.files;
+  }
   async listTours(): Promise<TourSummary[]> {
     const t = this.tour;
     return [{ id: t.id, title: t.title, description: t.description, steps: t.steps.length }];

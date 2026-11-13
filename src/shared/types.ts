@@ -120,10 +120,20 @@ export function cleanReader(value: unknown): ReaderProfile {
   return note ? { aids, note } : { aids };
 }
 
-/** Preferenze salvate dal ponte in SQLite: impostazioni del gioco (formato del gioco) e questionario. */
+// ---------- Modalità: capire il flusso o scrivere con la guida ----------
+
+/** flusso: l'agente guida con i tour, l'editor è in sola lettura. tutor: l'utente scrive, la guida aiuta solo se chiesto. */
+export const MODES = ["flusso", "tutor"] as const;
+export type Mode = (typeof MODES)[number];
+
+export const cleanMode = (v: unknown): Mode => (v === "tutor" ? "tutor" : "flusso");
+
+/** Preferenze salvate dal ponte in SQLite: impostazioni del gioco (formato del gioco), questionario e modalità. */
 export interface StoredPrefs {
   settings?: Record<string, unknown>;
   reader?: ReaderProfile;
+  /** Predefinita "flusso". */
+  mode?: Mode;
 }
 
 export interface Tour {
@@ -157,6 +167,8 @@ export interface GameContext {
   lang?: string;
   /** Testo che l'utente ha selezionato (nel codice o nel fumetto) e su cui fa la domanda; file e lines sono i suoi. */
   selection?: string;
+  /** Modalità scelta nel gioco; assente = "flusso". */
+  mode?: Mode;
 }
 
 /** Lunghezza massima del testo selezionato che accompagna una domanda. */
@@ -237,6 +249,8 @@ export type ServerMessage =
 /** Dal gioco al ponte. */
 export type ClientMessage =
   | { type: "request"; reqId: string; op: "read_file"; path: string }
+  /** Modalità tutor: salva il file dell'utente (crea anche un file nuovo). Risponde con l'elenco aggiornato dei file. */
+  | { type: "request"; reqId: string; op: "write_file"; path: string; content: string }
   | { type: "request"; reqId: string; op: "list_tours" }
   | { type: "request"; reqId: string; op: "load_tour"; id: string }
   | { type: "request"; reqId: string; op: "list_diagrams" }

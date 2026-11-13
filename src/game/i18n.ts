@@ -3,7 +3,7 @@
 // setLang li riscrive tutti. I testi che cambiano a runtime usano `t()` e vanno ridisegnati dopo un cambio di lingua.
 // I testi dei tour e le risposte dell'agente restano nella lingua in cui sono scritti.
 
-import type { Aid, DiagramKind, Expression, GenerationMode, Level } from "../shared/types";
+import type { Aid, DiagramKind, Expression, GenerationMode, Level, Mode } from "../shared/types";
 import type { Frame } from "./settings";
 
 export const LANGS = ["en", "it"] as const;
@@ -73,8 +73,19 @@ const en = {
     sessions: "Open sessions",
     switchSession: "Switch session",
     closeSessions: "Close",
+    codeInput: "Code (you can type here)",
+    editBar: "File editing",
+    save: "Save",
+    saveTitle: "Save the file (Ctrl+S)",
+    newFile: "+ New file",
+    newFileName: "New file name",
+    create: "Create",
+    cancel: "Cancel",
+    overwrite: "Overwrite",
+    changedOnDisk: "Changed on disk. Overwrite?",
   },
   menu: {
+    mode: "Mode",
     language: "Language",
     level: "Explanation level",
     generation: "Text generation",
@@ -108,7 +119,7 @@ const en = {
     tabs: { label: "Settings", game: "Game", guide: "Guide", sound: "Sound", reading: "Reading" },
     enter: "Enter the dungeon ▶",
     resume: "Resume exploring ▶",
-    keys: "Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · C chat · M audio · F full screen · + − text size",
+    keys: "Keyboard: Enter or → next · ← back · 1–4 level · Esc closes the board or opens the menu · C chat · M audio · F full screen · + − text size · Ctrl+S saves (tutor)",
   },
   levels: {
     facile: { label: "Easy", hint: "For non-programmers. Metaphors, no jargon." },
@@ -120,6 +131,10 @@ const en = {
     istantanea: { label: "Instant", hint: "Every level ready at once: instant switching, more tokens." },
     su_richiesta: { label: "On demand", hint: "Only the chosen level: fewer tokens, a few seconds' wait when you switch." },
   } satisfies Record<GenerationMode, Info>,
+  modes: {
+    flusso: { label: "Flow", hint: "The guide leads with tours. The code is read-only." },
+    tutor: { label: "Tutor", hint: "You write the code. The guide helps only when you ask." },
+  } satisfies Record<Mode, Info>,
   frames: {
     larga: { label: "Wide", hint: "Almost the whole screen: more room for the code." },
     classica: { label: "Classic", hint: "Narrower, with the starry sky around it. Drag the bottom right corner to resize it." },
@@ -169,6 +184,7 @@ const en = {
       file && lines ? `${file}, ${lines[0] === lines[1] ? `line ${lines[0]}` : `lines ${lines[0]}–${lines[1]}`}:` : "Selected text:",
     helloAgent: (name: string) =>
       `Hi, I'm ${name}! This project has no tour yet. Ask your agent to create one with the Code Dungeon tools, or write me a question below.`,
+    helloTutor: (name: string) => `Hi, I'm ${name}. Tutor mode: you write, I help only when you ask. Open a file or create one, then ask me a question.`,
     helloNoAgent: (name: string) => `Hi, I'm ${name}! I can't find any saved tours in this project. Start Code Dungeon from your agent (see the README) to create one.`,
     sourceDemo: (project: string) => `Demo · sample project “${project}”, a TCP server in Python`,
     sourceProject: (project: string, agent: boolean) => `Project “${project}”${agent ? " · agent connected" : " · no agent"}`,
@@ -229,6 +245,12 @@ const en = {
     muted: "Audio off: turn on",
     unmuted: "Audio on: turn off",
     plainText: "Plain text",
+    unsaved: "● Unsaved changes",
+    saved: (file: string) => `Saved: ${file}`,
+    created: (file: string) => `Created: ${file}`,
+    saveFailed: (err: string) => `Not saved. ${err}`,
+    fileExists: (file: string) => `${file} already exists.`,
+    badFileName: "Use a simple name, like solve.py.",
     // guida personalizzata
     expressionLoaded: (label: string) => `“${label}” expression loaded.`,
     pickMainFirst: "Choose the main image first.",
@@ -312,8 +334,19 @@ const it: Dict = {
     sessions: "Sessioni aperte",
     switchSession: "Cambia sessione",
     closeSessions: "Chiudi",
+    codeInput: "Codice (puoi scrivere qui)",
+    editBar: "Modifica del file",
+    save: "Salva",
+    saveTitle: "Salva il file (Ctrl+S)",
+    newFile: "+ Nuovo file",
+    newFileName: "Nome del nuovo file",
+    create: "Crea",
+    cancel: "Annulla",
+    overwrite: "Sovrascrivi",
+    changedOnDisk: "Cambiato su disco. Sovrascrivo?",
   },
   menu: {
+    mode: "Modalità",
     language: "Lingua",
     level: "Livello di spiegazione",
     generation: "Generazione dei testi",
@@ -347,7 +380,7 @@ const it: Dict = {
     tabs: { label: "Impostazioni", game: "Gioco", guide: "Guida", sound: "Suono", reading: "Lettura" },
     enter: "Entra nel dungeon ▶",
     resume: "Riprendi l'esplorazione ▶",
-    keys: "Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu · C chat · M audio · F schermo intero · + − dimensione del testo",
+    keys: "Tastiera: Invio o → avanti · ← indietro · 1–4 livello · Esc chiude la lavagna o apre il menu · C chat · M audio · F schermo intero · + − dimensione del testo · Ctrl+S salva (tutor)",
   },
   levels: {
     facile: { label: "Facile", hint: "Per chi non programma. Metafore, niente gergo." },
@@ -358,6 +391,10 @@ const it: Dict = {
   generation: {
     istantanea: { label: "Istantanea", hint: "Tutti i livelli pronti subito: cambio immediato, più token." },
     su_richiesta: { label: "Su richiesta", hint: "Solo il livello scelto: meno token, qualche secondo d'attesa quando cambi." },
+  },
+  modes: {
+    flusso: { label: "Flusso", hint: "La guida ti accompagna con i tour. Il codice è in sola lettura." },
+    tutor: { label: "Tutor", hint: "Scrivi tu il codice. La guida aiuta solo quando glielo chiedi." },
   },
   frames: {
     larga: { label: "Larga", hint: "Quasi tutto lo schermo: più spazio per il codice." },
@@ -408,6 +445,7 @@ const it: Dict = {
       file && lines ? `${file}, ${lines[0] === lines[1] ? `riga ${lines[0]}` : `righe ${lines[0]}–${lines[1]}`}:` : "Testo selezionato:",
     helloAgent: (name) =>
       `Ciao, sono ${name}! Questo progetto non ha ancora un tour. Chiedi al tuo agente di crearne uno con gli strumenti di Code Dungeon, oppure scrivimi qui sotto una domanda.`,
+    helloTutor: (name) => `Ciao, sono ${name}. Modalità tutor: scrivi tu, io aiuto solo quando me lo chiedi. Apri un file o creane uno, poi fammi una domanda.`,
     helloNoAgent: (name) => `Ciao, sono ${name}! Non trovo tour salvati in questo progetto. Avvia Code Dungeon dal tuo agente (vedi il README) per crearne uno.`,
     sourceDemo: (project) => `Demo · progetto d'esempio «${project}», un server TCP in Python`,
     sourceProject: (project, agent) => `Progetto «${project}»${agent ? " · agente collegato" : " · senza agente"}`,
@@ -468,6 +506,12 @@ const it: Dict = {
     muted: "Audio spento: riattiva",
     unmuted: "Audio attivo: spegni",
     plainText: "Testo",
+    unsaved: "● Modifiche non salvate",
+    saved: (file) => `Salvato: ${file}`,
+    created: (file) => `Creato: ${file}`,
+    saveFailed: (err) => `Non salvato. ${err}`,
+    fileExists: (file) => `${file} esiste già.`,
+    badFileName: "Usa un nome semplice, come solve.py.",
     expressionLoaded: (label) => `Espressione «${label.toLowerCase()}» caricata.`,
     pickMainFirst: "Prima scegli l'immagine principale.",
     mainImage: "Immagine principale",
