@@ -5,6 +5,7 @@
 
 import type { Aid, DiagramKind, Expression, GenerationMode, Level, Mode } from "../shared/types";
 import type { Frame } from "./settings";
+import type { QuickAsk } from "./tutor";
 
 export const LANGS = ["en", "it"] as const;
 export type Lang = (typeof LANGS)[number];
@@ -83,6 +84,12 @@ const en = {
     cancel: "Cancel",
     overwrite: "Overwrite",
     changedOnDisk: "Changed on disk. Overwrite?",
+    askGuide: "Ask ▾",
+    askGuideTitle: "Ask the guide about your code",
+    pasteOutput: "Paste the terminal output (the error):",
+    useOutput: "Ask about it",
+    outputLabel: "Terminal output:",
+    clearOutput: "Remove the output",
   },
   menu: {
     mode: "Mode",
@@ -135,6 +142,11 @@ const en = {
     flusso: { label: "Flow", hint: "The guide leads with tours. The code is read-only." },
     tutor: { label: "Tutor", hint: "You write the code. The guide helps only when you ask." },
   } satisfies Record<Mode, Info>,
+  quick: {
+    hint: { label: "Hint", question: "Give me a hint to go on." },
+    check: { label: "Check", question: "Check my code: is it right?" },
+    error: { label: "Error", question: "Explain the error to me." },
+  } satisfies Record<QuickAsk, { label: string; question: string }>,
   frames: {
     larga: { label: "Wide", hint: "Almost the whole screen: more room for the code." },
     classica: { label: "Classic", hint: "Narrower, with the starry sky around it. Drag the bottom right corner to resize it." },
@@ -249,6 +261,8 @@ const en = {
     saved: (file: string) => `Saved: ${file}`,
     created: (file: string) => `Created: ${file}`,
     saveFailed: (err: string) => `Not saved. ${err}`,
+    changedOnDisk: (file: string) => `Not saved: ${file} changed on disk. Save it by hand.`,
+    serverOutdated: "The server is out of date: restart it (in Claude Code: /mcp, Reconnect).",
     fileExists: (file: string) => `${file} already exists.`,
     badFileName: "Use a simple name, like solve.py.",
     // guida personalizzata
@@ -344,6 +358,12 @@ const it: Dict = {
     cancel: "Annulla",
     overwrite: "Sovrascrivi",
     changedOnDisk: "Cambiato su disco. Sovrascrivo?",
+    askGuide: "Chiedi ▾",
+    askGuideTitle: "Chiedi alla guida sul tuo codice",
+    pasteOutput: "Incolla l'output del terminale (l'errore):",
+    useOutput: "Chiedi",
+    outputLabel: "Output del terminale:",
+    clearOutput: "Togli l'output",
   },
   menu: {
     mode: "Modalità",
@@ -395,6 +415,11 @@ const it: Dict = {
   modes: {
     flusso: { label: "Flusso", hint: "La guida ti accompagna con i tour. Il codice è in sola lettura." },
     tutor: { label: "Tutor", hint: "Scrivi tu il codice. La guida aiuta solo quando glielo chiedi." },
+  },
+  quick: {
+    hint: { label: "Indizio", question: "Dammi un indizio per andare avanti." },
+    check: { label: "Controlla", question: "Controlla il mio codice: è giusto?" },
+    error: { label: "Errore", question: "Spiegami l'errore." },
   },
   frames: {
     larga: { label: "Larga", hint: "Quasi tutto lo schermo: più spazio per il codice." },
@@ -510,6 +535,8 @@ const it: Dict = {
     saved: (file) => `Salvato: ${file}`,
     created: (file) => `Creato: ${file}`,
     saveFailed: (err) => `Non salvato. ${err}`,
+    changedOnDisk: (file) => `Non salvato: ${file} è cambiato su disco. Salvalo a mano.`,
+    serverOutdated: "Il server è da aggiornare: riavvialo (in Claude Code: /mcp, Reconnect).",
     fileExists: (file) => `${file} esiste già.`,
     badFileName: "Usa un nome semplice, come solve.py.",
     expressionLoaded: (label) => `Espressione «${label.toLowerCase()}» caricata.`,

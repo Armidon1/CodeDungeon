@@ -70,8 +70,15 @@
             <div class="edit-bar" id="edit-bar" role="toolbar" aria-label="File editing" data-i18n-aria-label="ui.editBar" hidden>
               <span class="edit-state" id="edit-state" role="status"></span>
               <span class="edit-actions" id="edit-actions">
+                <button type="button" class="chip-btn" id="edit-ask-btn" title="Ask the guide about your code" data-i18n="ui.askGuide" data-i18n-title="ui.askGuideTitle">Ask ▾</button>
                 <button type="button" class="chip-btn" id="edit-new-btn" data-i18n="ui.newFile">+ New file</button>
                 <button type="button" class="chip-btn" id="edit-save" title="Save the file (Ctrl+S)" data-i18n="ui.save" data-i18n-title="ui.saveTitle">Save</button>
+              </span>
+              <span class="edit-actions" id="edit-ask" hidden>
+                <button type="button" class="chip-btn" data-quick="hint" data-i18n="quick.hint.label" data-i18n-title="quick.hint.question">Hint</button>
+                <button type="button" class="chip-btn" data-quick="check" data-i18n="quick.check.label" data-i18n-title="quick.check.question">Check</button>
+                <button type="button" class="chip-btn" data-quick="error" data-i18n="quick.error.label" data-i18n-title="quick.error.question">Error</button>
+                <button type="button" class="chip-btn" id="edit-ask-cancel" aria-label="Cancel" data-i18n-aria-label="ui.cancel">✕</button>
               </span>
               <span class="edit-actions" id="edit-confirm" hidden>
                 <span class="edit-question" data-i18n="ui.changedOnDisk">Changed on disk. Overwrite?</span>
@@ -84,6 +91,14 @@
                 <button type="button" class="chip-btn" id="edit-new-cancel" data-i18n="ui.cancel">Cancel</button>
               </form>
             </div>
+            <form class="edit-error" id="edit-error" hidden>
+              <label for="edit-error-output" data-i18n="ui.pasteOutput">Paste the terminal output</label>
+              <textarea id="edit-error-output" rows="6" maxlength="4000" spellcheck="false" placeholder="Traceback (most recent call last): …"></textarea>
+              <span class="edit-error-actions">
+                <button type="submit" class="chip-btn" data-i18n="ui.useOutput">Ask about it</button>
+                <button type="button" class="chip-btn" id="edit-error-cancel" data-i18n="ui.cancel">Cancel</button>
+              </span>
+            </form>
             <div class="editor" id="editor" role="region" aria-label="Code editor" data-i18n-aria-label="ui.codeEditor" tabindex="0"></div>
             <div class="editor-empty" id="editor-empty">
               <p data-i18n="ui.noFile">No file open.</p>
@@ -139,6 +154,11 @@
                 <span class="ask-quote-label" id="ask-quote-label"></span>
                 <span class="ask-quote-text" id="ask-quote-text"></span>
                 <button type="button" class="link-btn" id="ask-quote-clear" aria-label="Remove the selected text" data-i18n-aria-label="ui.clearSelection">✕</button>
+              </p>
+              <p class="ask-quote" id="ask-output" hidden>
+                <span class="ask-quote-label" data-i18n="ui.outputLabel">Terminal output:</span>
+                <span class="ask-quote-text" id="ask-output-text"></span>
+                <button type="button" class="link-btn" id="ask-output-clear" aria-label="Remove the output" data-i18n-aria-label="ui.clearOutput">✕</button>
               </p>
               <label class="sr-only" for="ask-input" data-i18n="ui.askLabel">Question for the guide</label>
               <input id="ask-input" name="question" type="text" maxlength="500" placeholder="Ask something about this code…" />

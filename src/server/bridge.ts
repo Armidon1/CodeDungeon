@@ -8,7 +8,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
-import { SELECTION_MAX, type ClientMessage, type Conversation, type ConversationTurn, type GameContext, type ReaderProfile, type ServerMessage, type SessionInfo, type UserQuestion } from "../shared/types.js";
+import { SELECTION_MAX, cleanTutorContext, type ClientMessage, type Conversation, type ConversationTurn, type GameContext, type ReaderProfile, type ServerMessage, type SessionInfo, type UserQuestion } from "../shared/types.js";
 import { conversationSummary, type Project } from "./project.js";
 import type { Store } from "./store.js";
 import { log } from "./log.js";
@@ -225,7 +225,10 @@ export class Bridge {
       c = { version: 1, id: q.id, title: q.text.slice(0, 80), startedAt: now, updatedAt: now, turns: [] };
       this.conversations.set(c.id, c);
     }
-    const turn: ConversationTurn = { question: { id: q.id, text: q.text, askedAt: q.askedAt, context: q.context }, answers: [] };
+    // nel file della conversazione il buffer del tutor resta senza contenuto: il codice è nel progetto, non va duplicato
+    const { buffer, ...context } = q.context;
+    const saved: GameContext = buffer ? { ...context, buffer: { ...buffer, content: "" } } : context;
+    const turn: ConversationTurn = { question: { id: q.id, text: q.text, askedAt: q.askedAt, context: saved }, answers: [] };
     c.turns.push(turn);
     q.conversation = c.id;
     this.questionConversation.set(q.id, c.id);
@@ -338,13 +341,15 @@ export class Bridge {
     if (msg.type === "question") {
       const text = String(msg.text ?? "").slice(0, 2000).trim();
       if (!text) return;
-      const context = { ...msg.context };
+      const context = cleanTutorContext({ ...msg.context });
       if (typeof context.selection === "string") context.selection = context.selection.slice(0, SELECTION_MAX);
       else delete context.selection;
       const q: UserQuestion = { id: randomUUID().slice(0, 8), text, askedAt: new Date().toISOString(), context };
       await this.addTurn(q, typeof msg.conversation === "string" ? msg.conversation : undefined);
       this.questions.push(q);
-      this.lastContext = context;
+      // lo stato del gioco resta leggero: buffer, righe cambiate e output viaggiano solo con la domanda
+      const { buffer: _b, changed: _c, output: _o, ...state } = context;
+      this.lastContext = state;
       log(`domanda dall'utente: ${text}`);
       if (this.waiter) this.waiter(this.deliver());
       else {

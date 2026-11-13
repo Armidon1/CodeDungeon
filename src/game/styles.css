@@ -473,6 +473,39 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 }
 .code-input::selection { color: transparent; background: color-mix(in srgb, var(--sky) 35%, transparent); }
 .editor.is-editable:focus-within .ln { color: var(--ink-dim); }
+/* "Chiedi ▾ → Errore": riquadro sotto la barra per incollare l'output del terminale */
+.edit-error {
+  position: absolute;
+  top: calc(20px + 16px * var(--fs));
+  right: 8px;
+  left: 8px;
+  max-width: 560px;
+  margin-left: auto;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-top: 0;
+  font-size: calc(15px * var(--fs));
+}
+.edit-error[hidden] { display: none; }
+.edit-error textarea {
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-code);
+  font-size: calc(16px * var(--fs));
+  color: var(--ink);
+  background: var(--night);
+  border: 2px solid var(--line);
+  padding: 4px 6px;
+}
+.edit-error textarea:focus { outline: none; border-color: var(--lantern); }
+.edit-error-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.edit-error-actions .chip-btn { margin-left: 0; padding: 4px 8px; }
 .status-mode:empty { display: none; }
 .status-mode { color: var(--moss); }
 
@@ -581,7 +614,7 @@ button.board-node:hover { color: var(--lantern); }
 .app.is-chat .workbench { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .splitter-chat { display: none; cursor: col-resize; }
 .splitter-chat::after { left: 2px; top: 50%; width: 2px; height: 28px; transform: translateY(-50%); }
-.app.is-chat :is(.activitybar, .sidebar, .splitter-side, .tabs, .editor, .editor-empty, .wipe, .edit-bar, .board-view, .board-grip, #board-pop-fold, #board-pop-tab) { display: none; }
+.app.is-chat :is(.activitybar, .sidebar, .splitter-side, .tabs, .editor, .editor-empty, .wipe, .edit-bar, .edit-error, .board-view, .board-grip, #board-pop-fold, #board-pop-tab) { display: none; }
 .app.is-chat .main {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto auto;

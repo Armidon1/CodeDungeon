@@ -22,6 +22,7 @@ import { TRACK_IDS, type SoundSettings } from "./audio";
 import { ChatLog, type ChatCode } from "./chat";
 import { Board } from "./diagram";
 import { EditLayer } from "./editing";
+import { changedLines, tutorBuffer, type QuickAsk } from "./tutor";
 import { highlightLines, langLabel, langOf } from "./highlight";
 import { GuidePicker } from "./guide";
 import { DEFAULT_GUIDE_NAMES, LANGS, LANG_INFO, setLang, t, type Lang } from "./i18n";
@@ -105,6 +106,10 @@ export class App {
   private fileCache = new Map<string, string>();
   /** Modalità tutor: testo modificato e non ancora salvato, per file. */
   private drafts = new Map<string, string>();
+  /** Tutor: il testo di ogni file all'ultima domanda, per dire all'agente quali righe sono cambiate. */
+  private askedText = new Map<string, string>();
+  /** Tutor: output del terminale da allegare alla prossima domanda ("Spiegami l'errore"). */
+  private output: string | undefined;
   private editLayer = new EditLayer($("editor"), { onInput: (text) => this.onEdit(text) });
   private rehighlight = 0;
   private navigating = Promise.resolve();
@@ -1044,6 +1049,7 @@ export class App {
   private renderEditBar(): void {
     const bar = $("edit-bar");
     bar.hidden = !this.tutor || this.view !== undefined;
+    if (bar.hidden) $("edit-error").hidden = true;
     $("editor").parentElement!.classList.toggle("has-edit-bar", !bar.hidden);
     $<HTMLButtonElement>("edit-save").disabled = !this.currentFile;
     const state = $("edit-state");
@@ -1061,21 +1067,25 @@ export class App {
     this.renderEditBar();
   }
 
-  /** Ctrl+S o "Salva": se il file è cambiato su disco da quando l'hai aperto, chiede prima di sovrascrivere. */
-  private async saveFile(force = false): Promise<void> {
-    const file = this.currentFile;
-    if (!this.tutor || !file) return;
+  /**
+   * Ctrl+S o "Salva": se il file è cambiato su disco da quando l'hai aperto, chiede prima di sovrascrivere.
+   * Con auto (salvataggio prima di una domanda) non chiede: lascia il file com'è e lo dice nella barra.
+   */
+  private async saveFile(force = false, file = this.currentFile, auto = false): Promise<boolean> {
+    if (!this.tutor || !file) return false;
     const content = this.bufferOf(file);
-    if (content === undefined) return;
+    if (content === undefined) return false;
+    const name = file.split("/").pop()!;
     const known = this.fileCache.get(file);
     if (!force && known !== undefined) {
       const disk = await this.source.readFile(file).catch(() => undefined);
       if (disk !== undefined && disk !== known) {
-        this.showConfirm(true);
-        return;
+        if (auto) this.setEditMessage(t().msg.changedOnDisk(name), "error");
+        else this.showConfirm(true);
+        return false;
       }
     }
-    this.showConfirm(false);
+    if (!auto) this.showConfirm(false);
     // i fine riga restano quelli del file
     const out = known?.includes("\r\n") ? content.replace(/\n/g, "\r\n") : content;
     const before = this.source.files.join("\n");
@@ -1086,15 +1096,29 @@ export class App {
       if (files.join("\n") !== before) this.renderFileList();
       this.markActiveFile();
       this.renderTabs();
-      sound.play("select");
-      this.setEditMessage(t().msg.saved(file.split("/").pop()!));
+      if (!auto) sound.play("select");
+      this.setEditMessage(t().msg.saved(name));
+      return true;
     } catch (e) {
-      this.setEditMessage(t().msg.saveFailed(e instanceof Error ? e.message : String(e)), "error");
+      this.setEditMessage(t().msg.saveFailed(this.errText(e)), "error");
+      return false;
     }
+  }
+
+  /** Tutor: prima di una domanda si salvano tutti i file con modifiche. */
+  private async saveAllDirty(): Promise<void> {
+    for (const file of [...this.drafts.keys()]) if (this.isDirty(file)) await this.saveFile(false, file, true);
+  }
+
+  /** Un ponte avviato prima della modalità tutor non conosce il salvataggio: lo si dice in chiaro. */
+  private errText(e: unknown): string {
+    const msg = e instanceof Error ? e.message : String(e);
+    return /Operazione sconosciuta/.test(msg) ? t().msg.serverOutdated : msg;
   }
 
   /** Barra: conferma di sovrascrittura, campo del nuovo file o pulsanti normali. */
   private showConfirm(open: boolean): void {
+    $("edit-ask").hidden = true;
     $("edit-confirm").hidden = !open;
     $("edit-new").hidden = true;
     $("edit-actions").hidden = open;
@@ -1102,6 +1126,7 @@ export class App {
   }
 
   private openNewFile(open: boolean): void {
+    $("edit-ask").hidden = true;
     $("edit-confirm").hidden = true;
     $("edit-new").hidden = !open;
     $("edit-actions").hidden = open;
@@ -1126,7 +1151,7 @@ export class App {
     try {
       await this.source.writeFile(name, "");
     } catch (e) {
-      this.setEditMessage(t().msg.saveFailed(e instanceof Error ? e.message : String(e)), "error");
+      this.setEditMessage(t().msg.saveFailed(this.errText(e)), "error");
       return;
     }
     this.fileCache.set(name, "");
@@ -1703,17 +1728,89 @@ export class App {
 
   // ---------- Domande e agente ----------
 
-  private ask(text: string): void {
+  /** Tutor: buffer dell'editor, righe cambiate dall'ultima domanda e output da allegare; commit() li segna come inviati. */
+  private tutorContext(): { context: Pick<GameContext, "buffer" | "changed" | "output">; commit: () => void } {
+    const file = this.currentFile;
+    const content = file !== undefined && this.view === undefined ? this.bufferOf(file) : undefined;
+    if (!this.tutor) return { context: {}, commit: () => {} };
+    const context: Pick<GameContext, "buffer" | "changed" | "output"> = {};
+    if (file !== undefined && content !== undefined) {
+      context.buffer = tutorBuffer(file, content, this.isDirty(file));
+      const before = this.askedText.get(file) ?? this.fileCache.get(file)?.replace(/\r\n/g, "\n");
+      const changed = before === undefined ? [] : changedLines(before, content);
+      if (changed.length) context.changed = changed;
+    }
+    if (this.output) context.output = this.output;
+    return {
+      context,
+      commit: () => {
+        if (file !== undefined && content !== undefined) this.askedText.set(file, content);
+        this.setOutput(undefined);
+      },
+    };
+  }
+
+  /** Scelte rapide del tutor: precompilano la domanda (l'errore chiede prima l'output del terminale). */
+  private quickAsk(kind: QuickAsk): void {
+    this.showAskMenu(false);
+    if (kind === "error") {
+      this.showErrorForm(true);
+      return;
+    }
+    this.prefillAsk(t().quick[kind].question);
+  }
+
+  private prefillAsk(text: string): void {
+    const input = $<HTMLInputElement>("ask-input");
+    input.value = text;
+    input.focus();
+    input.setSelectionRange(text.length, text.length);
+    sound.play("select");
+  }
+
+  private setOutput(text: string | undefined): void {
+    this.output = text?.trim() ? text : undefined;
+    $("ask-output").hidden = !this.output;
+    $("ask-output-text").textContent = this.output?.replace(/\s+/g, " ") ?? "";
+    $("ask-output-text").title = this.output ?? "";
+  }
+
+  private showAskMenu(open: boolean): void {
+    $("edit-confirm").hidden = true;
+    $("edit-new").hidden = true;
+    $("edit-ask").hidden = !open;
+    $("edit-actions").hidden = open;
+    if (open) $<HTMLButtonElement>("edit-ask").querySelector("button")!.focus();
+  }
+
+  private showErrorForm(open: boolean): void {
+    $("edit-error").hidden = !open;
+    if (open) {
+      const area = $<HTMLTextAreaElement>("edit-error-output");
+      area.value = this.output ?? "";
+      area.focus();
+    }
+  }
+
+  private async ask(text: string): Promise<void> {
     const q = text.trim();
     if (!q) return;
     // chi chiede mentre legge una risposta continua quella conversazione
     const ctx = this.context();
     const quote = this.quote;
     const context: GameContext = quote ? { ...ctx, selection: quote.text, file: quote.file ?? ctx.file, lines: quote.lines ?? ctx.lines } : ctx;
+    // le righe cambiate si calcolano prima di salvare: dopo, il disco coincide col buffer
+    const tutor = this.tutorContext();
+    Object.assign(context, tutor.context);
+    if (this.tutor && this.source.kind !== "demo") {
+      await this.saveAllDirty();
+      if (context.buffer) context.buffer.dirty = this.isDirty(context.buffer.file);
+    }
     const sent = this.source.ask(q, context, this.liveAnswer ? this.conversation : undefined);
     sound.play(sent ? "ask" : "error");
     if (sent) {
       this.setQuote(undefined);
+      tutor.commit();
       // la domanda va nello storico dopo il fumetto che l'ha fatta nascere
       this.logLine(this.dialogLine);
       this.dialogLine = undefined;
@@ -2124,6 +2221,38 @@ export class App {
       this.editLayer.area.focus();
     });
     $("edit-new-btn").addEventListener("click", () => this.openNewFile(true));
+    $("edit-ask-btn").addEventListener("click", () => this.showAskMenu(true));
+    for (const b of $("edit-ask").querySelectorAll<HTMLButtonElement>("[data-quick]")) {
+      b.addEventListener("click", () => this.quickAsk(b.dataset.quick as QuickAsk));
+    }
+    $("edit-ask-cancel").addEventListener("click", () => {
+      this.showAskMenu(false);
+      $("edit-ask-btn").focus();
+    });
+    $("edit-ask").addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        this.showAskMenu(false);
+        $("edit-ask-btn").focus();
+      }
+    });
+    $("edit-error").addEventListener("submit", (e) => {
+      e.preventDefault();
+      this.setOutput($<HTMLTextAreaElement>("edit-error-output").value);
+      this.showErrorForm(false);
+      this.prefillAsk(t().quick.error.question);
+    });
+    $("edit-error-cancel").addEventListener("click", () => this.showErrorForm(false));
+    $("edit-error").addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        this.showErrorForm(false);
+      }
+    });
+    $("ask-output-clear").addEventListener("click", () => {
+      this.setOutput(undefined);
+      $("ask-input").focus();
+    });
     $("edit-new-cancel").addEventListener("click", () => this.openNewFile(false));
     $("edit-new").addEventListener("submit", (e) => {
       e.preventDefault();
@@ -2143,8 +2272,9 @@ export class App {
     $("ask-form").addEventListener("submit", (e) => {
       e.preventDefault();
       const input = $<HTMLInputElement>("ask-input");
-      this.ask(input.value);
+      const text = input.value;
       input.value = "";
+      void this.ask(text);
     });
     document.addEventListener("keydown", (e) => {
       const inField = (e.target as HTMLElement).closest("input, textarea");

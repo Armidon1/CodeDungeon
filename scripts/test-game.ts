@@ -48,9 +48,10 @@ const cleanup = async () => {
 const project = path.join(tmp, "packet-server");
 await fs.cp(path.resolve("examples/packet-server"), project, { recursive: true });
 
-const server = spawn("npx", ["tsx", "src/server/cli.ts", "play", "--project", project, "--port", String(PORT)], {
+// modalità mcp con lo stdin aperto e muto: il gioco vede un agente collegato e le domande partono davvero
+const server = spawn("npx", ["tsx", "src/server/cli.ts", "mcp", "--project", project, "--port", String(PORT)], {
   env: { ...process.env, CODE_DUNGEON_DATA: path.join(tmp, "data") },
-  stdio: ["ignore", "ignore", "pipe"],
+  stdio: ["pipe", "ignore", "pipe"],
 });
 children.push(server);
 await new Promise<void>((resolve, reject) => {
@@ -285,6 +286,17 @@ try {
   // ---------- modalità tutor ----------
   await viewport(1400, 900);
   await load();
+  // le domande inviate al ponte, lette dal test
+  await evaluate(`(() => {
+    const send = WebSocket.prototype.send;
+    window.__questions = [];
+    WebSocket.prototype.send = function (d) {
+      const m = JSON.parse(String(d));
+      if (m.type === "question") window.__questions.push(m);
+      return send.call(this, d);
+    };
+  })()`);
+  const lastQuestion = () => evaluate<any>(`window.__questions.at(-1)`);
   await click(`#mode-options input[value="tutor"]`);
   await click("#start-btn");
   await waitFor(`document.getElementById("title-screen").hidden`);
@@ -318,18 +330,64 @@ try {
   check(await waitFor(`document.getElementById("edit-state").classList.contains("is-dirty")`), "si vede l'indicatore delle modifiche non salvate");
   check(await waitFor(`[...document.querySelectorAll("#editor .line code")].some((c) => c.textContent === '    return "prova"m')`), "le righe si ri-evidenziano mentre si scrive, Tab indenta");
   check(await aligned(), "la textarea resta allineata dopo le nuove righe");
+
+  // Chiedi ▾ → Controlla: la domanda salva i file modificati e parte con il codice dell'editor e le righe cambiate
+  await click("#edit-ask-btn");
+  check(await waitFor(`!document.getElementById("edit-ask").hidden && document.getElementById("edit-actions").hidden`), "Chiedi apre le scelte rapide");
+  await click(`#edit-ask [data-quick="check"]`);
+  check(await waitFor(`document.activeElement?.id === "ask-input" && document.getElementById("ask-input").value.length > 0`), "Controlla precompila la domanda");
+  await press("Enter");
+  await waitFor(`window.__questions.length === 1`);
+  const lines0 = original.split("\n").length;
+  let q = await lastQuestion();
+  check(
+    q?.context.mode === "tutor" && q.context.buffer?.file === "protocol.py" && q.context.buffer.dirty === false &&
+      q.context.buffer.content.endsWith('def tutor():\n    return "prova"m') &&
+      JSON.stringify(q.context.changed) === JSON.stringify([[lines0 + 1, lines0 + 2]]),
+    "la domanda in tutor porta il codice dell'editor e le righe cambiate",
+  );
+  check(
+    (await fs.readFile(path.join(project, "protocol.py"), "utf8")) === original + '\ndef tutor():\n    return "prova"m' &&
+      (await evaluate(`!document.getElementById("edit-state").classList.contains("is-dirty")`)),
+    "fare una domanda salva il file (Invio mantiene l'indentazione)",
+  );
+  // Errore: si incolla l'output, compare sopra la domanda e parte con lei; le righe non sono cambiate
+  await click("#edit-ask-btn");
+  await click(`#edit-ask [data-quick="error"]`);
+  check(await waitFor(`!document.getElementById("edit-error").hidden && document.activeElement?.id === "edit-error-output"`), "Errore apre il riquadro per incollare l'output");
+  await typeText("NameError: name 'x' is not defined");
+  await evaluate(`document.getElementById("edit-error").requestSubmit()`);
+  check(
+    await waitFor(`document.getElementById("edit-error").hidden && !document.getElementById("ask-output").hidden && document.activeElement?.id === "ask-input"`),
+    "l'output resta allegato sopra il campo della domanda",
+  );
+  await press("Enter");
+  await waitFor(`window.__questions.length === 2`);
+  q = await lastQuestion();
+  check(/NameError/.test(q?.context.output) && !q.context.changed && (await evaluate(`document.getElementById("ask-output").hidden`)), "l'output parte con la domanda, senza righe cambiate se il codice è lo stesso");
+  await evaluate(`document.getElementById("code-input").focus()`);
+  await typeText("#");
   await press("s", 2);
   check(await waitFor(`document.getElementById("edit-state").dataset.msg === "ok"`), "Ctrl+S salva il file");
-  const saved = await fs.readFile(path.join(project, "protocol.py"), "utf8");
-  check(saved === original + '\ndef tutor():\n    return "prova"m', "il file su disco ha il testo scritto (Invio mantiene l'indentazione)");
+  check((await fs.readFile(path.join(project, "protocol.py"), "utf8")).endsWith('"prova"m#'), "il file su disco ha il testo scritto");
 
+  // file cambiato fuori: la domanda parte lo stesso ma non lo sovrascrive
   await fs.writeFile(path.join(project, "protocol.py"), "# cambiato fuori\n");
   await typeText("!");
+  await evaluate(`(() => { const i = document.getElementById("ask-input"); i.value = "e ora?"; document.getElementById("ask-form").requestSubmit(); })()`);
+  await waitFor(`window.__questions.length === 3`);
+  check(
+    (await waitFor(`document.getElementById("edit-state").dataset.msg === "error"`)) &&
+      (await fs.readFile(path.join(project, "protocol.py"), "utf8")) === "# cambiato fuori\n" &&
+      (await lastQuestion())?.context.buffer?.dirty === true,
+    "se il file è cambiato su disco la domanda non lo sovrascrive e lo dice",
+  );
+  await evaluate(`document.getElementById("code-input").focus()`);
   await press("s", 2);
   check(await waitFor(`!document.getElementById("edit-confirm").hidden`), "se il file è cambiato su disco chiede prima di sovrascrivere");
   await click("#edit-overwrite");
   check(await waitFor(`document.getElementById("edit-state").dataset.msg === "ok"`), "Sovrascrivi salva");
-  check((await fs.readFile(path.join(project, "protocol.py"), "utf8")).endsWith('"prova"m!'), "il file sovrascritto ha il testo dell'editor");
+  check((await fs.readFile(path.join(project, "protocol.py"), "utf8")).endsWith('"prova"m#!'), "il file sovrascritto ha il testo dell'editor");
 
   await click("#edit-new-btn");
   await evaluate(`document.getElementById("edit-new-name").value = "solve.py"`);
@@ -355,6 +413,17 @@ try {
   check(await waitFor(`document.getElementById("code-input")`), "a 390 px l'editor è modificabile");
   check(await inView("edit-save"), "a 390 px il pulsante Salva è visibile");
   check(await noOverflow(), "tutor senza scorrimento orizzontale a 390 px");
+  await click("#edit-ask-btn");
+  check(
+    (await evaluate(`[...document.querySelectorAll("#edit-ask button")].every((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.right <= innerWidth; })`)) &&
+      (await noOverflow()),
+    "a 390 px le scelte rapide stanno nella barra",
+  );
+  await click(`#edit-ask [data-quick="error"]`);
+  check(
+    (await evaluate(`(() => { const r = document.getElementById("edit-error").getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth; })()`)) && (await noOverflow()),
+    "a 390 px il riquadro dell'errore sta nella finestra",
+  );
 
   check(errors.length === 0, `nessun errore JavaScript nella pagina${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } catch (e) {

@@ -51,6 +51,9 @@ check(tools.includes("highlight_lines") && tools.includes("add_step") && tools.i
 const prompt = await client.getPrompt({ name: "crea_tour", arguments: { flusso: "il login" } });
 const promptText = (prompt.messages[0]?.content as { text?: string }).text ?? "";
 check(/il login/.test(promptText) && /flusso reale/.test(promptText), "prompt crea_tour con la guida");
+const tutorPrompt = await client.getPrompt({ name: "tutor", arguments: {} });
+const tutorText = (tutorPrompt.messages[0]?.content as { text?: string }).text ?? "";
+check(/modalità tutor/.test(tutorText) && /Non scrivere la soluzione/.test(tutorText), "prompt tutor con le regole (protocollo 2025)");
 
 // il "gioco"
 const game = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
@@ -171,6 +174,43 @@ check(
 );
 await client.callTool({ name: "show_dialog", arguments: { text: "Legge un pacchetto.", question_id: ev3?.meta.question_id } });
 
+// domanda in tutor: codice dell'editor (anche non salvato), righe cambiate e output arrivano all'agente con le regole
+const code = 'def solve():\n    print("ciao"\n';
+game.send(
+  JSON.stringify({
+    type: "question",
+    text: "Spiegami l'errore",
+    context: {
+      level: "medio",
+      file: "solve.py",
+      mode: "tutor",
+      buffer: { file: "solve.py", content: code + "#".repeat(30_000), dirty: true },
+      changed: [[2, 2], [0, 3], "x"],
+      output: "SyntaxError: '(' was never closed",
+    },
+  }),
+);
+await new Promise((res) => setTimeout(res, 150));
+const ev4 = pushed.at(-1);
+check(
+  ev4?.meta.mode === "tutor" && ev4.content.includes(`(solve.py, non salvato, tagliato):\n\`\`\`\n${code}`) &&
+    /Righe cambiate dall'ultima domanda: 2\./.test(ev4.content) && /SyntaxError/.test(ev4.content) && /Non scrivere la soluzione/.test(ev4.content) &&
+    ev4.content.length < 22_000,
+  "in tutor la domanda porta il codice dell'editor, le righe cambiate, l'output e le regole",
+);
+r = await client.callTool({ name: "get_game_state", arguments: {} });
+check(/"mode": "tutor"/.test(text(r)) && !/print\(/.test(text(r)), "lo stato del gioco non si porta dietro il codice della domanda");
+await client.callTool({ name: "show_dialog", arguments: { text: "Guarda le parentesi della riga 2.", question_id: ev4?.meta.question_id } });
+const tutorConv = JSON.parse(await fs.readFile(path.join(convDir, `${ev4?.meta.conversation}.json`), "utf8")) as Conversation;
+const savedBuffer = tutorConv.turns[0]?.question.context.buffer;
+check(savedBuffer?.file === "solve.py" && savedBuffer.dirty && savedBuffer.content === "", "la conversazione salvata non duplica il codice dell'editor");
+// in flusso i campi del tutor vengono tolti
+game.send(JSON.stringify({ type: "question", text: "E qui?", context: { level: "medio", buffer: { file: "a.py", content: "segreto", dirty: false }, output: "x" } }));
+await new Promise((res) => setTimeout(res, 150));
+const ev5 = pushed.at(-1);
+check(ev5?.content === "E qui?" && !ev5.meta.mode, "fuori dal tutor buffer e output non passano");
+await client.callTool({ name: "show_dialog", arguments: { text: "Ok.", question_id: ev5?.meta.question_id } });
+
 // agente in ascolto: wait_for_question si sblocca alla domanda, che non viene anche spinta
 const before = pushed.length;
 const waiting = client.callTool({ name: "wait_for_question", arguments: { timeout_seconds: 30 } });
@@ -215,6 +255,7 @@ const client2 = new Client({ name: "test-agente-2", version: "0.0.1" }, { versio
 await client2.connect(second);
 check(client2.getProtocolEra() === "modern", "un client 2026-07-28 viene servito senza handshake");
 check((await client2.listTools()).tools.some((t) => t.name === "wait_for_question"), "strumenti esposti anche col protocollo 2026-07-28");
+check((await client2.listPrompts()).prompts.some((p) => p.name === "tutor"), "prompt tutor esposto anche col protocollo 2026-07-28");
 r = await client2.callTool({ name: "get_game_state", arguments: {} });
 check(text(r).includes(`127.0.0.1:${PORT + 1}`), "con la porta occupata il secondo server usa la successiva");
 

@@ -169,10 +169,54 @@ export interface GameContext {
   selection?: string;
   /** Modalità scelta nel gioco; assente = "flusso". */
   mode?: Mode;
+  /** Solo in tutor, nelle domande: il contenuto attuale dell'editor, anche non salvato (al massimo BUFFER_MAX caratteri). */
+  buffer?: TutorBuffer;
+  /** Solo in tutor: righe del buffer cambiate dall'ultima domanda su questo file (o dal file su disco), intervalli inclusi da 1. */
+  changed?: [number, number][];
+  /** Solo in tutor: output del terminale incollato dall'utente ("Spiegami l'errore"), al massimo OUTPUT_MAX caratteri. */
+  output?: string;
+}
+
+export interface TutorBuffer {
+  file: string;
+  content: string;
+  /** true se nell'editor ci sono modifiche non salvate su disco. */
+  dirty: boolean;
+  /** true se content è stato tagliato a BUFFER_MAX. */
+  truncated?: boolean;
 }
 
 /** Lunghezza massima del testo selezionato che accompagna una domanda. */
 export const SELECTION_MAX = 2000;
+/** Lunghezza massima del buffer dell'editor che accompagna una domanda in tutor. */
+export const BUFFER_MAX = 20_000;
+/** Lunghezza massima dell'output del terminale che accompagna una domanda in tutor. */
+export const OUTPUT_MAX = 4000;
+/** Numero massimo di intervalli di righe cambiate. */
+export const CHANGED_MAX = 50;
+
+/** Pulisce i campi del tutor arrivati dal gioco: tipi, limiti, niente campi estranei. */
+export function cleanTutorContext(ctx: GameContext): GameContext {
+  const out: GameContext = { ...ctx };
+  const b = ctx.buffer as Partial<TutorBuffer> | undefined;
+  delete out.buffer;
+  delete out.changed;
+  delete out.output;
+  if (ctx.mode !== "tutor") return out;
+  if (b && typeof b.file === "string" && typeof b.content === "string") {
+    const truncated = b.truncated === true || b.content.length > BUFFER_MAX;
+    out.buffer = { file: b.file.slice(0, 512), content: b.content.slice(0, BUFFER_MAX), dirty: b.dirty === true, ...(truncated ? { truncated } : {}) };
+  }
+  if (Array.isArray(ctx.changed)) {
+    const ranges = ctx.changed
+      .filter((r): r is [number, number] => Array.isArray(r) && r.length === 2 && r.every((n) => Number.isInteger(n) && n >= 1) && r[0] <= r[1])
+      .slice(0, CHANGED_MAX)
+      .map(([a, z]) => [a, z] as [number, number]);
+    if (ranges.length) out.changed = ranges;
+  }
+  if (typeof ctx.output === "string" && ctx.output.trim()) out.output = ctx.output.slice(0, OUTPUT_MAX);
+  return out;
+}
 
 export interface UserQuestion {
   id: string;

@@ -12,9 +12,11 @@ import {
   LEVELS,
   diagramPieces,
   type Diagram,
+  type GameContext,
   type StepDiagram,
   type Tour,
   type TourStep,
+  type UserQuestion,
 } from "../shared/types.js";
 import type { Bridge } from "./bridge.js";
 import type { Project } from "./project.js";
@@ -68,7 +70,8 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         "Se le domande non arrivano da sole, dopo play_tour e dopo ogni risposta chiama wait_for_question e resta in ascolto: " +
         "l'utente non deve tornare al terminale per chiedertelo. Smetti solo se l'utente ti scrive nel terminale. " +
         "L'utente può indicare nel gioco cosa lo aiuta a capire (frasi brevi, più schemi...): lo trovi in get_game_state (reader) " +
-        "e insieme alle domande. Rispettalo in ogni testo.",
+        "e insieme alle domande. Rispettalo in ogni testo. " +
+        TUTOR_RULES,
     },
   );
 
@@ -85,6 +88,9 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
   /** Lingua dei testi: quella scelta nel menu del gioco. */
   const langNote = (): string => ` Lingua scelta nel gioco: ${bridge.lang === "it" ? "italiano (it)" : "inglese (en)"}. Scrivi i testi in questa lingua.`;
 
+  /** Nota per le domande in modalità tutor (vuota se nessuna lo è). */
+  const tutorNote = (qs: UserQuestion[]): string => (qs.some((q) => q.context.mode === "tutor") ? ` ${TUTOR_RULES}` : "");
+
   bridge.onQuestion = (q) => {
     const meta: Record<string, string> = { question_id: q.id, level: q.context.level };
     if (q.context.file) meta.file = q.context.file;
@@ -92,6 +98,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     if (q.context.tourId) meta.tour = q.context.tourId;
     if (q.context.stepId) meta.step = q.context.stepId;
     if (q.context.lang) meta.lang = q.context.lang;
+    if (q.context.mode === "tutor") meta.mode = "tutor";
     if (q.conversation) meta.conversation = q.conversation;
     const asks = readerAsks();
     if (asks.length) meta.aiuti = asks.join("; ");
@@ -101,9 +108,10 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     const selected = q.context.selection
       ? `${q.text}\n\nTesto selezionato dall'utente${q.context.file && q.context.lines ? ` (${q.context.file}, righe ${q.context.lines[0]}-${q.context.lines[1]})` : ""}:\n«${q.context.selection}»`
       : q.text;
-    const content = q.previous?.length
+    const followUp = q.previous?.length
       ? `${selected}\n\n(Seguito di una conversazione. Prima:\n${q.previous.map((p) => `D: ${p.question}\nR: ${p.answers.join(" ") || "(nessuna risposta)"}`).join("\n")})`
       : selected;
+    const content = q.context.mode === "tutor" ? `${followUp}${tutorAttachments(q.context)}\n\n${TUTOR_RULES}` : followUp;
     server.server
       .notification({ method: "notifications/claude/channel", params: { content, meta } })
       .catch((e: unknown) => log(`notifica della domanda non inviata: ${String(e)}`));
@@ -266,7 +274,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     async () => {
       const q = bridge.takeQuestions();
       if (q.length === 0) return ok("Nessuna domanda in attesa.");
-      return ok(`${q.length === 1 ? "1 domanda in attesa." : `${q.length} domande in attesa.`}${readerNote()}`, q);
+      return ok(`${q.length === 1 ? "1 domanda in attesa." : `${q.length} domande in attesa.`}${readerNote()}${tutorNote(q)}`, q);
     },
   );
 
@@ -307,7 +315,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       const q = await bridge.waitQuestions((timeout_seconds ?? 300) * 1000, ctx.mcpReq.signal);
       if (q.length === 0) return ok("Nessuna domanda nel frattempo. Richiama subito wait_for_question: l'utente è ancora nel gioco.");
       return ok(
-        `${q.length === 1 ? "1 domanda" : `${q.length} domande`}. Rispondi ora nel gioco con show_dialog passando question_id, poi richiama wait_for_question.${readerNote()}`,
+        `${q.length === 1 ? "1 domanda" : `${q.length} domande`}. Rispondi ora nel gioco con show_dialog passando question_id, poi richiama wait_for_question.${readerNote()}${tutorNote(q)}`,
         q,
       );
     },
@@ -588,5 +596,42 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     },
   );
 
+  // In Claude Code: /mcp__code-dungeon__tutor. Le regole brevi sono anche nelle istruzioni del server e in ogni domanda in tutor.
+  server.registerPrompt(
+    "tutor",
+    {
+      title: "Fai da tutor in Code Dungeon",
+      description: "Regole per rispondere alle domande in modalità tutor: aiuti graduali, correzioni sulle righe, mai la soluzione se non chiesta.",
+      argsSchema: {},
+    },
+    async () => {
+      const guidePath = fileURLToPath(new URL("../../docs/come-fare-il-tutor.md", import.meta.url));
+      const guide = await readFile(guidePath, "utf8").catch(() => TUTOR_RULES);
+      const ask = "L'utente usa Code Dungeon in modalità tutor: scrive codice da solo e ti fa domande nel gioco. Rispondi seguendo queste regole." + langNote() + readerNote();
+      return { messages: [{ role: "user" as const, content: { type: "text" as const, text: `${ask}\n\n${guide}` } }] };
+    },
+  );
+
   return server;
+}
+
+/** Regole brevi della modalità tutor; quelle complete sono nel prompt tutor (docs/come-fare-il-tutor.md). */
+export const TUTOR_RULES =
+  'Domande con context.mode "tutor": l\'utente scrive codice da solo e tu fai da insegnante. ' +
+  "Non scrivere la soluzione: un aiuto per richiesta, a livelli (domanda guida, poi concetto, poi frammento minimo; soluzione completa solo se la chiede esplicitamente). " +
+  "Leggi context.buffer (codice attuale, anche non salvato) e parti dalle righe in context.changed; context.output è l'errore del terminale. " +
+  "Correggi con highlight_lines sulla riga e spiega il perché; se il codice è giusto dillo in breve. Non modificare mai i file dell'utente. " +
+  "Regole complete nel prompt tutor.";
+
+/** Buffer, righe cambiate e output di una domanda in tutor, come testo per il canale. */
+function tutorAttachments(ctx: GameContext): string {
+  const parts: string[] = [];
+  const b = ctx.buffer;
+  if (b) {
+    const state = [b.dirty ? "non salvato" : "salvato", b.truncated ? "tagliato" : ""].filter(Boolean).join(", ");
+    parts.push(`Codice nell'editor (${b.file}, ${state}):\n\`\`\`\n${b.content}\n\`\`\``);
+  }
+  if (ctx.changed?.length) parts.push(`Righe cambiate dall'ultima domanda: ${ctx.changed.map(([a, z]) => (a === z ? `${a}` : `${a}-${z}`)).join(", ")}.`);
+  if (ctx.output) parts.push(`Output del terminale:\n\`\`\`\n${ctx.output}\n\`\`\``);
+  return parts.length ? `\n\n${parts.join("\n\n")}` : "";
 }
