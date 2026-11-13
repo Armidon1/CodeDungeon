@@ -2,23 +2,24 @@
 
 <p align="center"><img src="docs/img/tour-board.png" alt="Lumen explains the way back of a packet in server.py, next to the pixel-art diagram of the whole flow" width="900"></p>
 
-A cozy pixel-art game that explains code written by LLMs. A guide (Lumen, a little lantern, or one you pick) walks you through a pixelated VS Code and follows the **real flow of the program**: from the packet that arrives to the function that answers it.
+A cozy pixel-art game that explains code written by LLMs. A guide (Lumen, a little lantern, or one you pick) walks you through a pixelated VS Code and follows the **real flow of the program**: from the packet that arrives to the function that answers it. In **Tutor** mode it turns around: you write the code and the guide teaches you, without writing it for you.
 
 The game is an **MCP server**: it has no agent of its own and is driven by the one you already use (Claude Code, Codex, Gemini CLI or any MCP client). The agent builds the tour with the game's tools and answers your questions live.
 
 ```
 agent (Claude Code / Codex / Gemini CLI) ──MCP stdio──▶ Code Dungeon server ──WebSocket──▶ game in the browser or the app
                                                          │
-                                                         └─ .tour/ in your project: tours, diagrams and conversations
+                                                         └─ .tour/ in your project: tours, diagrams, conversations and gaps to review
 ```
 
-## Status: stage 10 of 10 in progress
+## Status: stage 11 done, stage 10 in progress
 
 Already working:
 
+- two modes, chosen in the menu: **Flow** (the guide leads with tours, the code is read-only) and **Tutor** (you write the code, the guide helps only when you ask). See [Tutor mode](#tutor-mode);
 - interface in English (default) or Italian, chosen in the menu. The agent receives the chosen language and writes tours and answers in it;
 - pixelated VS Code editor with syntax highlighting (Python, JS/TS) and line highlighting;
-- activity bar on the left, as in VS Code: files, search, tours, diagrams and questions, one panel at a time (click the open one to close the side bar). Search looks through every project file (Ctrl+F, with the selected text already in); `:42` or Ctrl+G jumps to a line;
+- activity bar on the left, as in VS Code: files, search, tours, diagrams, questions and things to review, one panel at a time (click the open one to close the side bar). Search looks through every project file (Ctrl+F, with the selected text already in); `:42` or Ctrl+G jumps to a line;
 - the guide with 5 animated expressions and a mini guide that walks between files, with a pixel dissolve when the file changes;
 - guide chosen in the menu: Lumen, Aria, Patrizio, Nilo, or your own photo or drawing turned into pixel art (three compression levels side by side and a slider), with automatic expressions or one uploaded per expression; you pick the name. The image stays in the browser;
 - JSON tours with branches (choices in the dialog), forward and back;
@@ -34,6 +35,18 @@ Already working:
 - phone layout;
 - optional desktop app (Tauri): the game in its own window, which finds the open session by itself;
 - sample project `examples/packet-server` (a TCP server in Python) with an 11-step tour, including a real DoS flaw.
+
+## Tutor mode
+
+Pick **Tutor** in the start menu (Game tab). The editor becomes writable and the guide stops leading: it waits for your questions.
+
+- **Write and save.** Ctrl+S saves, "+ New file" creates a file in the project. Tab and Enter keep the indentation. Before each question the game saves the files you changed; a file changed on disk in the meantime is not overwritten.
+- **Ask.** Type a question or use the quick choices: *Hint*, *Check* (is my code right?) and *Error*, where you paste the terminal output. The agent receives your current code, the lines you changed since the last question and the output.
+- **Help in levels, no solutions.** The guide answers with a guiding question first, then the concept, then a minimal example. It writes the full solution only if you ask for it explicitly, and it never edits your files.
+- **Marks on the lines.** The guide can underline lines with a wavy line (error, warning, hint) and a short note on where to look. The marks follow the lines while you type and disappear when you change them; "Clear marks" removes them all.
+- **To review.** When a mistake comes from a concept you haven't got yet (not a typo), the guide notes it in `.tour/lacune.json`. The bookmark panel in the activity bar lists them, most frequent first, with a counter on the icon. "Got it" moves one among the understood ones; "Exercise" asks the guide for a short exercise on it. If the same mistake comes back, it returns to review.
+
+The agent follows the `tutor` prompt (full rules in [docs/come-fare-il-tutor.md](docs/come-fare-il-tutor.md), in Italian).
 
 ## A look inside
 
@@ -156,7 +169,7 @@ The server speaks MCP over stdio, in two versions: the stateless 2026-07-28 prot
 3. The agent reads the code, writes the tour and gives you the game's address: usually http://127.0.0.1:7337. If the port is taken it uses the next free one, so open the address it gives you. With several agents open at once, click the project name in the game's title bar to switch session.
 4. In the game, pick the level and follow the guide. Type your questions directly in the game: the answer arrives in the speech bubble.
 
-Tours, diagrams and conversations are saved in `.tour/` in your project.
+Tours, diagrams, conversations and the gaps to review are saved in `.tour/` in your project.
 
 > **Tip: add `.tour/` to your project's `.gitignore`.** The folder is generated by Code Dungeon and also holds your questions to the agent, which are personal. If you want to share a tour with whoever clones the project, at least leave out the conversations:
 >
@@ -280,9 +293,11 @@ and confirm the initial warning (needed because home-made channels aren't on the
 | `open_file` | opens a file in the editor, with the animation |
 | `highlight_lines` | highlights a range of lines |
 | `show_dialog` | makes the guide speak, with an expression |
-| `get_game_state` | current level, file, lines and step |
+| `get_game_state` | current level, mode, file, lines and step |
 | `get_user_questions` | reads and clears the questions typed in the game |
 | `wait_for_question` | listens and returns the next question as soon as it's typed |
+| `mark_lines` | underlines lines with a wavy line and a note (error, warning, hint), without changing the text |
+| `record_gap`, `get_gaps` | note a concept the user stumbled on in `.tour/lacune.json`, and read the list |
 | `get_conversation` | rereads a conversation saved in `.tour/conversazioni/` (without an id, lists them) |
 | `create_tour`, `add_step`, `set_step_text` | build the script in `.tour/` |
 | `list_tours`, `get_tour`, `play_tour` | list, read and start tours |
@@ -290,7 +305,7 @@ and confirm the initial warning (needed because home-made channels aren't on the
 | `reveal_diagram` | shows a saved diagram, even just its first pieces |
 | `set_step_diagram` | links a diagram to a tour step |
 
-Prompt: `crea_tour` (full guide in [docs/come-fare-un-tour.md](docs/come-fare-un-tour.md), in Italian).
+Prompts: `crea_tour` (full guide in [docs/come-fare-un-tour.md](docs/come-fare-un-tour.md)) and `tutor` (rules in [docs/come-fare-il-tutor.md](docs/come-fare-il-tutor.md)), both in Italian.
 
 ## Development
 
@@ -299,7 +314,7 @@ npm run dev          # game with hot reload on http://localhost:5173 (finds the 
 npm run play -- --project examples/packet-server    # in another terminal
 npm run typecheck
 npm run test:mcp     # end-to-end test: fake agents (2026-07-28 and 2025 protocol) + fake game
-npm run build:game && npm run test:game   # the game in headless Chromium: menu, tour, chat mode and saved history, layout at 1400 and 390 px
+npm run build:game && npm run test:game   # the game in headless Chromium: menu, tour, chat mode and saved history, tutor mode, layout at 1400 and 390 px
 npm run build:demo   # a single HTML file with the sample embedded, no bridge
 npm run app:dev      # desktop app (Tauri) connected to `npm run dev`
 npm run app:build    # desktop app built, packages in src-tauri/target/release/bundle/
@@ -311,7 +326,7 @@ GitHub Actions runs typecheck and both tests on every push and pull request (`.g
 
 - The bridge listens only on `127.0.0.1` and accepts WebSockets only from local pages, to block cross-site WebSocket hijacking.
 - The server reads only inside the project folder: absolute paths, `../` and symbolic links that leave it are rejected.
-- In the project it writes only to `.tour/`, with validated ids and atomic writes.
+- In the project it writes to `.tour/`, with validated ids and atomic writes. The only other writes are the files you save yourself from the editor in Tutor mode: text files up to 512 KB, inside the project, never in `.tour/` or `.git/`. The agent has no tool to change your files.
 - Outside the project it writes a single file: `code-dungeon.db` (SQLite) with your settings and questionnaire answers, in the user data folder (`~/.local/share/code-dungeon` on Linux, `~/Library/Application Support/code-dungeon` on macOS, `%APPDATA%\code-dungeon` on Windows; change it with `CODE_DUNGEON_DATA`). It doesn't end up in Git and doesn't leave your computer, except for what the agent reads to adapt its explanations. The game doesn't ask for certificates or diagnoses.
 - Files over 512 KB or binary files are not opened.
 - Questions pushed into the Claude Code session come only from the game open locally (same origin check).
