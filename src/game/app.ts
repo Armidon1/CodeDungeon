@@ -10,6 +10,7 @@ import {
   type Diagram,
   type Expression,
   type GameContext,
+  type Gap,
   type Level,
   type LineMark,
   type Mode,
@@ -49,7 +50,7 @@ const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0
 const QUOTE_NOTE_MAX = 140;
 
 /** Pannelli della barra laterale, nell'ordine della barra delle attività. */
-const PANELS = ["files", "search", "tours", "diagrams", "questions"] as const;
+const PANELS = ["files", "search", "tours", "diagrams", "questions", "review"] as const;
 type Panel = (typeof PANELS)[number];
 /** La ricerca nel codice si ferma a tanti risultati e guarda al massimo tanti file. */
 const SEARCH_MAX = 200;
@@ -222,7 +223,7 @@ export class App {
     $("project-name").textContent = this.source.projectName;
     this.chat.restore(this.source.projectName);
     this.renderFileList();
-    await Promise.all([this.renderTourList(), this.renderDiagramList(), this.renderConversationList()]);
+    await Promise.all([this.renderTourList(), this.renderDiagramList(), this.renderConversationList(), this.renderGapList()]);
     this.renderTitleSource();
   }
 
@@ -363,7 +364,7 @@ export class App {
     this.foldPop($("board-pop").classList.contains("is-folded"));
     this.renderTabs();
     this.updateNav();
-    if (this.loaded) void Promise.all([this.renderTourList(), this.renderDiagramList(), this.renderConversationList()]);
+    if (this.loaded) void Promise.all([this.renderTourList(), this.renderDiagramList(), this.renderConversationList(), this.renderGapList()]);
     if (this.currentFile) $("status-lang").textContent = langLabel(langOf(this.currentFile));
     if (this.panel === "search") void this.runSearch();
   }
@@ -791,6 +792,69 @@ export class App {
         li.append(chips);
       }
       list.append(li);
+    }
+  }
+
+  /** Pannello "Da ripassare": le lacune annotate dal tutor con record_gap. */
+  private async renderGapList(gaps?: Gap[]): Promise<void> {
+    const items = gaps ?? (await this.source.listGaps().catch(() => []));
+    const list = $("gap-list");
+    const open = items.filter((g) => !g.resolved);
+    const badge = $("review-badge");
+    badge.hidden = open.length === 0;
+    badge.textContent = open.length > 99 ? "99+" : String(open.length);
+    list.innerHTML = "";
+    if (items.length === 0) {
+      list.innerHTML = `<li class="muted small">${t().msg.noGaps}</li>`;
+      return;
+    }
+    const date = new Intl.DateTimeFormat(this.settings.lang, { day: "numeric", month: "short" });
+    const done = items.filter((g) => g.resolved);
+    const add = (g: Gap): void => {
+      const li = document.createElement("li");
+      li.className = "tour-item gap-item";
+      li.classList.toggle("is-resolved", g.resolved);
+      li.dataset.id = g.id;
+      li.innerHTML = `<span class="tour-title"></span><span class="tour-meta"></span>`;
+      li.querySelector(".tour-title")!.textContent = g.concept;
+      li.querySelector(".tour-meta")!.textContent = `${t().msg.gapTimes(g.count)} · ${date.format(new Date(g.lastSeen))}`;
+      if (g.example) {
+        const ex = document.createElement("p");
+        ex.className = "gap-example";
+        ex.textContent = g.example;
+        li.append(ex);
+      }
+      const actions = document.createElement("div");
+      actions.className = "gap-actions";
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "chip-btn gap-resolve";
+      toggle.textContent = g.resolved ? t().msg.gapReopen : t().msg.gapResolve;
+      if (!g.resolved) toggle.title = t().msg.gapResolveTitle;
+      toggle.addEventListener("click", () => {
+        sound.play("select");
+        void this.source.resolveGap(g.id, !g.resolved).then((next) => this.renderGapList(next)).catch((e) => this.say({ text: this.errText(e), expression: "preoccupato" }));
+      });
+      actions.append(toggle);
+      if (!g.resolved) {
+        const ex = document.createElement("button");
+        ex.type = "button";
+        ex.className = "chip-btn gap-exercise";
+        ex.textContent = t().msg.gapExercise;
+        ex.title = t().msg.gapExerciseTitle;
+        ex.addEventListener("click", () => this.prefillAsk(t().msg.gapExerciseAsk(g.concept)));
+        actions.append(ex);
+      }
+      li.append(actions);
+      list.append(li);
+    };
+    open.forEach(add);
+    if (done.length > 0) {
+      const head = document.createElement("li");
+      head.className = "gap-group";
+      head.textContent = t().msg.gapsResolved;
+      list.append(head);
+      done.forEach(add);
     }
   }
 
@@ -1913,6 +1977,11 @@ export class App {
   }
 
   private async onAgentCommand(cmd: AgentCommand): Promise<void> {
+    // il registro si aggiorna in silenzio: non chiude la schermata del titolo
+    if (cmd.type === "gaps") {
+      void this.renderGapList(cmd.gaps);
+      return;
+    }
     if (!$("title-screen").hidden) this.closeTitle();
     switch (cmd.type) {
       case "open_file":

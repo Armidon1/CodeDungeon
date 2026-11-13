@@ -283,6 +283,40 @@ export interface ConversationSummary {
   diagrams: string[];
 }
 
+// ---------- Lacune (.tour/lacune.json): concetti su cui l'utente è inciampato ----------
+
+export const GAP_CONCEPT_MAX = 120;
+export const GAP_EXAMPLE_MAX = 400;
+export const GAPS_MAX = 200;
+
+export interface Gap {
+  id: string;
+  /** Il concetto, in breve: "range esclude l'estremo finale". */
+  concept: string;
+  /** Dove è successo l'ultima volta (riga, errore, frammento). */
+  example: string;
+  firstSeen: string;
+  lastSeen: string;
+  /** Quante volte l'agente l'ha annotato. */
+  count: number;
+  resolved: boolean;
+}
+
+export interface GapLog {
+  version: 1;
+  items: Gap[];
+}
+
+/** Chiave per riconoscere lo stesso concetto scritto in modo un po' diverso. */
+export function gapKey(concept: string): string {
+  return concept.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+/** Da ripassare prima, poi le più frequenti e le più recenti. */
+export function sortGaps(items: Gap[]): Gap[] {
+  return [...items].sort((a, b) => Number(a.resolved) - Number(b.resolved) || b.count - a.count || b.lastSeen.localeCompare(a.lastSeen));
+}
+
 // ---------- Protocollo WebSocket tra ponte e gioco ----------
 
 /** GET /session: chi c'è su una porta del ponte. Serve al gioco per scegliere tra più sessioni aperte. */
@@ -304,6 +338,8 @@ export type ServerMessage =
   | { type: "dialog"; text: string; expression?: Expression; speaker?: string }
   | { type: "play_tour"; tour: Tour; fromStep?: string }
   | { type: "diagram"; diagram: Diagram; upto?: number }
+  /** Il registro delle lacune è cambiato. */
+  | { type: "gaps"; gaps: Gap[] }
   /** Una conversazione è stata salvata (nuova domanda o risposta). */
   | { type: "conversation"; summary: ConversationSummary }
   | { type: "response"; reqId: string; ok: true; data: unknown }
@@ -320,6 +356,9 @@ export type ClientMessage =
   | { type: "request"; reqId: string; op: "load_diagram"; id: string }
   | { type: "request"; reqId: string; op: "list_conversations" }
   | { type: "request"; reqId: string; op: "load_conversation"; id: string }
+  | { type: "request"; reqId: string; op: "list_gaps" }
+  /** Segna una lacuna come risolta (o la riapre). Risponde con l'elenco aggiornato. */
+  | { type: "request"; reqId: string; op: "resolve_gap"; id: string; resolved: boolean }
   /** conversation: id della conversazione che la domanda continua; assente per una nuova. */
   | { type: "question"; text: string; context: GameContext; conversation?: string }
   | { type: "state"; context: GameContext }

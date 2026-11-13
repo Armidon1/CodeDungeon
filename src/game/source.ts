@@ -3,9 +3,9 @@
 // - DemoSource (demo-source.ts): il progetto d'esempio incorporato, senza agente.
 
 import { t } from "./i18n";
-import type { Conversation, ConversationSummary, Diagram, DiagramSummary, GameContext, ServerMessage, StoredPrefs, Tour, TourSummary } from "../shared/types";
+import type { Conversation, ConversationSummary, Diagram, DiagramSummary, GameContext, Gap, ServerMessage, StoredPrefs, Tour, TourSummary } from "../shared/types";
 
-export type AgentCommand = Extract<ServerMessage, { type: "open_file" | "highlight" | "marks" | "dialog" | "play_tour" | "diagram" | "conversation" }>;
+export type AgentCommand = Extract<ServerMessage, { type: "open_file" | "highlight" | "marks" | "gaps" | "dialog" | "play_tour" | "diagram" | "conversation" }>;
 
 export type ConnectionState = "demo" | "connecting" | "connected" | "offline";
 
@@ -29,6 +29,8 @@ export interface GameSource {
   /** Conversazioni salvate in .tour/conversazioni/, dalla più recente. */
   listConversations(): Promise<ConversationSummary[]>;
   loadConversation(id: string): Promise<Conversation>;
+  listGaps(): Promise<Gap[]>;
+  resolveGap(id: string, resolved: boolean): Promise<Gap[]>;
   /** conversation: id della conversazione che la domanda continua. */
   ask(text: string, context: GameContext, conversation?: string): boolean;
   sendState(context: GameContext): void;
@@ -164,6 +166,12 @@ export class BridgeSource implements GameSource {
   }
   loadConversation(id: string): Promise<Conversation> {
     return this.request<Conversation>({ op: "load_conversation", id });
+  }
+  listGaps(): Promise<Gap[]> {
+    return this.request<Gap[]>({ op: "list_gaps" });
+  }
+  resolveGap(id: string, resolved: boolean): Promise<Gap[]> {
+    return this.request<Gap[]>({ op: "resolve_gap", id, resolved });
   }
   ask(text: string, context: GameContext, conversation?: string): boolean {
     if (!this.agent || !this.ws || this.ws.readyState !== WebSocket.OPEN) return false;

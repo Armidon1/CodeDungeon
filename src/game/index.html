@@ -31,6 +31,7 @@
           <button type="button" class="act-btn" data-panel="tours" aria-pressed="false" data-i18n-aria-label="ui.savedTours" data-i18n-title="ui.savedTours"><span class="act act-tour" aria-hidden="true"></span></button>
           <button type="button" class="act-btn" data-panel="diagrams" aria-pressed="false" data-i18n-aria-label="ui.diagrams" data-i18n-title="ui.diagrams"><span class="act act-board" aria-hidden="true"></span></button>
           <button type="button" class="act-btn" data-panel="questions" aria-pressed="false" data-i18n-aria-label="ui.questions" data-i18n-title="ui.questions"><span class="act act-chat" aria-hidden="true"></span></button>
+          <button type="button" class="act-btn" data-panel="review" aria-pressed="false" data-i18n-aria-label="ui.review" data-i18n-title="ui.review"><span class="act act-review" aria-hidden="true"></span><span class="act-badge" id="review-badge" hidden></span></button>
         </nav>
 
         <aside class="sidebar" aria-label="Side panel" data-i18n-aria-label="ui.sideLabel">
@@ -60,6 +61,10 @@
           <section class="side-panel" data-panel="questions">
             <div class="sidebar-title" data-i18n="ui.questions">Questions</div>
             <ul class="tour-list" id="conversation-list"></ul>
+          </section>
+          <section class="side-panel" data-panel="review">
+            <div class="sidebar-title" data-i18n="ui.review">To review</div>
+            <ul class="tour-list" id="gap-list"></ul>
           </section>
         </aside>
         <div class="splitter splitter-side" id="split-side" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize the explorer (arrows, Enter closes it, double click resets)" title="Drag to resize · double click resets" data-i18n-aria-label="ui.resizeSide" data-i18n-title="ui.resizeTitle"></div>

@@ -20,6 +20,10 @@ const env = { ...process.env, CODE_DUNGEON_DATA: dataDir } as Record<string, str
 // le conversazioni del test finiscono nel progetto d'esempio: alla fine si tolgono le nuove
 const convDir = path.join(project, ".tour", "conversazioni");
 const convsBefore = new Set(await fs.readdir(convDir).catch(() => [] as string[]));
+// il registro delle lacune: si rimette com'era alla fine
+const gapsFile = path.join(project, ".tour", "lacune.json");
+const gapsBefore = await fs.readFile(gapsFile, "utf8").catch(() => undefined);
+await fs.rm(gapsFile, { force: true });
 
 let failures = 0;
 const check = (cond: unknown, label: string) => {
@@ -214,6 +218,29 @@ const tutorConv = JSON.parse(await fs.readFile(path.join(convDir, `${ev4?.meta.c
 const savedBuffer = tutorConv.turns[0]?.question.context.buffer;
 check(savedBuffer?.file === "solve.py" && savedBuffer.dirty && savedBuffer.content === "", "la conversazione salvata non duplica il codice dell'editor");
 check(tutorConv.turns[0]?.marks?.file === "protocol.py" && tutorConv.turns[0].marks.marks.length === 2, "i segni restano nella conversazione");
+// registro delle lacune: lo stesso concetto (maiuscole e accenti a parte) conta due volte, il gioco riceve l'elenco
+r = await client.callTool({ name: "get_gaps", arguments: {} });
+check(!r.isError && /Nessuna lacuna/.test(text(r)), "get_gaps con registro vuoto");
+r = await client.callTool({ name: "record_gap", arguments: { concept: "Indici delle liste", example: "lista[len(lista)]" } });
+check(!r.isError && /prima volta/.test(text(r)), "record_gap annota una lacuna nuova");
+r = await client.callTool({ name: "record_gap", arguments: { concept: "indici  delle LISTE", example: "lista[3] su 3 elementi" } });
+check(/2 volte/.test(text(r)), "record_gap riconosce lo stesso concetto");
+await client.callTool({ name: "record_gap", arguments: { concept: "Parentesi chiuse" } });
+const gapsMsg = received.findLast((m) => m.type === "gaps");
+check(gapsMsg?.gaps.length === 2 && gapsMsg.gaps[0].count === 2 && gapsMsg.gaps[0].example === "lista[3] su 3 elementi", "il gioco riceve le lacune, le più frequenti prima");
+const savedGaps = JSON.parse(await fs.readFile(gapsFile, "utf8"));
+check(savedGaps.version === 1 && savedGaps.items.length === 2, "le lacune restano in .tour/lacune.json");
+game.send(JSON.stringify({ type: "request", reqId: "g1", op: "resolve_gap", id: gapsMsg?.gaps[0].id, resolved: true }));
+await new Promise((res) => setTimeout(res, 150));
+const afterResolve = received.find((m) => m.reqId === "g1")?.data;
+check(afterResolve?.[0]?.concept === "Parentesi chiuse" && afterResolve[1].resolved, "una lacuna risolta va in fondo");
+r = await client.callTool({ name: "get_gaps", arguments: {} });
+check(/1 da ripassare, 1 risolte/.test(text(r)), "get_gaps conta risolte e da ripassare");
+r = await client.callTool({ name: "record_gap", arguments: { concept: "Indici delle liste" } });
+check(/3 volte/.test(text(r)), "un errore ripetuto si conta ancora");
+r = await client.callTool({ name: "get_gaps", arguments: {} });
+check(/2 da ripassare, 0 risolte/.test(text(r)), "la lacuna riaperta torna da ripassare");
+
 // in flusso i campi del tutor vengono tolti
 game.send(JSON.stringify({ type: "question", text: "E qui?", context: { level: "medio", buffer: { file: "a.py", content: "segreto", dirty: false }, output: "x" } }));
 await new Promise((res) => setTimeout(res, 150));
@@ -353,6 +380,8 @@ for (const name of await fs.readdir(convDir).catch(() => [] as string[])) {
   if (!convsBefore.has(name)) await fs.rm(path.join(convDir, name), { force: true });
 }
 if (convsBefore.size === 0) await fs.rm(convDir, { recursive: true, force: true });
+if (gapsBefore === undefined) await fs.rm(gapsFile, { force: true });
+else await fs.writeFile(gapsFile, gapsBefore);
 game.close();
 evil.close();
 await client.close();

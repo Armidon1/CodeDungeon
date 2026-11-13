@@ -6,7 +6,7 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { Conversation, ConversationSummary, Diagram, DiagramSummary, Tour, TourSummary } from "../shared/types.js";
+import type { Conversation, ConversationSummary, Diagram, DiagramSummary, GapLog, Tour, TourSummary } from "../shared/types.js";
 
 const IGNORED_DIRS = new Set([
   ".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", ".idea", ".vscode", "target",
@@ -16,6 +16,7 @@ const MAX_FILES = 2000;
 const TOUR_DIR = ".tour";
 const DIAGRAM_DIR = "schemi"; // dentro .tour/
 const CONVERSATION_DIR = "conversazioni"; // dentro .tour/
+const GAPS_FILE = "lacune.json"; // dentro .tour/
 /** Nome di un file nuovo: niente separatori o caratteri di controllo. */
 const FILE_NAME = /^[^\\/:*?"<>|\x00-\x1f]{1,128}$/;
 const TOUR_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -234,6 +235,29 @@ export class Project {
       }
     }
     return out;
+  }
+
+  // ---------- Lacune (.tour/lacune.json) ----------
+
+  private async gapsPath(): Promise<string> {
+    const dir = path.join(await this.getRealRoot(), TOUR_DIR);
+    await fs.mkdir(dir, { recursive: true });
+    return path.join(dir, GAPS_FILE);
+  }
+
+  /** Il registro delle lacune; vuoto se non c'è ancora. */
+  async loadGaps(): Promise<GapLog> {
+    const raw = await fs.readFile(await this.gapsPath(), "utf8").catch(() => undefined);
+    if (raw === undefined) return { version: 1, items: [] };
+    const log = JSON.parse(raw) as GapLog;
+    return { version: 1, items: Array.isArray(log.items) ? log.items : [] };
+  }
+
+  async saveGaps(log: GapLog): Promise<void> {
+    const file = await this.gapsPath();
+    const tmp = `${file}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(log, null, 2) + "\n", "utf8");
+    await fs.rename(tmp, file);
   }
 
   // ---------- Conversazioni con l'agente (.tour/conversazioni/) ----------

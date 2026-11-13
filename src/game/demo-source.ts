@@ -1,7 +1,7 @@
 // Sorgente demo: il progetto d'esempio incorporato nella build, senza agente.
 // Importato solo nella build demo (vedi main.ts), così non pesa sulla build normale.
 
-import type { Conversation, ConversationSummary, Diagram, DiagramSummary, Tour, TourSummary } from "../shared/types";
+import type { Conversation, ConversationSummary, Diagram, DiagramSummary, Gap, Tour, TourSummary } from "../shared/types";
 import { t } from "./i18n";
 import type { ConnectionState, GameSource } from "./source";
 
@@ -65,6 +65,12 @@ export class DemoSource implements GameSource {
     return [];
   }
   async loadConversation(id: string): Promise<Conversation> {
+    throw new Error(t().msg.notFound(id));
+  }
+  async listGaps(): Promise<Gap[]> {
+    return [];
+  }
+  async resolveGap(id: string): Promise<Gap[]> {
     throw new Error(t().msg.notFound(id));
   }
   ask(): boolean {

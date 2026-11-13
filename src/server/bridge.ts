@@ -8,7 +8,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
-import { SELECTION_MAX, cleanTutorContext, type ClientMessage, type Conversation, type ConversationTurn, type GameContext, type ReaderProfile, type ServerMessage, type SessionInfo, type UserQuestion } from "../shared/types.js";
+import { GAPS_MAX, SELECTION_MAX, cleanTutorContext, gapKey, sortGaps, type ClientMessage, type Gap, type GapLog, type Conversation, type ConversationTurn, type GameContext, type ReaderProfile, type ServerMessage, type SessionInfo, type UserQuestion } from "../shared/types.js";
 import { conversationSummary, type Project } from "./project.js";
 import type { Store } from "./store.js";
 import { log } from "./log.js";
@@ -179,6 +179,59 @@ export class Bridge {
     const data = JSON.stringify(msg);
     for (const ws of this.clients) ws.send(data);
     return this.clients.size;
+  }
+
+  // ---------- Lacune ----------
+
+  /** Le modifiche al registro delle lacune passano una alla volta (agente e gioco possono scrivere insieme). */
+  private gapChain: Promise<unknown> = Promise.resolve();
+
+  private changeGaps<T>(fn: (log: GapLog) => T): Promise<T> {
+    const run = this.gapChain.then(async () => {
+      const log = await this.opts.project.loadGaps();
+      const out = fn(log);
+      log.items = sortGaps(log.items);
+      await this.opts.project.saveGaps(log);
+      this.broadcast({ type: "gaps", gaps: log.items });
+      return out;
+    });
+    this.gapChain = run.catch(() => {});
+    return run;
+  }
+
+  async gaps(): Promise<Gap[]> {
+    await this.gapChain;
+    return sortGaps((await this.opts.project.loadGaps()).items);
+  }
+
+  /** Annota un concetto: se c'è già conta una volta in più (e torna da ripassare), se no lo aggiunge. */
+  recordGap(concept: string, example: string): Promise<Gap> {
+    return this.changeGaps((log) => {
+      const now = new Date().toISOString();
+      const key = gapKey(concept);
+      const known = log.items.find((g) => gapKey(g.concept) === key);
+      if (known) {
+        Object.assign(known, { example: example || known.example, lastSeen: now, count: known.count + 1, resolved: false });
+        return { ...known };
+      }
+      const gap: Gap = { id: randomUUID().slice(0, 8), concept, example, firstSeen: now, lastSeen: now, count: 1, resolved: false };
+      log.items.push(gap);
+      // pieno: si toglie la più vecchia, prima tra le risolte
+      if (log.items.length > GAPS_MAX) {
+        const old = log.items.filter((g) => g !== gap).sort((a, b) => Number(b.resolved) - Number(a.resolved) || a.lastSeen.localeCompare(b.lastSeen))[0];
+        log.items = log.items.filter((g) => g !== old);
+      }
+      return { ...gap };
+    });
+  }
+
+  resolveGap(id: string, resolved: boolean): Promise<Gap[]> {
+    return this.changeGaps((log) => {
+      const gap = log.items.find((g) => g.id === id);
+      if (!gap) throw new Error(`Lacuna non trovata: ${id}`);
+      gap.resolved = resolved;
+      return log.items;
+    }).then(() => this.gaps());
   }
 
   /** Aggiunge alla conversazione aperta ciò che l'agente mostra per rispondere. */
@@ -377,6 +430,8 @@ export class Bridge {
         else if (msg.op === "load_diagram") data = await p.loadDiagram(msg.id);
         else if (msg.op === "list_conversations") data = await p.listConversations();
         else if (msg.op === "load_conversation") data = await this.conversation(msg.id);
+        else if (msg.op === "list_gaps") data = await this.gaps();
+        else if (msg.op === "resolve_gap") data = await this.resolveGap(String(msg.id), msg.resolved === true);
         else throw new Error("Operazione sconosciuta");
         reply({ type: "response", reqId: msg.reqId, ok: true, data });
       } catch (e) {

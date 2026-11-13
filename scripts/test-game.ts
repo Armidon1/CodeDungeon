@@ -277,6 +277,11 @@ try {
   await press("ArrowUp");
   await press("ArrowUp");
   check((await dialogH()) > before, "il divisore della chat ingrandisce il fumetto con le frecce");
+  for (let i = 0; i < 8; i++) await press("ArrowUp");
+  check(
+    await evaluate(`(() => { const d = document.getElementById("dialog").getBoundingClientRect(); const a = document.getElementById("ask-form").getBoundingClientRect(); const t = document.getElementById("dialog-text").getBoundingClientRect(); return d.bottom - a.bottom < 40 && t.height > 160; })()`),
+    "col fumetto ingrandito la domanda resta in fondo e il testo si allarga",
+  );
 
   await load();
   check(await evaluate(`document.getElementById("app").classList.contains("is-chat")`), "la modalità chat resta dopo il ricaricamento");
@@ -456,6 +461,18 @@ try {
   check(await waitFor(`!document.querySelector('#editor .line.mark') && document.getElementById("edit-marks-clear").hidden`), "Pulisci segni toglie tutti i segni");
   await press("s", 2);
   await waitFor(`document.getElementById("edit-state").dataset.msg === "ok"`);
+
+  // registro delle lacune: record_gap aggiorna il pannello "Da ripassare" e il numerino
+  await callTool("record_gap", { concept: "Parentesi chiuse", example: "print((1)" });
+  check(await waitFor(`document.getElementById("review-badge").textContent === "1" && !document.getElementById("review-badge").hidden`), "record_gap accende il numerino del pannello Da ripassare");
+  await click(`.act-btn[data-panel="review"]`);
+  check(await waitFor(`/Parentesi chiuse/.test(document.querySelector("#gap-list .gap-item")?.textContent ?? "")`), "il pannello mostra la lacuna con l'esempio");
+  await click("#gap-list .gap-exercise");
+  check(await waitFor(`/Parentesi chiuse/.test(document.getElementById("ask-input").value)`), "Esercizio prepara la domanda alla guida");
+  await evaluate(`document.getElementById("ask-input").value = ""`);
+  await click("#gap-list .gap-resolve");
+  check(await waitFor(`document.querySelector("#gap-list .gap-item.is-resolved") && document.getElementById("review-badge").hidden`), "Capito sposta la lacuna tra le risolte");
+  await click(`.act-btn[data-panel="files"]`);
 
   await click("#edit-new-btn");
   await evaluate(`document.getElementById("edit-new-name").value = "solve.py"`);

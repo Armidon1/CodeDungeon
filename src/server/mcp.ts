@@ -10,6 +10,8 @@ import {
   DIAGRAM_SHAPES,
   EXPRESSIONS,
   LEVELS,
+  GAP_CONCEPT_MAX,
+  GAP_EXAMPLE_MAX,
   MARK_KINDS,
   MARK_MESSAGE_MAX,
   MARKS_MAX,
@@ -258,6 +260,54 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         const clean: LineMark[] = marks.map((m) => (m.endLine && m.endLine !== m.line ? m : { line: m.line, kind: m.kind, message: m.message }));
         const what = clean.length ? `${clean.length} segni su ${path}.` : `Segni di ${path} tolti.`;
         return ok(`${what} ${delivered(bridge.send({ type: "marks", path, content, marks: clean }))}${clean.length ? " Ora spiegali con show_dialog." : ""}`);
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "record_gap",
+    {
+      title: "Annota una lacuna",
+      description:
+        "Annota nel registro delle lacune (.tour/lacune.json) un concetto su cui l'utente è inciampato: un errore di concetto, non un refuso. " +
+        "Es. \"range esclude l'estremo finale\", \"in C ogni istruzione finisce con ;\". Se il concetto c'è già, conta una volta in più e torna da ripassare. " +
+        "L'utente lo vede nell'elenco Da ripassare del gioco.",
+      inputSchema: {
+        concept: z.string().trim().min(1).max(GAP_CONCEPT_MAX).describe("Il concetto in una frase breve, nella lingua dell'utente."),
+        example: z.string().trim().max(GAP_EXAMPLE_MAX).default("").describe("Dove è successo: file e riga, errore o frammento."),
+      },
+    },
+    async ({ concept, example }) => {
+      try {
+        const gap = await bridge.recordGap(concept, example);
+        const times = gap.count === 1 ? "prima volta" : `${gap.count} volte`;
+        return ok(`Lacuna annotata (${times}): ${gap.concept}.`, gap);
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_gaps",
+    {
+      title: "Lacune dell'utente",
+      description:
+        "Il registro delle lacune: concetti su cui l'utente è inciampato, con quante volte e se le ha segnate come risolte. " +
+        "Leggilo a inizio sessione: non rispiegare ciò che è risolto, insisti su ciò che si ripete.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const gaps = await bridge.gaps();
+        const open = gaps.filter((g) => !g.resolved);
+        const text = gaps.length
+          ? `${open.length} da ripassare, ${gaps.length - open.length} risolte.` +
+            open.map((g) => `\n- ${g.concept} (${g.count === 1 ? "1 volta" : `${g.count} volte`})`).join("")
+          : "Nessuna lacuna annotata.";
+        return ok(text, { gaps });
       } catch (e) {
         return fail(e);
       }
@@ -662,6 +712,7 @@ export const TUTOR_RULES =
   "Non scrivere la soluzione: un aiuto per richiesta, a livelli (domanda guida, poi concetto, poi frammento minimo; soluzione completa solo se la chiede esplicitamente). " +
   "Leggi context.buffer (codice attuale, anche non salvato) e parti dalle righe in context.changed; context.output è l'errore del terminale. " +
   "Correggi con highlight_lines o mark_lines (ondina e commento sulla riga, senza la correzione) e spiega il perché; se il codice è giusto dillo in breve. Non modificare mai i file dell'utente. " +
+  "Errore di concetto (non refuso): annotalo con record_gap; get_gaps dice cosa ripassare. " +
   "Regole complete nel prompt tutor.";
 
 /** Buffer, righe cambiate e output di una domanda in tutor, come testo per il canale. */

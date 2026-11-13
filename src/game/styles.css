@@ -239,6 +239,25 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
     linear-gradient(#000 0 0) 5px 13px / 4px 2px no-repeat,
     linear-gradient(#000 0 0) 5px 15px / 2px 2px no-repeat;
 }
+.act-review {
+  mask:
+    linear-gradient(#000 0 0) 4px 2px / 12px 11px no-repeat,
+    linear-gradient(#000 0 0) 4px 13px / 4px 5px no-repeat,
+    linear-gradient(#000 0 0) 12px 13px / 4px 5px no-repeat,
+    linear-gradient(#000 0 0) 8px 13px / 4px 2px no-repeat;
+}
+.act-badge {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  min-width: 14px;
+  padding: 0 3px;
+  font-size: 11px;
+  line-height: 14px;
+  text-align: center;
+  color: var(--night);
+  background: var(--ember);
+}
 
 /* ---------- Esplora ---------- */
 .sidebar {
@@ -340,6 +359,13 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 .tour-title { font-size: calc(15px * var(--fs)); }
 .tour-meta { font-size: calc(13px * var(--fs)); color: var(--ink-dim); }
 .tour-item.is-asked { border-left-color: var(--sky); }
+.gap-item { cursor: default; border-left: 4px solid var(--ember); }
+.gap-item:hover { border-color: var(--line); border-left-color: var(--ember); }
+.gap-item.is-resolved { border-left-color: var(--moss); opacity: 0.7; }
+.gap-example { margin: 2px 0 0; font-family: var(--font-code); font-size: calc(15px * var(--fs)); color: var(--ink-dim); overflow-wrap: anywhere; white-space: pre-wrap; }
+.gap-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.gap-actions .chip-btn { margin-left: 0; }
+.gap-group { margin: 10px 0 6px; font-size: calc(13px * var(--fs)); color: var(--ink-faint); list-style: none; }
 .conv-diagrams { display: flex; flex-wrap: wrap; gap: 4px; margin: -2px 0 8px 10px; }
 .conv-diagram { margin-left: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; }
 
@@ -784,6 +810,13 @@ button.board-node:hover { color: var(--lantern); }
   cursor: pointer;
 }
 .dialog-note { margin: 0; font-size: calc(14px * var(--fs)); color: var(--sky); }
+/* pannello della guida ridimensionato: il testo occupa lo spazio, la domanda resta in fondo */
+@media (min-width: 761px) {
+  .main.has-dialog-h .dialog { grid-template-rows: minmax(0, 1fr) auto; align-content: stretch; }
+  .main.has-dialog-h .dialog-body { display: flex; flex-direction: column; min-height: 0; }
+  .main.has-dialog-h .dialog-text { flex: 1 1 auto; max-height: none; }
+  .main.has-dialog-h .ask { align-self: end; }
+}
 .choices { display: flex; flex-wrap: wrap; gap: 8px; }
 .choices:empty { display: none; }
 .choice {
