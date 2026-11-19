@@ -294,7 +294,7 @@ check(client2.getProtocolEra() === "modern", "un client 2026-07-28 viene servito
 check((await client2.listTools()).tools.some((t) => t.name === "wait_for_question"), "strumenti esposti anche col protocollo 2026-07-28");
 check((await client2.listPrompts()).prompts.some((p) => p.name === "tutor"), "prompt tutor esposto anche col protocollo 2026-07-28");
 r = await client2.callTool({ name: "get_game_state", arguments: {} });
-check(text(r).includes(`127.0.0.1:${PORT + 1}`), "con la porta occupata il secondo server usa la successiva");
+check(text(r).includes(`127.0.0.1:${PORT + 1}`), `con la porta occupata il secondo server usa la successiva${text(r).includes(`127.0.0.1:${PORT + 1}`) ? "" : ` (porta ${PORT}, risposta: ${text(r).slice(0, 300)})`}`);
 
 // questionario: salvato in SQLite, condiviso tra server, passato all'agente
 const other = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
