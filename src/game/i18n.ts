@@ -40,7 +40,6 @@ const en = {
     resizeBoard: "Resize the board (arrows, Enter resets)",
     resizeFrame: "Resize the window (arrows, Enter resets)",
     resizeTitle: "Drag to resize · double click resets",
-    askSelection: "? Ask about this",
     clearSelection: "Remove the selected text",
     menu: "Menu",
     openMenu: "Open the menu",
@@ -199,6 +198,8 @@ const en = {
     tagline: (name: string) => `${name} walks you through the code, one program step at a time.`,
     askPlaceholder: (name: string) => `Ask ${name} something about this code…`,
     askSelectedPlaceholder: "What do you want to know about the selected text?",
+    askGuide: (name: string) => `? Ask ${name}`,
+    lineNumbers: "Click a line number to select the line, drag or Shift+click for more",
     quoteFrom: (file: string | undefined, lines: [number, number] | undefined) =>
       file && lines ? `${file}, ${lines[0] === lines[1] ? `line ${lines[0]}` : `lines ${lines[0]}–${lines[1]}`}:` : "Selected text:",
     helloAgent: (name: string) =>
@@ -331,7 +332,6 @@ const it: Dict = {
     resizeBoard: "Ridimensiona la lavagna (frecce, Invio ripristina)",
     resizeFrame: "Ridimensiona la finestra (frecce, Invio ripristina)",
     resizeTitle: "Trascina per ridimensionare · doppio clic ripristina",
-    askSelection: "? Chiedi su questo",
     clearSelection: "Togli il testo selezionato",
     menu: "Menu",
     openMenu: "Apri il menu",
@@ -490,6 +490,8 @@ const it: Dict = {
     tagline: (name) => `${name} ti accompagna dentro il codice, un passo del programma alla volta.`,
     askPlaceholder: (name) => `Chiedi a ${name} qualcosa su questo codice…`,
     askSelectedPlaceholder: "Cosa vuoi sapere del testo selezionato?",
+    askGuide: (name) => `? Chiedi a ${name}`,
+    lineNumbers: "Clic su un numero di riga per selezionarla, trascina o Maiusc+clic per altre",
     quoteFrom: (file, lines) =>
       file && lines ? `${file}, ${lines[0] === lines[1] ? `riga ${lines[0]}` : `righe ${lines[0]}–${lines[1]}`}:` : "Testo selezionato:",
     helloAgent: (name) =>

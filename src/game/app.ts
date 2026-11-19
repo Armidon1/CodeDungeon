@@ -46,6 +46,12 @@ interface TabOpen {
   quick?: boolean;
 }
 
+/** L'ultimo rettangolo di una selezione: il pulsante va dove finisce. */
+const lastRect = (range: Range) => {
+  const rects = range.getClientRects();
+  return rects[rects.length - 1] ?? range.getBoundingClientRect();
+};
+
 interface Quote {
   text: string;
   file?: string;
@@ -152,6 +158,8 @@ export class App {
   private conversation: string | undefined;
   /** Testo selezionato che accompagna la prossima domanda ("Chiedi su questo"). */
   private quote: Quote | undefined;
+  /** Righe intere scelte dai numeri di riga: [ancora, fine], nell'ordine del trascinamento. */
+  private lineSel: [number, number] | undefined;
   /** Passo del tour da riprendere dopo le risposte dal vivo. */
   private resumeStep: number | undefined;
   /** Suggerimento se l'agente tarda a rispondere a una domanda. */
@@ -1025,6 +1033,7 @@ export class App {
     // tornando a una scheda già aperta senza righe da mostrare si ritrova dove la si era lasciata
     const back = !lines && changing ? this.tabState.get(path) : undefined;
     if (changing) {
+      this.lineSel = undefined;
       this.rememberTab();
       this.placeTab(path, !!opts.newTab);
       const walk = this.walkTo(path);
@@ -1129,6 +1138,7 @@ export class App {
     );
     this.applyHighlight();
     this.applyMarks();
+    this.setLineSel(this.lineSel);
   }
 
   // ---------- Segni dell'agente sulle righe ----------
@@ -1188,9 +1198,16 @@ export class App {
         return p;
       }),
     );
-    note.style.top = `${line.offsetTop + line.offsetHeight}px`;
-    note.style.left = `calc(var(--gutter, 4ch) + ${$("editor").scrollLeft}px)`;
+    const editor = $("editor");
+    note.style.left = `calc(var(--gutter, 4ch) + ${editor.scrollLeft}px)`;
     note.hidden = false;
+    // l'editor taglia quello che esce dal suo fondo (lì sotto c'è il fumetto): se sotto non c'è posto, sopra la riga
+    const below = line.offsetTop + line.offsetHeight;
+    const room = editor.scrollTop + editor.clientHeight - below;
+    const above = line.offsetTop - note.offsetHeight - 4;
+    const up = note.offsetHeight + 4 > room && above >= editor.scrollTop;
+    note.classList.toggle("is-above", up);
+    note.style.top = `${up ? above : below}px`;
   }
 
   // ---------- Modalità tutor: editor modificabile ----------
@@ -2264,8 +2281,48 @@ export class App {
 
   // ---------- Testo selezionato ----------
 
-  /** La selezione corrente, se sta tutta nel codice o tutta nel fumetto. */
-  private readSelection(): { quote: Quote; range: Range } | undefined {
+  /** Righe di testo senza il rientro comune: conta la forma del codice, non quanto è annidato. */
+  private dedent(raw: string[]): string {
+    const indent = Math.min(...raw.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
+    return raw.map((l) => l.slice(Number.isFinite(indent) ? indent : 0)).join("\n").replace(/\s+$/, "");
+  }
+
+  /** Dove mettere il pulsante: alla colonna col (o a fine testo) della riga n dell'editor. */
+  private lineRect(n: number, col?: number): { left: number; right: number; top: number; bottom: number } | undefined {
+    const line = $("editor").querySelector<HTMLElement>(`.line[data-n="${n}"]`);
+    const code = line?.querySelector("code");
+    if (!line || !code) return undefined;
+    const r = line.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(code);
+    const text = range.getBoundingClientRect();
+    const len = code.textContent?.length ?? 0;
+    const x = col === undefined || !len ? text.right : text.left + (text.width / len) * Math.min(col, len);
+    return { left: x, right: x, top: r.top, bottom: r.bottom };
+  }
+
+  /** La selezione corrente: righe scelte dai numeri, testo selezionato nella textarea del tutor, oppure tutta nel codice o tutta nel fumetto. */
+  private readSelection(): { quote: Quote; rect: { left: number; right: number; top: number; bottom: number } } | undefined {
+    const file = this.currentFile;
+    if (this.lineSel && file) {
+      const [a, b] = [Math.min(...this.lineSel), Math.max(...this.lineSel)];
+      const all = (this.bufferOf(file) ?? "").split("\n");
+      const text = this.dedent(all.slice(a - 1, b));
+      const rect = this.lineRect(this.lineSel[1]);
+      if (text.trim() && rect) return { quote: { text: text.slice(0, SELECTION_MAX), file, lines: [a, b] }, rect };
+    }
+    const ta = this.editLayer.area;
+    if (file && this.editLayer.attached && document.activeElement === ta && ta.selectionStart !== ta.selectionEnd) {
+      const v = ta.value;
+      const lineAt = (i: number) => v.slice(0, i).split("\n").length;
+      const a = lineAt(ta.selectionStart);
+      const b = lineAt(ta.selectionEnd);
+      const raw = v.slice(ta.selectionStart, ta.selectionEnd).split("\n");
+      const text = raw.length > 1 ? this.dedent(raw) : raw[0].trim();
+      const col = ta.selectionEnd - (v.lastIndexOf("\n", ta.selectionEnd - 1) + 1);
+      const rect = this.lineRect(b, col);
+      return text && rect ? { quote: { text: text.slice(0, SELECTION_MAX), file, lines: [a, b] }, rect } : undefined;
+    }
     const sel = getSelection();
     if (!sel || sel.isCollapsed || !sel.rangeCount) return undefined;
     const range = sel.getRangeAt(0);
@@ -2274,24 +2331,46 @@ export class App {
     if (!where || where !== area(range.endContainer)) return undefined;
     if (where.id === "dialog-text") {
       const text = sel.toString().trim();
-      return text ? { quote: { text: text.slice(0, SELECTION_MAX) }, range } : undefined;
+      return text ? { quote: { text: text.slice(0, SELECTION_MAX) }, rect: lastRect(range) } : undefined;
     }
     // nel codice: niente numeri di riga, una riga di testo per ogni riga dell'editor
     const frag = range.cloneContents();
     const rows = [...frag.querySelectorAll(".line")];
     const raw = rows.length ? rows.map((r) => r.querySelector("code")?.textContent ?? "") : [frag.textContent ?? ""];
-    // via il rientro comune: conta la forma del codice, non quanto è annidato
-    const indent = Math.min(...raw.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
-    const text = raw.map((l) => l.slice(Number.isFinite(indent) ? indent : 0)).join("\n").replace(/\s+$/, "");
+    const text = this.dedent(raw);
     if (!text.trim()) return undefined;
     const lineOf = (n: Node) => Number((n instanceof Element ? n : n.parentElement)?.closest<HTMLElement>(".line")?.dataset.n);
     const a = lineOf(range.startContainer);
     const b = lineOf(range.endContainer);
     const lines: [number, number] | undefined = a && b ? [Math.min(a, b), Math.max(a, b)] : undefined;
-    return { quote: { text: text.slice(0, SELECTION_MAX), file: this.currentFile, lines }, range };
+    return { quote: { text: text.slice(0, SELECTION_MAX), file: this.currentFile, lines }, rect: lastRect(range) };
   }
 
-  /** Mostra "Chiedi su questo" accanto alla selezione, o lo nasconde. */
+  /** Righe scelte dai numeri di riga: evidenziate finché non si clicca altrove. */
+  private setLineSel(sel: [number, number] | undefined): void {
+    this.lineSel = sel;
+    const editor = $("editor");
+    for (const el of editor.querySelectorAll(".line.is-picked")) el.classList.remove("is-picked");
+    if (!sel) return;
+    const [a, b] = [Math.min(...sel), Math.max(...sel)];
+    for (let n = a; n <= b; n++) editor.querySelector(`.line[data-n="${n}"]`)?.classList.add("is-picked");
+  }
+
+  /** Il numero di riga sotto il puntatore, se è nel margine dei numeri (anche sotto la textarea del tutor). */
+  private gutterLine(e: PointerEvent, anywhere = false): number | undefined {
+    const editor = $("editor");
+    const first = editor.querySelector<HTMLElement>(".line");
+    const ln = first?.querySelector<HTMLElement>(".ln");
+    if (!first || !ln) return undefined;
+    const r = ln.getBoundingClientRect();
+    if (!anywhere && (e.clientX < r.left || e.clientX > r.right)) return undefined;
+    const n = Math.floor((e.clientY - first.getBoundingClientRect().top) / first.offsetHeight) + 1;
+    const count = editor.querySelectorAll(".line").length;
+    if (!anywhere && (n < 1 || n > count)) return undefined;
+    return Math.max(1, Math.min(count, n));
+  }
+
+  /** Mostra "Chiedi a <guida>" accanto alla selezione, o lo nasconde. */
   private placeAskSelection(): void {
     const btn = $("ask-sel");
     const found = $("title-screen").hidden ? this.readSelection() : undefined;
@@ -2299,8 +2378,8 @@ export class App {
       btn.hidden = true;
       return;
     }
-    const rects = found.range.getClientRects();
-    const r = rects[rects.length - 1] ?? found.range.getBoundingClientRect();
+    const r = found.rect;
+    btn.textContent = t().msg.askGuide(this.settings.guide.name);
     btn.hidden = false;
     const w = btn.offsetWidth;
     const h = btn.offsetHeight;
@@ -2497,6 +2576,9 @@ export class App {
       if (!found) return;
       this.setQuote(found.quote);
       getSelection()?.removeAllRanges();
+      this.setLineSel(undefined);
+      const ta = this.editLayer.area;
+      ta.selectionEnd = ta.selectionStart;
       sound.play("select");
       $("ask-input").focus();
     });
@@ -2511,8 +2593,30 @@ export class App {
       if (e.shiftKey || e.key === "Shift") this.placeAskSelection();
     });
     document.addEventListener("selectionchange", () => {
-      if (getSelection()?.isCollapsed) askSel.hidden = true;
+      if (!this.readSelection()) askSel.hidden = true;
     });
+    // numeri di riga: clic per una riga, trascinamento o Maiusc+clic per un blocco
+    const editorEl = $("editor");
+    let picking = false;
+    document.addEventListener("pointerdown", (e) => {
+      if (e.target === askSel) return;
+      const target = e.target as HTMLElement;
+      const n = editorEl.contains(target) && !target.closest(".mark-pin") && e.button === 0 ? this.gutterLine(e) : undefined;
+      if (n === undefined) {
+        if (this.lineSel) this.setLineSel(undefined);
+        return;
+      }
+      e.preventDefault();
+      getSelection()?.removeAllRanges();
+      this.setLineSel([e.shiftKey && this.lineSel ? this.lineSel[0] : n, n]);
+      picking = true;
+    });
+    document.addEventListener("pointermove", (e) => {
+      if (!picking || !this.lineSel) return;
+      const n = this.gutterLine(e, true);
+      if (n !== undefined && n !== this.lineSel[1]) this.setLineSel([this.lineSel[0], n]);
+    });
+    document.addEventListener("pointerup", () => (picking = false));
     $("editor").addEventListener("scroll", () => (askSel.hidden = true));
     $("menu-btn").addEventListener("click", () => this.openTitle());
     $("chat-btn").addEventListener("click", () => this.setChat(!this.isChat));

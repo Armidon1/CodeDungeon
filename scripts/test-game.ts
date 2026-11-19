@@ -451,6 +451,19 @@ try {
   );
   await evaluate(`document.querySelector('#editor .line[data-n="3"] .mark-pin').dispatchEvent(new PointerEvent("pointerover", { bubbles: true }))`);
   check(await waitFor(`!document.getElementById("mark-note").hidden && /parentesi/.test(document.getElementById("mark-note").textContent)`), "al passaggio del mouse si legge il commento");
+  // riga segnata in fondo all'editor: il commento si apre sopra, senza finire sotto il fumetto
+  check(
+    await evaluate(`(() => {
+      const ed = document.getElementById("editor");
+      const line = document.querySelector('#editor .line[data-n="3"]');
+      ed.scrollTop = Math.max(0, line.offsetTop + line.offsetHeight - ed.clientHeight + 2);
+      line.querySelector(".mark-pin").dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+      const n = document.getElementById("mark-note").getBoundingClientRect();
+      const e = ed.getBoundingClientRect();
+      return n.bottom <= e.bottom + 1 && n.top >= e.top - 1;
+    })()`),
+    "il commento di un segno in fondo all'editor resta visibile",
+  );
   await evaluate(`(() => { const ta = document.getElementById("code-input"); ta.focus(); ta.setSelectionRange(0, 0); })()`);
   check(await waitFor(`document.getElementById("mark-note").hidden`), "il commento si chiude tornando a scrivere");
   await press("Enter");
@@ -632,6 +645,43 @@ try {
   check(await noOverflow(), "a 390 px le schede scorrono senza allargare la pagina");
   for (const f of await tabFiles()) await click(`#tabs .tab[data-file="${f}"] .tab-close`);
   check(await waitFor(`!document.getElementById("editor-empty").hidden && !document.querySelector("#tabs .tab[data-file]")`), "chiusa l'ultima scheda l'editor torna vuoto");
+
+  // numeri di riga: clic e Maiusc+clic scelgono righe intere, il pulsante "Chiedi a <guida>" le cita
+  await viewport(1400, 900);
+  await callTool("open_file", { path: "protocol.py" });
+  await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "protocol.py"`);
+  await evaluate(`document.getElementById("editor").scrollTop = 0`);
+  const gutterAt = (n: number, shift = false) =>
+    evaluate(`(() => {
+      const ln = document.querySelector('#editor .line[data-n="${n}"] .ln').getBoundingClientRect();
+      const o = { bubbles: true, cancelable: true, clientX: ln.left + ln.width / 2, clientY: ln.top + ln.height / 2, shiftKey: ${shift}, button: 0, pointerId: 1 };
+      const el = document.elementFromPoint(o.clientX, o.clientY);
+      el.dispatchEvent(new PointerEvent("pointerdown", o));
+      el.dispatchEvent(new PointerEvent("pointerup", o));
+    })()`);
+  await gutterAt(2);
+  await gutterAt(4, true);
+  check(
+    await waitFor(`(() => {
+      const b = document.getElementById("ask-sel");
+      return !b.hidden && /^\\? (Ask|Chiedi a) \\S/.test(b.textContent) && document.querySelectorAll("#editor .line.is-picked").length === 3;
+    })()`),
+    "clic e Maiusc+clic sui numeri scelgono le righe e compare Chiedi a <guida>",
+  );
+  await click("#ask-sel");
+  check(
+    (await waitFor(`!document.getElementById("ask-quote").hidden && /2.*4/.test(document.getElementById("ask-quote-label").textContent)`)) &&
+      (await evaluate<number>(`document.querySelectorAll("#editor .line.is-picked").length`)) === 0,
+    "Chiedi a <guida> cita le righe scelte",
+  );
+  await click("#ask-quote-clear");
+  // tutor: la selezione dentro la textarea
+  await evaluate(`(() => { const ta = document.getElementById("code-input"); ta.focus(); ta.setSelectionRange(0, ta.value.indexOf("\\n", 40)); })()`);
+  await press("Shift");
+  check(await waitFor(`!document.getElementById("ask-sel").hidden`), "anche la selezione nell'editor del tutor mostra Chiedi a <guida>");
+  await click("#ask-sel");
+  check(await waitFor(`!document.getElementById("ask-quote").hidden && /protocol\\.py/.test(document.getElementById("ask-quote-label").textContent)`), "la selezione del tutor diventa la citazione della domanda");
+  await click("#ask-quote-clear");
 
   check(errors.length === 0, `nessun errore JavaScript nella pagina${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } catch (e) {

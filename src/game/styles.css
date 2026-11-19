@@ -1227,3 +1227,8 @@ button.board-node:hover { color: var(--lantern); }
 
 /* Ctrl/Cmd premuto: le righe che portano a un file si possono seguire */
 .editor.is-follow .line code, .editor.is-follow .code-input { cursor: pointer; }
+
+/* Righe scelte dai numeri di riga per chiedere alla guida */
+.line .ln { cursor: pointer; }
+.line.is-picked { background: color-mix(in srgb, var(--sky) 22%, transparent); }
+.line.is-picked .ln { color: var(--sky); }
