@@ -292,6 +292,7 @@ and confirm the initial warning (needed because home-made channels aren't on the
 
 | Tool | What it does |
 | --- | --- |
+| `name_session` | gives the session the chat's title, shown in the list of open sessions |
 | `list_project_files` | lists the project files |
 | `open_file` | opens a file in the editor, with the animation |
 | `highlight_lines` | highlights a range of lines |

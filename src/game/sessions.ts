@@ -111,10 +111,15 @@ export function pickSession(initial?: SessionInfo[], current?: number): Promise<
           if (s.port === current) btn.setAttribute("aria-current", "true");
           const title = document.createElement("span");
           title.className = "tour-title";
-          title.textContent = s.project;
+          title.textContent = s.title || s.project;
           const meta = document.createElement("span");
           meta.className = "tour-meta";
-          meta.textContent = t().msg.sessionMeta(s.port, s.agent) + (s.port === current ? ` · ${t().msg.sessionCurrent}` : "");
+          meta.textContent = [
+            ...(s.title ? [s.project] : []),
+            t().msg.sessionMeta(s.port, s.agent),
+            ...(s.started ? [t().msg.sessionSince(new Date(s.started).toLocaleTimeString(document.documentElement.lang || undefined, { hour: "2-digit", minute: "2-digit" }))] : []),
+            ...(s.port === current ? [t().msg.sessionCurrent] : []),
+          ].join(" · ");
           btn.append(title, meta);
           btn.addEventListener("click", () => finish(s));
           li.append(btn);

@@ -91,6 +91,10 @@ export class Bridge {
   /** Chiamata per ogni domanda che nessun agente sta aspettando (es. per spingerla al client MCP). */
   onQuestion: ((q: UserQuestion) => void) | undefined;
   private lastContext: GameContext | undefined;
+  /** Titolo mostrato nell'elenco delle sessioni; named: dato dall'agente, non lo sostituisce un tour. */
+  private title: string | undefined;
+  private named = false;
+  private readonly started = Date.now();
   /**
    * Scena corrente, rimandata a chi si collega dopo (gioco aperto in ritardo o ricaricato):
    * l'ultimo tour, l'ultimo file aperto o evidenziato, l'ultimo fumetto e l'ultimo schema, nell'ordine in cui sono arrivati.
@@ -472,6 +476,17 @@ export class Bridge {
     }
   }
 
+  /** Titolo della sessione. Senza named (es. il titolo di un tour) vale solo finché l'agente non ne dà uno. */
+  setTitle(title: string, named = true): void {
+    if (this.named && !named) return;
+    this.title = title.trim().slice(0, 80) || undefined;
+    this.named = named && !!this.title;
+  }
+
+  get sessionTitle(): string | undefined {
+    return this.title;
+  }
+
   /** Nome del progetto e porta, letti dal gioco aperto altrove (altra porta, app desktop): CORS solo per origini locali. */
   private serveSession(req: IncomingMessage, res: ServerResponse): void {
     const origin = req.headers.origin;
@@ -480,7 +495,7 @@ export class Bridge {
       res.end();
       return;
     }
-    const info: SessionInfo = { project: this.opts.project.name, agent: this.opts.agent, port: this.port };
+    const info: SessionInfo = { project: this.opts.project.name, agent: this.opts.agent, port: this.port, title: this.title, started: this.started };
     res.writeHead(200, {
       "content-type": "application/json",
       "cache-control": "no-store",

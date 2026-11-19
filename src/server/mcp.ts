@@ -77,6 +77,8 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         "l'utente non deve tornare al terminale per chiedertelo. Smetti solo se l'utente ti scrive nel terminale. " +
         "L'utente può indicare nel gioco cosa lo aiuta a capire (frasi brevi, più schemi...): lo trovi in get_game_state (reader) " +
         "e insieme alle domande. Rispettalo in ogni testo. " +
+        "Appena inizi, chiama name_session con il titolo breve di questa chat (l'argomento della conversazione), " +
+        "e di nuovo se l'argomento cambia: l'utente lo legge nell'elenco delle sessioni aperte. " +
         TUTOR_RULES,
     },
   );
@@ -419,6 +421,21 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
   // ---------- Tour ----------
 
   server.registerTool(
+    "name_session",
+    {
+      title: "Dai un nome alla sessione",
+      description:
+        "Dà alla sessione il titolo breve della chat con l'utente (l'argomento, es. «Buffer overflow in vuln.c»). " +
+        "Il gioco lo mostra nell'elenco delle sessioni aperte, così l'utente riconosce la sua. Chiamalo all'inizio e quando l'argomento cambia.",
+      inputSchema: { title: z.string().min(1).max(80) },
+    },
+    async ({ title }) => {
+      bridge.setTitle(title);
+      return ok(`Sessione chiamata «${bridge.sessionTitle}».`);
+    },
+  );
+
+  server.registerTool(
     "list_tours",
     { title: "Elenca i tour", description: "Elenca i tour salvati nella cartella .tour/ del progetto.", inputSchema: {} },
     async () => {
@@ -566,6 +583,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         if (broken.length) throw new Error(`Collegamenti verso passi inesistenti: ${broken.join(", ")}`);
         if (from_step && !ids.has(from_step)) throw new Error(`Passo non trovato: ${from_step}`);
         for (const s of tour.steps) await checkStepDiagram(s.diagram).catch((e) => Promise.reject(new Error(`Passo ${s.id}: ${e.message}`)));
+        bridge.setTitle(tour.title, false);
         return ok(`Tour "${tour.title}" avviato. ${delivered(bridge.send({ type: "play_tour", tour, fromStep: from_step }))}${LISTEN}`);
       }),
   );

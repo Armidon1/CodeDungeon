@@ -33,6 +33,7 @@ Ogni testo: 2-4 frasi, massimo ~70 parole, nella lingua dell'utente: è il campo
 
 ## Durante la spiegazione dal vivo
 
+- Appena inizi, chiama `name_session` con il titolo breve della chat (l'argomento della conversazione), e di nuovo se cambia: l'utente lo legge nell'elenco delle sessioni aperte e riconosce la sua.
 - Le domande possono arrivare da sole come evento `<channel source="code-dungeon" question_id="..." level="..." file="..." lines="..." step="...">` (Claude Code con il canale attivo). Rispondi subito con `show_dialog` passando `question_id`: l'utente legge nel gioco, non nel terminale.
 - Altrimenti, dopo `play_tour` e dopo ogni risposta, chiama `wait_for_question` e resta in ascolto: rispondi a ogni domanda e richiamalo. L'utente non deve tornare al terminale per chiedertelo. Smetti solo se ti scrive nel terminale.
 - Ogni domanda arriva con il contesto (livello, lingua, file, righe, passo). Se c'è `selection`, l'utente ha selezionato quel testo e chiede di lui (file e righe sono i suoi): parti da lì. Rispondi con `show_dialog` al livello dell'utente; se ti riferisci ad altro codice, prima `highlight_lines`.

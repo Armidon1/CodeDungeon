@@ -301,6 +301,14 @@ check(
   PORT2 > PORT && PORT2 < PORT + 20 && info2?.port === PORT2 && info2.project === "packet-server",
   `con la porta occupata il secondo server usa la successiva libera${PORT2 > PORT ? "" : ` (porta ${PORT}, risposta: ${text(r).slice(0, 200)})`}`,
 );
+// il titolo della chat va nell'elenco delle sessioni, solo per la sessione che lo dà
+r = await client2.callTool({ name: "name_session", arguments: { title: "Buffer overflow in vuln.c" } });
+const named2 = PORT2 ? await (await fetch(`http://127.0.0.1:${PORT2}/session`)).json().catch(() => undefined) : undefined;
+const named1 = await (await fetch(sessionUrl)).json();
+check(
+  !r.isError && named2?.title === "Buffer overflow in vuln.c" && typeof named2.started === "number" && named1.title !== "Buffer overflow in vuln.c",
+  "name_session dà il titolo della chat alla sua sessione",
+);
 
 // questionario: salvato in SQLite, condiviso tra server, passato all'agente
 const other = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);

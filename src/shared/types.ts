@@ -324,6 +324,10 @@ export interface SessionInfo {
   project: string;
   agent: boolean;
   port: number;
+  /** Titolo della chat dell'agente (name_session), o del tour avviato se l'agente non l'ha dato. */
+  title?: string;
+  /** Avvio della sessione, in millisecondi: distingue due sessioni sullo stesso progetto. */
+  started?: number;
 }
 
 /** Dal ponte (server) al gioco. */

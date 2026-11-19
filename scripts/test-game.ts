@@ -671,6 +671,27 @@ try {
   check(await noOverflow(), "a 390 px il codice colorato non allarga la pagina");
   for (const f of await tabFiles()) await click(`#tabs .tab[data-file="${f}"] .tab-close`);
 
+  // elenco delle sessioni: il titolo della chat dato dall'agente, il progetto sotto
+  await callTool("name_session", { title: "Buffer overflow in vuln.c" });
+  // il test non è sulle porte 7337-7356: la sessione di prova risponde al posto della 7337, le altre tacciono
+  await evaluate(`(() => {
+    const real = window.fetch.bind(window);
+    window.fetch = (u, o) => {
+      const m = /^http:\\/\\/127\\.0\\.0\\.1:(\\d+)\\/session$/.exec(String(u));
+      if (!m) return real(u, o);
+      if (m[1] !== "7337") return Promise.reject(new Error("chiusa"));
+      return real("/session", o).then((r) => r.json()).then((j) => new Response(JSON.stringify({ ...j, port: 7337 })));
+    };
+  })()`);
+  await click("#project-name");
+  check(
+    await waitFor(`(() => { const b = document.querySelector('#session-list .session-item[data-port="7337"]'); return !!b && b.querySelector(".tour-title").textContent === "Buffer overflow in vuln.c" && b.querySelector(".tour-meta").textContent.startsWith("packet-server"); })()`),
+    "l'elenco delle sessioni mostra il titolo della chat e sotto il progetto",
+  );
+  check(await noOverflow(), "a 390 px l'elenco delle sessioni non allarga la pagina");
+  await click("#session-close");
+  await waitFor(`!document.getElementById("session-picker").open`);
+
   // numeri di riga: clic e Maiusc+clic scelgono righe intere, il pulsante "Chiedi a <guida>" le cita
   await viewport(1400, 900);
   await callTool("open_file", { path: "protocol.py" });
