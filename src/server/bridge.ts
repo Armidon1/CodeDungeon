@@ -5,7 +5,6 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { promises as fs } from "node:fs";
-import { createServer as createNetServer } from "node:net";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -161,9 +160,6 @@ export class Bridge {
   async start(): Promise<void> {
     for (let port = this.opts.port; ; port++) {
       try {
-        // la porta si prova con un server usa e getta: il server vero ascolta una volta sola,
-        // senza ritentare dopo un errore (comportamento che cambia tra le versioni di Node)
-        await probePort(port);
         await this.listen(port);
         this.port = port;
         this.listening = true;
@@ -513,13 +509,4 @@ export class Bridge {
       return { status: 404, type: "text/plain", body: "" };
     }
   }
-}
-
-/** Si risolve se la porta è libera su 127.0.0.1, altrimenti rifiuta con l'errore (EADDRINUSE). */
-function probePort(port: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const probe = createNetServer();
-    probe.once("error", reject);
-    probe.listen(port, "127.0.0.1", () => probe.close(() => resolve()));
-  });
 }
