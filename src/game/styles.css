@@ -310,7 +310,23 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 .search-text mark { background: var(--lantern); color: var(--night); }
 .explorer { position: relative; --strip: 0; }
 .file-list, .tour-list { list-style: none; margin: 0; padding: 0 6px; }
-.file-list .dir { padding: 4px 8px 4px calc(10px + var(--depth) * 12px); color: var(--ink-dim); font-size: calc(15px * var(--fs)); }
+/* cartelle richiudibili (filetree.ts): una voce dentro una cartella chiusa resta nascosta */
+.file-list .is-folded { display: none; }
+.dir-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px 4px calc(16px + var(--depth) * 12px);
+  background: none;
+  border: 0;
+  text-align: left;
+  font-size: calc(15px * var(--fs));
+  color: var(--ink-dim);
+}
+.dir-btn:hover { background: var(--panel-2); color: var(--ink); }
+.dir-caret { flex: none; width: 10px; height: 10px; background: var(--lantern); clip-path: polygon(20% 0, 80% 50%, 20% 100%); }
+.dir.is-open > .dir-btn .dir-caret { clip-path: polygon(0 20%, 100% 20%, 50% 80%); }
 .file {
   display: flex;
   align-items: center;
@@ -1137,6 +1153,8 @@ button.board-node:hover { color: var(--lantern); }
   .explorer { --strip: 1; overflow-x: auto; overflow-y: hidden; padding-top: 4px; scrollbar-width: none; }
   .file-list { display: flex; gap: 4px; padding: 4px 6px 8px; width: max-content; }
   .file-list .dir { display: none; }
+  /* nella striscia del telefono non ci sono cartelle da aprire: tutti i file restano visibili */
+  .file-list .is-folded:not(.dir) { display: list-item; }
   .file { padding: 6px 10px 6px 30px; white-space: nowrap; }
   .walker { width: 20px; height: 20px; }
   .main { grid-template-rows: auto minmax(160px, 1fr) auto; }

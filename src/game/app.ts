@@ -23,6 +23,7 @@ import * as sound from "./audio";
 import { TRACK_IDS, type SoundSettings } from "./audio";
 import { ChatLog, type ChatCode } from "./chat";
 import { Board } from "./diagram";
+import { FileTree } from "./filetree";
 import { EditLayer } from "./editing";
 import { changedLines, remapMarks, tutorBuffer, type QuickAsk } from "./tutor";
 import { highlightLines, langLabel, langOf } from "./highlight";
@@ -147,6 +148,7 @@ export class App {
 
   /** Lavagna: la finestra che si apre durante la spiegazione e la vista nella scheda dell'editor. */
   private popBoard = new Board({ onOpenCode: (file, lines) => this.openFromBoard(file, lines, true), follow: true });
+  private fileTree = new FileTree($("file-list"), { open: (path) => void this.goToFile(path) });
   private tabBoard = new Board({ onOpenCode: (file, lines) => this.openFromBoard(file, lines, false) });
   /** Schemi aperti come schede, nell'ordine di apertura. */
   private boardTabs: Diagram[] = [];
@@ -223,6 +225,7 @@ export class App {
     else if (stored) this.persist();
     $("project-name").textContent = this.source.projectName;
     this.chat.restore(this.source.projectName);
+    this.fileTree.restore(this.source.projectName);
     this.renderFileList();
     await Promise.all([this.renderTourList(), this.renderDiagramList(), this.renderConversationList(), this.renderGapList()]);
     this.renderTitleSource();
@@ -673,32 +676,9 @@ export class App {
   // ---------- Esplora file ----------
 
   private renderFileList(): void {
-    const list = $("file-list");
-    list.innerHTML = "";
-    let lastDir = "";
-    for (const file of this.source.files) {
-      const parts = file.split("/");
-      const dir = parts.slice(0, -1).join("/");
-      if (dir && dir !== lastDir) {
-        const li = document.createElement("li");
-        li.className = "dir";
-        li.style.setProperty("--depth", String(parts.length - 2));
-        li.textContent = `▾ ${parts.at(-2)}`;
-        list.append(li);
-      }
-      lastDir = dir;
-      const li = document.createElement("li");
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "file";
-      btn.dataset.path = file;
-      btn.style.setProperty("--depth", String(parts.length - 1));
-      btn.innerHTML = `<span class="file-icon ext-${langOf(file)}" aria-hidden="true"></span><span class="file-name"></span>`;
-      btn.querySelector(".file-name")!.textContent = parts.at(-1)!;
-      btn.addEventListener("click", () => void this.goToFile(file));
-      li.append(btn);
-      list.append(li);
-    }
+    this.fileTree.render(this.source.files);
+    if (this.currentFile) this.fileTree.reveal(this.currentFile);
+    this.markActiveFile();
     drawMiniGuide($<HTMLCanvasElement>("walker"), 0);
   }
 
@@ -870,6 +850,7 @@ export class App {
 
   /** Fa camminare la mini guida fino alla voce del file. */
   private async walkTo(path: string): Promise<void> {
+    this.fileTree.reveal(path);
     const target = document.querySelector<HTMLElement>(`#file-list .file[data-path="${CSS.escape(path)}"]`);
     const walker = $<HTMLCanvasElement>("walker");
     const explorer = $("explorer");

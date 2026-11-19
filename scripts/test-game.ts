@@ -50,6 +50,10 @@ await fs.cp(path.resolve("examples/packet-server"), project, { recursive: true }
 // lacune e conversazioni sono dati locali di chi prova il gioco: il test parte da un registro vuoto
 await fs.rm(path.join(project, ".tour", "lacune.json"), { force: true });
 await fs.rm(path.join(project, ".tour", "conversazioni"), { recursive: true, force: true });
+// cartelle annidate per l'albero dei file
+await fs.mkdir(path.join(project, "lib", "deep"), { recursive: true });
+await fs.writeFile(path.join(project, "lib", "util.py"), "def aiuto():\n    return 1\n");
+await fs.writeFile(path.join(project, "lib", "deep", "inner.py"), "X = 2\n");
 
 // modalità mcp con lo stdin aperto e muto: il gioco vede un agente collegato e le domande partono davvero
 const server = spawn("npx", ["tsx", "src/server/cli.ts", "mcp", "--project", project, "--port", String(PORT)], {
@@ -486,6 +490,23 @@ try {
   await typeText("print(1)");
   check(await evaluate(`document.querySelector("#editor .line code").textContent === "print(1)"`), "nel nuovo file si scrive");
 
+  // albero dei file: cartelle chiuse di partenza, si aprono col clic, restano aperte dopo il ricaricamento
+  const visible = (sel: string) => evaluate<boolean>(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); return !!el && el.getClientRects().length > 0; })()`);
+  check(
+    (await visible(`#file-list .dir[data-dir="lib"] .dir-btn`)) && !(await visible(`#file-list .file[data-path="lib/util.py"]`)),
+    "le cartelle partono chiuse e non mostrano i loro file",
+  );
+  check(
+    await evaluate(`[...document.querySelectorAll("#file-list > li")].findIndex((li) => li.dataset.dir === "lib") < [...document.querySelectorAll("#file-list > li")].findIndex((li) => li.querySelector('[data-path="protocol.py"]'))`),
+    "le cartelle vengono prima dei file",
+  );
+  await click(`#file-list .dir[data-dir="lib"] .dir-btn`);
+  check(
+    (await visible(`#file-list .file[data-path="lib/util.py"]`)) && !(await visible(`#file-list .file[data-path="lib/deep/inner.py"]`)) &&
+      (await evaluate(`document.querySelector('#file-list .dir[data-dir="lib"] .dir-btn').getAttribute("aria-expanded") === "true"`)),
+    "il clic apre la cartella, quelle dentro restano chiuse",
+  );
+
   await viewport(390, 844);
   check(await load(), "a 390 px il gioco si apre in tutor");
   check(dialogs.includes("beforeunload"), "lasciare la pagina con modifiche non salvate chiede conferma");
@@ -508,6 +529,8 @@ try {
     "a 390 px il commento del segno sta nello schermo",
   );
   check(await noOverflow(), "tutor senza scorrimento orizzontale a 390 px");
+  check(await evaluate(`document.querySelector('#file-list .file[data-path="lib/deep/inner.py"]').getClientRects().length > 0`), "a 390 px la striscia dei file mostra anche quelli nelle cartelle chiuse");
+  check(await evaluate(`document.querySelector('#file-list .dir[data-dir="lib"]').classList.contains("is-open")`), "la cartella aperta resta aperta dopo il ricaricamento");
 
   await click("#edit-ask-btn");
   check(
@@ -537,6 +560,17 @@ try {
   check(/• Indice/.test(await evaluate<string>(`document.getElementById("dialog-live").textContent`)), "il lettore di schermo riceve il testo con i punti dell'elenco");
 
   check(await noOverflow(), "a 390 px elenchi e indirizzi lunghi vanno a capo senza scorrimento orizzontale");
+
+  // l'agente apre un file in una cartella chiusa (in fondo: il ponte rimanderebbe open_file a ogni ricaricamento)
+  await viewport(1400, 900);
+  await click(`#file-list .dir[data-dir="lib"] .dir-btn`);
+  await callTool("open_file", { path: "lib/deep/inner.py" });
+  check(
+    await waitFor(`document.querySelector("#file-list .file.is-active")?.dataset.path === "lib/deep/inner.py" && document.querySelector("#file-list .file.is-active").getClientRects().length > 0`),
+    "open_file apre da solo le cartelle del file",
+  );
+  await click(`#file-list .dir[data-dir="lib"] .dir-btn`);
+  check(!(await visible(`#file-list .file[data-path="lib/util.py"]`)) && !(await visible(`#file-list .dir[data-dir="lib/deep"] .dir-btn`)), "chiudere una cartella nasconde tutto quello che contiene");
 
   check(errors.length === 0, `nessun errore JavaScript nella pagina${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } catch (e) {
