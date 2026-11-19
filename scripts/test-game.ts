@@ -182,7 +182,7 @@ const waitFor = async (expression: string, ms = 5000): Promise<boolean> => {
   }
   return false;
 };
-const KEYS: Record<string, number> = { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Enter: 13, Escape: 27 };
+const KEYS: Record<string, number> = { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Enter: 13, Escape: 27, PageUp: 33, PageDown: 34 };
 /** modifiers: 2 = Ctrl, 8 = Maiusc. */
 const press = async (key: string, modifiers = 0) => {
   const code = KEYS[key] ?? (key === "Tab" ? 9 : key.toUpperCase().charCodeAt(0));
@@ -620,6 +620,18 @@ try {
   // open_file su un file già aperto: porta in primo piano la sua scheda
   await callTool("open_file", { path: "lib/deep/inner.py" });
   check((await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "lib/deep/inner.py"`)) && (await tabFiles()).length === tabsBefore + 2, "open_file porta in primo piano la scheda già aperta");
+  // Ctrl+frecce fuori dai campi e Ctrl+PagSu/PagGiù anche nell'editor: scheda accanto, in giro
+  {
+    const tabs = await evaluate<string[]>(`[...document.querySelectorAll("#tabs .tab")].map((t) => t.dataset.file ?? "board")`);
+    const at = tabs.indexOf("lib/deep/inner.py");
+    const prev = tabs[(at - 1 + tabs.length) % tabs.length];
+    await evaluate(`document.activeElement?.blur()`);
+    await press("ArrowLeft", 2);
+    const left = await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === ${JSON.stringify(prev)}`);
+    await evaluate(`document.getElementById("code-input").focus()`);
+    await press("PageDown", 2);
+    check(left && (await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "lib/deep/inner.py"`)), "Ctrl+← e Ctrl+PagGiù passano da una scheda all'altra");
+  }
   // modifica: pallino sulla scheda, chiuderla chiede conferma
   await evaluate(`document.getElementById("code-input").focus()`);
   await typeText("# nota\n");

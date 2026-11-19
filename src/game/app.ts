@@ -1585,6 +1585,15 @@ export class App {
     tabs.querySelector(".tab.is-active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
 
+  /** Passa alla scheda accanto (dir -1 o 1), in giro. Ritorna false se non c'è un'altra scheda. */
+  private stepTab(dir: number): boolean {
+    const tabs = [...$("tabs").querySelectorAll<HTMLButtonElement>(".tab")];
+    if (tabs.length < 2) return false;
+    const at = tabs.findIndex((b) => b.classList.contains("is-active"));
+    tabs[(at + dir + tabs.length) % tabs.length].click();
+    return true;
+  }
+
   /** Mostra il codice (undefined) o lo schema di una scheda. */
   private setView(id: string | undefined): void {
     const d = id === undefined ? undefined : this.boardTabs.find((t) => t.id === id);
@@ -2844,6 +2853,12 @@ export class App {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === "f" || e.key === "g") && $("title-screen").hidden && !isPhone()) {
         e.preventDefault();
         this.openSearch(e.key === "g");
+        return;
+      }
+      // schede: Ctrl+frecce fuori dai campi di testo (dentro spostano il cursore di una parola), Ctrl+PagSu/PagGiù ovunque
+      const tabKey = e.key === "ArrowLeft" || e.key === "ArrowRight" ? !inField : e.key === "PageUp" || e.key === "PageDown";
+      if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && tabKey && $("title-screen").hidden && !this.isChat) {
+        if (this.stepTab(e.key === "ArrowLeft" || e.key === "PageUp" ? -1 : 1)) e.preventDefault();
         return;
       }
       if (inField) return;
