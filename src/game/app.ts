@@ -32,6 +32,7 @@ import { GuidePicker } from "./guide";
 import { DEFAULT_GUIDE_NAMES, LANGS, LANG_INFO, setLang, t, type Lang } from "./i18n";
 import { Portrait, drawMiniGuide, setGuideLook } from "./portrait";
 import { applyReader, pages, reducedMotion } from "./reader";
+import { TerminalPanel } from "./terminals";
 import { renderRich, richPlain, richSpoken } from "./richtext";
 import { FRAMES, TEXT_SCALE_MAX, TEXT_SCALE_MIN, TEXT_SCALE_STEP, cleanTextScale, fromStored, isEmpty, loadSettings, saveSettings, toStored, type Frame, type Settings } from "./settings";
 import { isDesktopApp, type AgentCommand, type ConnectionState, type GameSource } from "./source";
@@ -169,6 +170,13 @@ export class App {
 
   /** Lavagna: la finestra che si apre durante la spiegazione e la vista nella scheda dell'editor. */
   private popBoard = new Board({ onOpenCode: (file, lines) => this.openFromBoard(file, lines, true), follow: true });
+  private terminals = new TerminalPanel({
+    url: (cols, rows) => this.source.terminalUrl(cols, rows),
+    changed: () => {
+      this.relayout();
+      this.renderStatus();
+    },
+  });
   private fileTree = new FileTree($("file-list"), {
     // Ctrl/Cmd+clic o clic centrale: in una scheda nuova
     open: (path, e) => void this.goToFile(path, undefined, undefined, { newTab: e.ctrlKey || e.metaKey || e.button === 1 }),
@@ -480,6 +488,7 @@ export class App {
       b.disabled = b.dataset.textStep === "1" ? scale >= TEXT_SCALE_MAX : scale <= TEXT_SCALE_MIN;
     }
     for (const v of document.querySelectorAll<HTMLElement>(".size-value")) v.textContent = `${Math.round(scale * 100)}%`;
+    this.terminals.refresh();
     this.editLayer.fit();
   }
 
@@ -562,6 +571,7 @@ export class App {
   private setReader(reader: Settings["reader"]): void {
     this.settings.reader = reader;
     applyReader(reader);
+    this.terminals.refresh();
     this.editLayer.fit();
     this.persist();
   }
@@ -2468,6 +2478,8 @@ export class App {
     $("status-level").textContent = t().msg.statusLevel(t().levels[this.settings.level].label);
     $("status-gen").textContent = t().generation[this.settings.generation].label;
     $("status-mode").textContent = this.tutor ? t().modes.tutor.label : "";
+    $("term-btn").hidden = !this.terminals.available;
+    $("term-btn").setAttribute("aria-pressed", String(this.terminals.isOpen));
   }
 
   /** Indici dei passi che possono seguire il passo i. */
@@ -2535,6 +2547,7 @@ export class App {
       this.next();
     });
     this.layout = initLayout(() => this.relayout());
+    $("term-btn").addEventListener("click", () => this.terminals.toggle());
     for (const b of document.querySelectorAll<HTMLButtonElement>("[data-text-step]")) {
       b.addEventListener("click", () => this.changeTextScale(b.dataset.textStep === "1" ? 1 : -1));
     }
@@ -2745,6 +2758,14 @@ export class App {
     });
     document.addEventListener("keydown", (e) => {
       const inField = (e.target as HTMLElement).closest("input, textarea");
+      // Ctrl+` come in VS Code: apre e chiude i terminali, anche dall'editor o da dentro un terminale
+      if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === "Backquote" && $("title-screen").hidden && !this.isChat) {
+        e.preventDefault();
+        this.terminals.toggle();
+        return;
+      }
+      // dentro un terminale i tasti sono della shell (Esc compreso)
+      if ((e.target as HTMLElement).closest("#term-panel")) return;
       if (e.key === "Escape") {
         if ($("title-screen").hidden && !$("board-pop").hidden) this.closePop();
         else if ($("title-screen").hidden) this.openTitle();

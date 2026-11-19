@@ -12,6 +12,7 @@ import { GAPS_MAX, SELECTION_MAX, cleanTutorContext, gapKey, sortGaps, type Clie
 import { conversationSummary, type Project } from "./project.js";
 import type { Store } from "./store.js";
 import { log } from "./log.js";
+import { Terminals } from "./terminal.js";
 
 /** Quante domande precedenti della conversazione arrivano all'agente insieme a un seguito. */
 const PREVIOUS_TURNS = 6;
@@ -43,6 +44,25 @@ function isAllowedOrigin(origin: string | undefined): boolean {
   }
 }
 
+/** Porta del gioco in sviluppo (`npm run dev`, vite.config.ts). */
+const DEV_PORT = 5173;
+
+/**
+ * Origine ammessa per i terminali, più stretta di quella di /ws: una shell vale più dei file del progetto.
+ * Solo il gioco servito da questo ponte, l'app desktop e il gioco in sviluppo; non le altre pagine su localhost.
+ */
+function isTerminalOrigin(origin: string | undefined, port: number): boolean {
+  if (!origin) return true; // client non-browser: gira già sulla macchina dell'utente
+  try {
+    const u = new URL(origin);
+    if (u.protocol === "tauri:" || (u.protocol === "http:" && u.hostname === "tauri.localhost")) return true;
+    const local = u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1");
+    return local && (Number(u.port) === port || Number(u.port) === DEV_PORT);
+  } catch {
+    return false;
+  }
+}
+
 export interface BridgeOptions {
   project: Project;
   /** Porta preferita: se è occupata si prova la successiva (vedi PORT_TRIES). */
@@ -51,6 +71,8 @@ export interface BridgeOptions {
   agent: boolean;
   /** Preferenze del giocatore (SQLite). */
   store: Store;
+  /** Terminali nel gioco (shell nella cartella del progetto). Predefinito: accesi. */
+  terminal?: boolean;
 }
 
 export class Bridge {
@@ -89,9 +111,11 @@ export class Bridge {
   private saving = Promise.resolve();
   private port: number;
   listening = false;
+  readonly terminals: Terminals | undefined;
 
   constructor(private opts: BridgeOptions) {
     this.port = opts.port;
+    this.terminals = opts.terminal === false ? undefined : new Terminals(opts.project.root);
     this.http = createServer((req, res) => {
       if ((req.url ?? "").split("?")[0] === "/session") {
         this.serveSession(req, res);
@@ -110,9 +134,17 @@ export class Bridge {
     });
     this.wss = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
     this.http.on("upgrade", (req, socket, head) => {
-      if (req.url !== "/ws" || !isAllowedOrigin(req.headers.origin)) {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      const term = url.pathname === "/term" && this.terminals;
+      const allowed = term ? isTerminalOrigin(req.headers.origin, this.port) : isAllowedOrigin(req.headers.origin);
+      if ((url.pathname !== "/ws" && !term) || !allowed) {
         socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
         socket.destroy();
+        return;
+      }
+      if (term) {
+        const n = (k: string) => Number(url.searchParams.get(k));
+        this.wss.handleUpgrade(req, socket, head, (ws) => term.attach(ws, n("cols"), n("rows")));
         return;
       }
       this.wss.handleUpgrade(req, socket, head, (ws) => this.onConnection(ws));
@@ -376,7 +408,7 @@ export class Bridge {
       this.onMessage(ws, msg).catch((e) => log(`errore messaggio: ${String(e)}`));
     });
     const files = await this.opts.project.listFiles().catch(() => []);
-    const hello: ServerMessage = { type: "hello", project: this.opts.project.name, files, agent: this.opts.agent, prefs: this.opts.store.load() };
+    const hello: ServerMessage = { type: "hello", project: this.opts.project.name, files, agent: this.opts.agent, prefs: this.opts.store.load(), terminal: !!this.terminals };
     ws.send(JSON.stringify(hello));
     for (const m of this.replay()) ws.send(JSON.stringify(m));
   }

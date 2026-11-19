@@ -1,4 +1,4 @@
-// Sezioni ridimensionabili: larghezza dell'esplora file, altezza del pannello della guida, finestra della lavagna
+// Sezioni ridimensionabili: larghezza dell'esplora file, altezza del pannello della guida e dei terminali, finestra della lavagna
 // e, con la finestra "classica" del menu, la finestra intera del gioco. Nella modalità chat: la colonna della
 // lavagna e l'altezza del fumetto, salvate a parte.
 // Si trascina il divisore (o si usano le frecce quando ha il fuoco); doppio clic torna alla misura iniziale.
@@ -11,6 +11,7 @@ const SIDE_MAX = 520;
 /** Sotto questa larghezza l'esplora file si chiude: tutto lo spazio va al codice. */
 const SIDE_CLOSE = 90;
 const DIALOG_MIN = 110;
+const TERM_MIN = 90;
 /** Il codice tiene sempre almeno queste righe di spazio. */
 const EDITOR_MIN = 120;
 const KEY_STEP = 24;
@@ -32,6 +33,8 @@ interface Layout {
   side?: number;
   /** Altezza del pannello della guida in px; undefined = quella naturale. */
   dialog?: number;
+  /** Altezza del pannello dei terminali in px; undefined = quella di styles.css. */
+  term?: number;
   /** Misure della finestra della lavagna in px; undefined = quelle iniziali. */
   pop?: { w: number; h: number };
   /** Misure della finestra classica del gioco in px; undefined = quelle di styles.css. */
@@ -74,6 +77,7 @@ function load(): Layout {
     return {
       side: typeof raw.side === "number" ? raw.side : undefined,
       dialog: typeof raw.dialog === "number" ? raw.dialog : undefined,
+      term: typeof raw.term === "number" ? raw.term : undefined,
       pop: readSize(raw.pop),
       frame: readSize(raw.frame),
       panel: typeof raw.panel === "string" ? raw.panel : undefined,
@@ -107,6 +111,8 @@ export function initLayout(onChange: () => void): LayoutControls {
   const app = document.getElementById("app")!;
   const frameGrip = document.getElementById("frame-grip")!;
   const chatSplit = document.getElementById("split-chat")!;
+  const termSplit = document.getElementById("split-term")!;
+  const termPanel = document.getElementById("term-panel")!;
   /** Nella chat il fumetto ha una sua altezza: lì sopra c'è lo storico, non il codice. */
   const inChat = () => app.classList.contains("is-chat");
   const layout = load();
@@ -139,6 +145,19 @@ export function initLayout(onChange: () => void): LayoutControls {
     if (inChat()) layout.chatDialog = v;
     else layout.dialog = v;
     applyDialog();
+    onChange();
+  };
+
+  // pannello dei terminali: tra il codice e la guida, il codice tiene sempre EDITOR_MIN
+  const termMax = () => Math.max(TERM_MIN, main.clientHeight - EDITOR_MIN - dialog.getBoundingClientRect().height - 50);
+  const applyTerm = () => {
+    if (layout.term === undefined) main.style.removeProperty("--term-h");
+    else main.style.setProperty("--term-h", `${Math.min(termMax(), Math.max(TERM_MIN, layout.term))}px`);
+    termSplit.setAttribute("aria-valuenow", String(Math.round(termPanel.getBoundingClientRect().height)));
+  };
+  const setTerm = (h: number | undefined) => {
+    layout.term = h === undefined ? undefined : Math.round(Math.min(termMax(), Math.max(TERM_MIN, h)));
+    applyTerm();
     onChange();
   };
 
@@ -217,6 +236,7 @@ export function initLayout(onChange: () => void): LayoutControls {
   dialogSplit.setAttribute("aria-valuemin", String(DIALOG_MIN));
   applySide();
   applyDialog();
+  applyTerm();
   applyPop();
   applyFrame();
   applyChatBoard();
@@ -248,6 +268,22 @@ export function initLayout(onChange: () => void): LayoutControls {
   // da chiuso, il trascinamento riparte da zero: basta tirare verso destra per riaprirlo
   drag(sideSplit, () => layout.side ?? SIDE_DEFAULT, (w0, dx) => setSide(w0 + dx));
   drag(dialogSplit, () => dialog.getBoundingClientRect().height, (h0, _dx, dy) => setDialog(Math.min(dialogMax(), Math.max(DIALOG_MIN, h0 - dy))));
+
+  drag(termSplit, () => termPanel.getBoundingClientRect().height, (h0, _dx, dy) => setTerm(h0 - dy));
+  termSplit.addEventListener("dblclick", () => {
+    setTerm(undefined);
+    save(layout);
+  });
+  termSplit.addEventListener("keydown", (e) => {
+    const h = termPanel.getBoundingClientRect().height;
+    if (e.key === "ArrowUp") setTerm(h + KEY_STEP);
+    else if (e.key === "ArrowDown") setTerm(h - KEY_STEP);
+    else if (e.key === "Enter") setTerm(undefined);
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+    save(layout);
+  });
 
   // la lavagna ha margini di 4 + 10px: la colonna è un po' più larga di quel che si misura
   drag(chatSplit, () => chatBoardWidth() + 14, (w0, dx) => setChatBoard(w0 - dx));
@@ -334,6 +370,7 @@ export function initLayout(onChange: () => void): LayoutControls {
   window.addEventListener("resize", () => {
     applyFrame();
     applyDialog();
+    applyTerm();
     applyPop();
     applyChatBoard();
   });

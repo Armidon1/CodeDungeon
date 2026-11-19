@@ -393,6 +393,24 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
   min-height: 0;
 }
 .main.has-dialog-h .dialog { height: var(--dialog-h); overflow-y: auto; align-content: start; }
+/* terminali aperti: due righe in più tra il codice e la guida (divisore e pannello) */
+.main.has-term { grid-template-rows: auto minmax(0, 1fr) auto var(--term-h, 220px) auto auto; }
+.splitter-term { height: 6px; cursor: row-resize; background: var(--code-bg); border-top: 2px solid var(--line); }
+.splitter-term::after { top: 1px; left: 50%; width: 28px; height: 2px; transform: translateX(-50%); }
+.term-panel { display: flex; flex-direction: column; min-height: 0; background: var(--code-bg); }
+.term-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 2px 8px; background: var(--panel-2); border-bottom: 2px solid var(--line); }
+.term-label { font-family: var(--font-display); font-size: calc(9px * var(--fs)); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
+.term-tabs { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.term-head .chip-btn { padding: 3px 8px; }
+.term-head .chip-btn:first-of-type { margin-left: auto; }
+.term-tab { display: flex; align-items: center; gap: 4px; padding: 2px 8px; font-size: calc(14px * var(--fs)); white-space: nowrap; color: var(--ink-dim); border-bottom: 2px solid transparent; }
+.term-tab.is-active { color: var(--ink); border-bottom-color: var(--lantern); }
+.term-tab.is-exited span:first-child { color: var(--ink-faint); text-decoration: line-through; }
+.term-body { position: relative; flex: 1; min-height: 0; padding: 4px 0 0 8px; }
+.term-view { position: absolute; inset: 4px 0 0 8px; }
+.term-view .xterm { height: 100%; }
+.term-view .xterm-viewport { background: var(--code-bg) !important; }
+.app.is-chat :is(.term-panel, .splitter-term) { display: none; }
 .tabs { display: flex; min-height: 34px; background: var(--panel-2); border-bottom: 2px solid var(--line); }
 .tab {
   display: flex;
@@ -927,6 +945,8 @@ button.board-node:hover { color: var(--lantern); }
 .status-conn[data-state="connected"], .status-conn[data-state="demo"] { color: var(--lantern); }
 .status-conn[data-state="offline"] { color: var(--ember); }
 .status-right { margin-left: auto; display: flex; gap: 14px; white-space: nowrap; }
+.status-btn { padding: 0 6px; font: inherit; color: var(--ink); background: none; border: 1px solid transparent; }
+.status-btn:hover, .status-btn[aria-pressed="true"] { border-color: var(--lantern); color: var(--lantern); }
 
 /* ---------- Schermata iniziale ---------- */
 .title-screen {
@@ -1158,6 +1178,7 @@ button.board-node:hover { color: var(--lantern); }
   .file { padding: 6px 10px 6px 30px; white-space: nowrap; }
   .walker { width: 20px; height: 20px; }
   .main { grid-template-rows: auto minmax(160px, 1fr) auto; }
+  .main.has-term { grid-template-rows: auto minmax(120px, 1fr) auto var(--term-h, 160px) auto auto; }
   .editor { font-size: calc(18px * var(--fs)); }
   .line { min-width: 0; }
   .line code { white-space: pre-wrap; overflow-wrap: anywhere; }

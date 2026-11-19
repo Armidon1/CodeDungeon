@@ -677,11 +677,67 @@ try {
   await click("#ask-quote-clear");
   // tutor: la selezione dentro la textarea
   await evaluate(`(() => { const ta = document.getElementById("code-input"); ta.focus(); ta.setSelectionRange(0, ta.value.indexOf("\\n", 40)); })()`);
+  await sleep(300); // la focus fa scorrere l'editor, e lo scorrimento nasconde il pulsante
   await press("Shift");
   check(await waitFor(`!document.getElementById("ask-sel").hidden`), "anche la selezione nell'editor del tutor mostra Chiedi a <guida>");
   await click("#ask-sel");
   check(await waitFor(`!document.getElementById("ask-quote").hidden && /protocol\\.py/.test(document.getElementById("ask-quote-label").textContent)`), "la selezione del tutor diventa la citazione della domanda");
   await click("#ask-quote-clear");
+
+  // terminali: Ctrl+` apre il pannello sotto il codice con una shell vera nella cartella del progetto
+  const ctrlBackquote = async () => {
+    for (const type of ["rawKeyDown", "keyUp"]) {
+      await send("Input.dispatchKeyEvent", { type, key: "`", code: "Backquote", windowsVirtualKeyCode: 192, modifiers: 2 });
+    }
+    await sleep(150);
+  };
+  const termRows = `[...document.querySelectorAll("#term-body .term-view:not([hidden]) .xterm-rows > div")].map((d) => d.textContent).join(" ")`;
+  check(await waitFor(`!document.getElementById("term-btn").hidden`), "la barra di stato offre i terminali");
+  await ctrlBackquote();
+  check(
+    await waitFor(`!document.getElementById("term-panel").hidden && document.querySelectorAll("#term-tabs .term-tab").length === 1 && document.querySelector("#term-body .xterm-rows")`, 8000),
+    "Ctrl+` apre il pannello dei terminali con un terminale",
+  );
+  check(await evaluate<boolean>(`document.querySelector(".editor-wrap").getBoundingClientRect().height >= 120`), "con i terminali aperti il codice resta visibile");
+  await waitFor(`!/^(Terminal|Terminale) /.test(document.querySelector("#term-tabs .term-tab").textContent)`, 8000);
+  await sleep(500); // il prompt della shell
+  await evaluate(`document.querySelector("#term-body .xterm-helper-textarea").focus()`);
+  await typeText("echo cd-$((6*7)) $PWD");
+  await press("Enter");
+  const termOk = await waitFor(`/cd-42 \\S*packet-server/.test(${termRows})`, 8000);
+  if (!termOk) console.log(`     terminale: ${await evaluate<string>(termRows)}`);
+  check(termOk, "il terminale esegue i comandi nella cartella del progetto");
+  await press("Escape");
+  check(await evaluate<boolean>(`document.getElementById("title-screen").hidden`), "Esc dentro il terminale resta alla shell");
+  await click("#term-new");
+  check(await waitFor(`document.querySelectorAll("#term-tabs .term-tab").length === 2 && document.querySelectorAll("#term-body .term-view:not([hidden])").length === 1`, 8000), "+ apre un secondo terminale in una scheda nuova");
+  await click("#term-tabs .term-tab:last-child .tab-close");
+  check(await waitFor(`document.querySelectorAll("#term-tabs .term-tab").length === 1 && document.querySelectorAll("#term-body .term-view").length === 1`), "× chiude il terminale");
+  const termH = await evaluate<number>(`document.getElementById("term-panel").getBoundingClientRect().height`);
+  await evaluate(`document.getElementById("split-term").focus()`);
+  await press("ArrowUp");
+  check(
+    (await evaluate<number>(`document.getElementById("term-panel").getBoundingClientRect().height`)) > termH + 10 &&
+      typeof (await evaluate<any>(`JSON.parse(localStorage.getItem("code-dungeon:layout")).term`)) === "number",
+    "il divisore allarga i terminali e la misura resta salvata",
+  );
+  await viewport(390, 844);
+  check(await noOverflow(), "a 390 px i terminali non allargano la pagina");
+  check(await evaluate<boolean>(`document.querySelector(".editor-wrap").getBoundingClientRect().height >= 100`), "a 390 px con i terminali il codice resta visibile");
+  await viewport(1400, 900);
+  await ctrlBackquote();
+  check(await waitFor(`document.getElementById("term-panel").hidden && document.getElementById("term-btn").getAttribute("aria-pressed") === "false"`), "Ctrl+` richiude il pannello");
+  // /term accetta solo il gioco: un'altra pagina su localhost non apre una shell
+  const termFrom = (origin: string) =>
+    new Promise<boolean>((resolve) => {
+      const s = new WebSocket(`ws://127.0.0.1:${PORT}/term?cols=80&rows=24`, { origin });
+      s.on("open", () => {
+        s.close();
+        resolve(true);
+      });
+      s.on("error", () => resolve(false));
+    });
+  check(!(await termFrom("http://localhost:3000")) && (await termFrom(`http://127.0.0.1:${PORT}`)), "/term rifiuta le altre pagine su localhost");
 
   check(errors.length === 0, `nessun errore JavaScript nella pagina${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } catch (e) {

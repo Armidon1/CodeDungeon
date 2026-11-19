@@ -328,7 +328,8 @@ export interface SessionInfo {
 
 /** Dal ponte (server) al gioco. */
 export type ServerMessage =
-  | { type: "hello"; project: string; files: string[]; agent: boolean; prefs: StoredPrefs }
+  /** terminal: il ponte apre terminali su /term (spenti con --terminal off). */
+  | { type: "hello"; project: string; files: string[]; agent: boolean; prefs: StoredPrefs; terminal: boolean }
   /** Preferenze cambiate da un'altra finestra del gioco. */
   | { type: "prefs"; prefs: StoredPrefs }
   | { type: "open_file"; path: string; content: string }
@@ -363,3 +364,14 @@ export type ClientMessage =
   | { type: "question"; text: string; context: GameContext; conversation?: string }
   | { type: "state"; context: GameContext }
   | { type: "save_prefs"; prefs: StoredPrefs };
+
+// ---------- Terminali (WebSocket /term?cols=&rows=, uno per terminale) ----------
+
+/** Dal gioco al terminale: tasti (i) e nuove misure (r). */
+export type TermClientMessage = { t: "i"; d: string } | { t: "r"; cols: number; rows: number };
+
+/** Dal terminale al gioco: pronto (pipe: senza terminale vero), uscita della shell (o), fine (x). */
+export type TermServerMessage =
+  | { t: "ready"; shell: string; cwd: string; pipe: boolean }
+  | { t: "o"; d: string }
+  | { t: "x"; code: number; error?: string };

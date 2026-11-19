@@ -23,6 +23,9 @@ export class DemoSource implements GameSource {
   projectName = "packet-server";
   agent = false;
   prefs = undefined;
+  terminalUrl(): undefined {
+    return undefined;
+  }
   files: string[];
   private contents = new Map<string, string>();
   private tour = demoTour as unknown as Tour;

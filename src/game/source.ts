@@ -19,6 +19,8 @@ export interface GameSource {
   agent: boolean;
   /** Impostazioni salvate dal ponte (arrivano con hello); undefined nella demo. */
   prefs: StoredPrefs | undefined;
+  /** Indirizzo WebSocket per aprire un terminale; undefined nella demo o con i terminali spenti. */
+  terminalUrl(cols: number, rows: number): string | undefined;
   readFile(path: string): Promise<string>;
   /** Modalità tutor: salva (o crea) un file del progetto; risolve con l'elenco aggiornato dei file. */
   writeFile(path: string, content: string): Promise<string[]>;
@@ -57,6 +59,8 @@ export class BridgeSource implements GameSource {
   files: string[] = [];
   agent = false;
   prefs: StoredPrefs | undefined;
+  private terminal = false;
+  private wsUrl: string | undefined;
   private ws: WebSocket | undefined;
   private pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private commandCbs: ((cmd: AgentCommand) => void)[] = [];
@@ -70,6 +74,14 @@ export class BridgeSource implements GameSource {
   /** url: indirizzo fisso, oppure funzione che lo cerca a ogni tentativo (undefined = niente ponte). */
   constructor(private url: string | (() => Promise<string | undefined>)) {
     void this.connect();
+  }
+
+  terminalUrl(cols: number, rows: number): string | undefined {
+    if (!this.terminal || !this.wsUrl) return undefined;
+    const u = new URL(this.wsUrl);
+    u.pathname = "/term";
+    u.search = `?cols=${cols}&rows=${rows}`;
+    return u.href;
   }
 
   private setStatus(s: ConnectionState): void {
@@ -91,6 +103,7 @@ export class BridgeSource implements GameSource {
     }
     const ws = new WebSocket(url);
     this.ws = ws;
+    this.wsUrl = url;
     this.port = Number(new URL(url).port) || undefined;
     ws.onopen = () => {
       this.retry = 0;
@@ -107,6 +120,7 @@ export class BridgeSource implements GameSource {
         this.files = msg.files;
         this.agent = msg.agent;
         this.prefs = msg.prefs;
+        this.terminal = msg.terminal === true;
         this.setStatus("connected");
         this.readyResolve();
       } else if (msg.type === "response") {

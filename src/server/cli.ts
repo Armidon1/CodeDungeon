@@ -31,6 +31,8 @@ Uso:
   code-dungeon play [--project <cartella>] [--port 7337]   riproduci i tour salvati, senza agente
   code-dungeon --version
 
+  --terminal off   niente terminali nel gioco (anche CODE_DUNGEON_TERMINAL=0)
+
 Il progetto predefinito è la cartella corrente. Guida: https://github.com/Armidon1/CodeDungeon#readme
 `;
 
@@ -70,7 +72,19 @@ async function main(): Promise<void> {
   });
   const { Store } = await import("./store.js");
   const project = new Project(projectDir);
-  const bridge = new Bridge({ project, port, staticDir: findStaticDir(), agent: mode === "mcp", store: new Store() });
+  // terminali nel gioco: accesi, a meno di --terminal off o CODE_DUNGEON_TERMINAL=0
+  const termOpt = (opts.terminal ?? process.env.CODE_DUNGEON_TERMINAL ?? "").toLowerCase();
+  const terminal = !["off", "0", "no", "false"].includes(termOpt);
+  const bridge = new Bridge({ project, port, staticDir: findStaticDir(), agent: mode === "mcp", store: new Store(), terminal });
+  const closeTerminals = () => bridge.terminals?.closeAll();
+  process.on("exit", closeTerminals);
+  // con un segnale "exit" non scatta: le shell si chiudono qui, poi si esce come prima
+  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+    process.once(sig, () => {
+      closeTerminals();
+      process.exit(128 + (sig === "SIGINT" ? 2 : sig === "SIGTERM" ? 15 : 1));
+    });
+  }
 
   try {
     await bridge.start();
