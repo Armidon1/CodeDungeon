@@ -632,6 +632,22 @@ try {
     await press("PageDown", 2);
     check(left && (await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "lib/deep/inner.py"`)), "Ctrl+← e Ctrl+PagGiù passano da una scheda all'altra");
   }
+  // trascinare una scheda col tasto sinistro la sposta dopo un'altra (prima e ultima scheda di file si scambiano di posto)
+  {
+    const before = await tabFiles();
+    const first = before[0], last = before[before.length - 1];
+    const box = (f: string) => evaluate<{ x: number; y: number; w: number }>(`(() => { const r = document.querySelector('#tabs .tab[data-file="${f}"]').getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, w: r.width }; })()`);
+    await evaluate(`document.querySelector('#tabs .tab[data-file="${last}"]').scrollIntoView({ inline: "nearest" })`);
+    const a = await box(first), b = await box(last);
+    const mouse = (type: string, x: number, y: number) => send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mouseReleased" ? 0 : 1, clickCount: 1 });
+    await mouse("mousePressed", a.x + a.w / 2, a.y);
+    for (let k = 1; k <= 6; k++) await mouse("mouseMoved", a.x + a.w / 2 + ((b.x + b.w * 0.8) - (a.x + a.w / 2)) * k / 6, a.y);
+    const marked = await evaluate<boolean>(`!!document.querySelector('#tabs .tab.drop-after[data-file="${last}"]')`);
+    await mouse("mouseReleased", b.x + b.w * 0.8, b.y);
+    const after = await tabFiles();
+    check(marked && after[after.length - 1] === first && after.length === before.length && !(await evaluate<boolean>(`!!document.querySelector("#tabs .is-dragging, #tabs .drop-after, #tabs .drop-before")`)),
+      "trascinare una scheda la sposta dopo un'altra");
+  }
   // modifica: pallino sulla scheda, chiuderla chiede conferma
   await evaluate(`document.getElementById("code-input").focus()`);
   await typeText("# nota\n");

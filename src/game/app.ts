@@ -101,6 +101,9 @@ interface Choice {
   run: () => void;
 }
 
+/** Pixel di spostamento oltre i quali premere su una scheda diventa trascinarla. */
+const TAB_DRAG_PX = 6;
+
 export class App {
   private settings: Settings = loadSettings();
   private portrait = new Portrait($<HTMLCanvasElement>("portrait"));
@@ -1576,6 +1579,7 @@ export class App {
       btn.dataset.file = file;
       btn.title = dirty ? `${file} · ${t().msg.unsaved}` : file;
       closable(btn, () => this.closeFileTab(file));
+      this.dragTab(btn, file);
     }
     for (const d of this.boardTabs) {
       const btn = tab(d.title, "tab-board-icon", this.view === d.id, () => this.setView(d.id));
@@ -1583,6 +1587,67 @@ export class App {
       closable(btn, () => this.closeBoardTab(d.id));
     }
     tabs.querySelector(".tab.is-active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  /** Trascinare una scheda di file col tasto sinistro la sposta prima o dopo un'altra. */
+  private dragTab(btn: HTMLButtonElement, file: string): void {
+    btn.addEventListener("pointerdown", (down) => {
+      if (down.button !== 0 || (down.target as HTMLElement).closest(".tab-close")) return;
+      const bar = $("tabs");
+      let dragging = false;
+      let target: { file: string; after: boolean } | undefined;
+      const clear = () => bar.querySelectorAll(".drop-before, .drop-after").forEach((el) => el.classList.remove("drop-before", "drop-after"));
+      const move = (e: PointerEvent) => {
+        if (!dragging) {
+          if (Math.abs(e.clientX - down.clientX) < TAB_DRAG_PX) return;
+          dragging = true;
+          btn.setPointerCapture(e.pointerId);
+          btn.classList.add("is-dragging");
+          bar.classList.add("is-sorting");
+        }
+        // vicino ai bordi la barra scorre, per arrivare alle schede nascoste
+        const r = bar.getBoundingClientRect();
+        if (e.clientX < r.left + 24) bar.scrollLeft -= 12;
+        else if (e.clientX > r.right - 24) bar.scrollLeft += 12;
+        clear();
+        target = undefined;
+        for (const other of bar.querySelectorAll<HTMLButtonElement>(".tab[data-file]")) {
+          if (other === btn) continue;
+          const o = other.getBoundingClientRect();
+          if (e.clientX < o.left || e.clientX > o.right) continue;
+          const after = e.clientX > o.left + o.width / 2;
+          target = { file: other.dataset.file!, after };
+          other.classList.add(after ? "drop-after" : "drop-before");
+        }
+      };
+      const end = (e: PointerEvent) => {
+        btn.removeEventListener("pointermove", move);
+        btn.removeEventListener("pointerup", end);
+        btn.removeEventListener("pointercancel", end);
+        if (!dragging) return;
+        clear();
+        btn.classList.remove("is-dragging");
+        bar.classList.remove("is-sorting");
+        // il clic che segue il rilascio non deve aprire la scheda
+        const eat = (c: Event) => {
+          c.stopImmediatePropagation();
+          c.preventDefault();
+        };
+        btn.addEventListener("click", eat, { capture: true, once: true });
+        setTimeout(() => btn.removeEventListener("click", eat, { capture: true }), 0);
+        if (e.type === "pointercancel" || !target) return;
+        const files = this.openFiles.filter((f) => f !== file);
+        const at = files.indexOf(target.file);
+        if (at === -1) return;
+        files.splice(at + (target.after ? 1 : 0), 0, file);
+        this.openFiles = files;
+        sound.play("select");
+        this.renderTabs();
+      };
+      btn.addEventListener("pointermove", move);
+      btn.addEventListener("pointerup", end);
+      btn.addEventListener("pointercancel", end);
+    });
   }
 
   /** Passa alla scheda accanto (dir -1 o 1), in giro. Ritorna false se non c'è un'altra scheda. */

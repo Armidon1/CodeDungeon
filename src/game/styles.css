@@ -707,6 +707,12 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 .tab-board-icon { width: 12px; height: 10px; border: 2px solid var(--sky); box-shadow: inset 3px -2px 0 -1px var(--sky); }
 .tab-close { margin-left: 2px; padding: 0 4px; color: var(--ink-faint); }
 .tab-close:hover { color: var(--ember); }
+/* schede trascinate: la scheda presa si attenua, una barra indica dove andrà */
+.tab[data-file] { user-select: none; -webkit-user-select: none; }
+.tabs.is-sorting { cursor: grabbing; }
+.tab.is-dragging { opacity: 0.55; }
+.tab.drop-before { box-shadow: inset 3px 0 0 var(--lantern); }
+.tab.drop-after { box-shadow: inset -3px 0 0 var(--lantern); }
 
 /* ---------- Lavagna ---------- */
 .board-view, .board-pop { display: flex; flex-direction: column; gap: 8px; background: var(--code-bg); }
