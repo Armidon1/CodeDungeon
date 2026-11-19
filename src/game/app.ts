@@ -24,6 +24,7 @@ import { TRACK_IDS, type SoundSettings } from "./audio";
 import { ChatLog, type ChatCode } from "./chat";
 import { Board } from "./diagram";
 import { FileTree } from "./filetree";
+import { followTarget } from "./follow";
 import { EditLayer } from "./editing";
 import { changedLines, remapMarks, tutorBuffer, type QuickAsk } from "./tutor";
 import { highlightLines, langLabel, langOf } from "./highlight";
@@ -39,6 +40,12 @@ import { initLayout, type LayoutControls } from "./layout";
 import { fullscreenAvailable, onFullscreenChange, toggleFullscreen } from "./fullscreen";
 
 /** Testo selezionato nel codice o nel fumetto, allegato alla prossima domanda. */
+/** Come aprire un file: in una scheda nuova (Ctrl+clic), senza dissolvenza (cambio di scheda). */
+interface TabOpen {
+  newTab?: boolean;
+  quick?: boolean;
+}
+
 interface Quote {
   text: string;
   file?: string;
@@ -104,6 +111,12 @@ export class App {
   private speakerIsGuide = true;
 
   private currentFile: string | undefined;
+  /** File aperti come schede, nell'ordine della barra. */
+  private openFiles: string[] = [];
+  /** Scorrimento e righe evidenziate di ogni scheda, per ritrovarle tornandoci. */
+  private tabState = new Map<string, { scroll: number; highlight: [number, number] | undefined }>();
+  /** Scheda con modifiche non salvate in attesa della conferma di chiusura. */
+  private closing: string | undefined;
   private currentLines: string[] = [];
   private highlight: [number, number] | undefined;
   /** Contenuto dei file come sono su disco (l'ultima versione letta o salvata). */
@@ -148,7 +161,10 @@ export class App {
 
   /** Lavagna: la finestra che si apre durante la spiegazione e la vista nella scheda dell'editor. */
   private popBoard = new Board({ onOpenCode: (file, lines) => this.openFromBoard(file, lines, true), follow: true });
-  private fileTree = new FileTree($("file-list"), { open: (path) => void this.goToFile(path) });
+  private fileTree = new FileTree($("file-list"), {
+    // Ctrl/Cmd+clic o clic centrale: in una scheda nuova
+    open: (path, e) => void this.goToFile(path, undefined, undefined, { newTab: e.ctrlKey || e.metaKey || e.button === 1 }),
+  });
   private tabBoard = new Board({ onOpenCode: (file, lines) => this.openFromBoard(file, lines, false) });
   /** Schemi aperti come schede, nell'ordine di apertura. */
   private boardTabs: Diagram[] = [];
@@ -994,31 +1010,100 @@ export class App {
   }
 
   /** Apre un file (con camminata e dissolvenza a pixel) ed evidenzia le righe. Le chiamate si mettono in coda. */
-  goToFile(path: string, lines?: [number, number], content?: string): Promise<void> {
-    this.navigating = this.navigating.then(() => this.doGoToFile(path, lines, content)).catch((e) => {
+  goToFile(path: string, lines?: [number, number], content?: string, opts: TabOpen = {}): Promise<void> {
+    this.navigating = this.navigating.then(() => this.doGoToFile(path, lines, content, opts)).catch((e) => {
       this.say({ text: t().msg.cantOpenFile(path, e instanceof Error ? e.message : String(e)), expression: "preoccupato" });
     });
     return this.navigating;
   }
 
-  private async doGoToFile(path: string, lines?: [number, number], content?: string): Promise<void> {
+  private async doGoToFile(path: string, lines?: [number, number], content?: string, opts: TabOpen = {}): Promise<void> {
     if (content !== undefined) this.fileCache.set(path, content);
     if (this.view !== undefined) this.setView(undefined);
     const text = this.drafts.get(path) ?? (await this.readFile(path));
     const changing = path !== this.currentFile;
+    // tornando a una scheda già aperta senza righe da mostrare si ritrova dove la si era lasciata
+    const back = !lines && changing ? this.tabState.get(path) : undefined;
     if (changing) {
+      this.rememberTab();
+      this.placeTab(path, !!opts.newTab);
       const walk = this.walkTo(path);
-      if (this.currentFile !== undefined) await this.wipe("cover");
+      const wipe = this.currentFile !== undefined && !opts.quick;
+      if (wipe) await this.wipe("cover");
       this.currentFile = path;
-      this.highlight = lines;
+      this.highlight = back ? back.highlight : lines;
       this.renderEditor(text);
       this.markActiveFile();
-      await Promise.all([walk, this.wipe("reveal")]);
+      // cambiando scheda non si aspetta la camminata nella barra laterale
+      await Promise.all([opts.quick ? undefined : walk, wipe ? this.wipe("reveal") : undefined]);
     } else {
       this.highlight = lines;
       this.applyHighlight();
     }
-    this.scrollToHighlight();
+    if (back) $("editor").scrollTop = back.scroll;
+    else this.scrollToHighlight();
+    this.reportState();
+  }
+
+  /** Salva scorrimento e righe evidenziate della scheda che si lascia. */
+  private rememberTab(): void {
+    if (this.currentFile) this.tabState.set(this.currentFile, { scroll: $("editor").scrollTop, highlight: this.highlight });
+  }
+
+  /**
+   * Mette path tra le schede. Già aperto: resta dov'è. Con newTab, senza schede o se la scheda corrente
+   * ha modifiche non salvate: una scheda nuova dopo la corrente. Altrimenti prende il posto della corrente, come prima.
+   */
+  private placeTab(path: string, newTab: boolean): void {
+    if (this.openFiles.includes(path)) return;
+    const cur = this.currentFile ? this.openFiles.indexOf(this.currentFile) : -1;
+    if (cur === -1) this.openFiles.push(path);
+    else if (newTab || this.isDirty(this.currentFile)) this.openFiles.splice(cur + 1, 0, path);
+    else {
+      this.tabState.delete(this.openFiles[cur]);
+      this.openFiles[cur] = path;
+    }
+  }
+
+  /**
+   * Chiude la scheda di un file. Con modifiche non salvate (in tutor) prima chiede: Salva, Non salvare o Annulla.
+   * Si passa alla scheda accanto; senza schede l'editor torna vuoto.
+   */
+  private closeFileTab(file: string, decided = false): void {
+    if (!decided && this.tutor && this.isDirty(file)) {
+      this.closing = file;
+      if (file !== this.currentFile) void this.goToFile(file, undefined, undefined, { quick: true });
+      void this.navigating.then(() => this.showCloseConfirm(file));
+      return;
+    }
+    const i = this.openFiles.indexOf(file);
+    if (i === -1) return;
+    this.openFiles.splice(i, 1);
+    this.tabState.delete(file);
+    if (file !== this.currentFile) {
+      this.renderTabs();
+      return;
+    }
+    const next = this.openFiles[Math.min(i, this.openFiles.length - 1)];
+    if (next) {
+      // la scheda chiusa non c'è più: niente scorrimento da ricordare per lei
+      this.currentFile = undefined;
+      void this.goToFile(next, undefined, undefined, { quick: true });
+    } else this.clearEditor();
+  }
+
+  /** Nessuna scheda di file: l'editor mostra di nuovo il suo invito. */
+  private clearEditor(): void {
+    this.currentFile = undefined;
+    this.highlight = undefined;
+    this.currentLines = [];
+    for (const el of $("editor").querySelectorAll(".line")) el.remove();
+    this.applyMarks();
+    $("editor-empty").hidden = false;
+    $("status-lang").textContent = "";
+    this.markActiveFile();
+    this.syncEditable();
+    this.renderTabs();
     this.reportState();
   }
 
@@ -1241,14 +1326,52 @@ export class App {
   private showConfirm(open: boolean): void {
     $("edit-ask").hidden = true;
     $("edit-confirm").hidden = !open;
+    $("edit-close").hidden = true;
     $("edit-new").hidden = true;
     $("edit-actions").hidden = open;
     if (open) $<HTMLButtonElement>("edit-overwrite").focus();
   }
 
+  /** Apre il file incluso o importato dalla riga cliccata; false se la riga non porta a un file del progetto. */
+  private followAt(e: MouseEvent): boolean {
+    const file = this.currentFile;
+    if (!file) return false;
+    let text: string | undefined;
+    const ta = this.editLayer.area;
+    if (e.target === ta) {
+      // nella textarea il clic ha già messo il cursore sulla riga giusta
+      const start = ta.value.lastIndexOf("\n", ta.selectionStart - 1) + 1;
+      const end = ta.value.indexOf("\n", ta.selectionStart);
+      text = ta.value.slice(start, end === -1 ? undefined : end);
+    } else text = (e.target as HTMLElement).closest(".line")?.querySelector("code")?.textContent ?? undefined;
+    const target = text && followTarget(text, file, this.source.files);
+    if (!target) return false;
+    void this.goToFile(target, undefined, undefined, { newTab: true });
+    return true;
+  }
+
+  /** Barra: chiudere una scheda con modifiche non salvate. */
+  private showCloseConfirm(file: string): void {
+    if (this.closing !== file) return;
+    $("edit-ask").hidden = true;
+    $("edit-confirm").hidden = true;
+    $("edit-new").hidden = true;
+    $("edit-actions").hidden = true;
+    $("edit-close").hidden = false;
+    $("edit-close-text").textContent = t().msg.closeUnsaved(file.split("/").pop()!);
+    $<HTMLButtonElement>("edit-close-save").focus();
+  }
+
+  private endCloseConfirm(): void {
+    this.closing = undefined;
+    $("edit-close").hidden = true;
+    $("edit-actions").hidden = false;
+  }
+
   private openNewFile(open: boolean): void {
     $("edit-ask").hidden = true;
     $("edit-confirm").hidden = true;
+    $("edit-close").hidden = true;
     $("edit-new").hidden = !open;
     $("edit-actions").hidden = open;
     const input = $<HTMLInputElement>("edit-new-name");
@@ -1364,26 +1487,43 @@ export class App {
       tabs.append(btn);
       return btn;
     };
-    if (this.currentFile) {
-      const name = this.currentFile.split("/").pop()!;
-      const dirty = this.isDirty();
-      const btn = tab(dirty ? `● ${name}` : name, `file-icon ext-${langOf(this.currentFile)}`, this.view === undefined, () => this.setView(undefined));
-      if (dirty) btn.title = t().msg.unsaved;
+    /** × per chiudere; anche il clic centrale sulla scheda la chiude, come in VS Code. */
+    const closable = (btn: HTMLButtonElement, close: () => void) => {
+      const x = document.createElement("span");
+      x.className = "tab-close";
+      x.textContent = "×";
+      x.title = t().ui.closeTab;
+      x.setAttribute("aria-hidden", "true");
+      x.addEventListener("click", (e) => {
+        e.stopPropagation();
+        close();
+      });
+      btn.append(x);
+      btn.addEventListener("auxclick", (e) => {
+        if (e.button === 1) close();
+      });
+      btn.addEventListener("mousedown", (e) => {
+        if (e.button === 1) e.preventDefault();
+      });
+    };
+    for (const file of this.openFiles) {
+      const name = file.split("/").pop()!;
+      const dirty = this.isDirty(file);
+      const active = file === this.currentFile && this.view === undefined;
+      const btn = tab(dirty ? `● ${name}` : name, `file-icon ext-${langOf(file)}`, active, () => {
+        if (this.view !== undefined) this.setView(undefined);
+        if (file !== this.currentFile) void this.goToFile(file, undefined, undefined, { quick: true });
+      });
+      btn.dataset.file = file;
+      btn.title = dirty ? `${file} · ${t().msg.unsaved}` : file;
+      closable(btn, () => this.closeFileTab(file));
     }
     for (const d of this.boardTabs) {
       const btn = tab(d.title, "tab-board-icon", this.view === d.id, () => this.setView(d.id));
       btn.title = t().msg.tabDiagram(d.title);
-      const close = document.createElement("span");
-      close.className = "tab-close";
-      close.textContent = "×";
-      close.title = t().ui.closeTab;
-      close.setAttribute("aria-hidden", "true");
-      close.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.closeBoardTab(d.id);
-      });
-      btn.append(close);
+      closable(btn, () => this.closeBoardTab(d.id));
     }
+    tabs.querySelector(".tab.is-active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
 
   /** Mostra il codice (undefined) o lo schema di una scheda. */
@@ -1922,6 +2062,7 @@ export class App {
 
   private showAskMenu(open: boolean): void {
     $("edit-confirm").hidden = true;
+    $("edit-close").hidden = true;
     $("edit-new").hidden = true;
     $("edit-ask").hidden = !open;
     $("edit-actions").hidden = open;
@@ -2392,6 +2533,23 @@ export class App {
       this.editLayer.area.focus();
     });
     $("edit-new-btn").addEventListener("click", () => this.openNewFile(true));
+    $("edit-close-save").addEventListener("click", async () => {
+      const file = this.closing;
+      if (!file) return;
+      this.endCloseConfirm();
+      if (await this.saveFile(false, file)) this.closeFileTab(file, true);
+    });
+    $("edit-close-discard").addEventListener("click", () => {
+      const file = this.closing;
+      if (!file) return;
+      this.endCloseConfirm();
+      this.drafts.delete(file);
+      this.closeFileTab(file, true);
+    });
+    $("edit-close-cancel").addEventListener("click", () => {
+      this.endCloseConfirm();
+      this.editLayer.area.focus();
+    });
     $("edit-marks-clear").addEventListener("click", () => {
       if (this.currentFile) this.setMarks(this.currentFile, [], "");
       sound.play("select");
@@ -2412,6 +2570,14 @@ export class App {
     editor.addEventListener("focusout", (e) => {
       if (pinOf(e)) this.showMarkNote(undefined);
     });
+    // Ctrl/Cmd+clic su un #include, import o require: il file del progetto in una scheda nuova
+    editor.addEventListener("click", (e) => {
+      if ((e.ctrlKey || e.metaKey) && this.followAt(e)) e.preventDefault();
+    });
+    const followKey = (e: KeyboardEvent) => editor.classList.toggle("is-follow", e.ctrlKey || e.metaKey);
+    window.addEventListener("keydown", followKey);
+    window.addEventListener("keyup", followKey);
+    window.addEventListener("blur", () => editor.classList.remove("is-follow"));
     editor.addEventListener("click", (e) => {
       const pin = pinOf(e);
       if (!pin) return;

@@ -53,7 +53,7 @@ await fs.rm(path.join(project, ".tour", "conversazioni"), { recursive: true, for
 // cartelle annidate per l'albero dei file
 await fs.mkdir(path.join(project, "lib", "deep"), { recursive: true });
 await fs.writeFile(path.join(project, "lib", "util.py"), "def aiuto():\n    return 1\n");
-await fs.writeFile(path.join(project, "lib", "deep", "inner.py"), "X = 2\n");
+await fs.writeFile(path.join(project, "lib", "deep", "inner.py"), "from ..util import aiuto\nX = 2\n");
 
 // modalità mcp con lo stdin aperto e muto: il gioco vede un agente collegato e le domande partono davvero
 const server = spawn("npx", ["tsx", "src/server/cli.ts", "mcp", "--project", project, "--port", String(PORT)], {
@@ -571,6 +571,67 @@ try {
   );
   await click(`#file-list .dir[data-dir="lib"] .dir-btn`);
   check(!(await visible(`#file-list .file[data-path="lib/util.py"]`)) && !(await visible(`#file-list .dir[data-dir="lib/deep"] .dir-btn`)), "chiudere una cartella nasconde tutto quello che contiene");
+
+  // più schede di file
+  const tabFiles = () => evaluate<string[]>(`[...document.querySelectorAll("#tabs .tab[data-file]")].map((t) => t.dataset.file)`);
+  const activeTab = () => evaluate<string | undefined>(`document.querySelector("#tabs .tab.is-active")?.dataset.file`);
+  const ctrlClick = (js: string) => evaluate(`${js}.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true }))`);
+  const tabsBefore = (await tabFiles()).length;
+  // Ctrl+clic sull'import (riga 1 di inner.py): util.py in una scheda nuova
+  await evaluate(`document.getElementById("code-input").setSelectionRange(5, 5)`);
+  await ctrlClick(`document.getElementById("code-input")`);
+  check(
+    (await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "lib/util.py"`)) && (await tabFiles()).length === tabsBefore + 1,
+    "Ctrl+clic su un import apre il file in una scheda nuova",
+  );
+  // clic semplice nella barra: sostituisce la scheda corrente
+  await click(`#file-list .file[data-path="protocol.py"]`);
+  await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "protocol.py"`);
+  let tabsNow = await tabFiles();
+  check(tabsNow.length === tabsBefore + 1 && !tabsNow.includes("lib/util.py"), "il clic semplice sostituisce la scheda corrente");
+  // Ctrl+clic nella barra: scheda nuova accanto alla corrente
+  await ctrlClick(`document.querySelector('#file-list .file[data-path="handlers.py"]')`);
+  await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "handlers.py"`);
+  tabsNow = await tabFiles();
+  check(tabsNow.length === tabsBefore + 2 && tabsNow.indexOf("handlers.py") === tabsNow.indexOf("protocol.py") + 1, "Ctrl+clic nella barra apre una scheda nuova dopo la corrente");
+  // open_file su un file già aperto: porta in primo piano la sua scheda
+  await callTool("open_file", { path: "lib/deep/inner.py" });
+  check((await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "lib/deep/inner.py"`)) && (await tabFiles()).length === tabsBefore + 2, "open_file porta in primo piano la scheda già aperta");
+  // modifica: pallino sulla scheda, chiuderla chiede conferma
+  await evaluate(`document.getElementById("code-input").focus()`);
+  await typeText("# nota\n");
+  check(await waitFor(`document.querySelector('#tabs .tab[data-file="lib/deep/inner.py"]').textContent.includes("●")`), "la scheda modificata ha il pallino");
+  await click(`#tabs .tab[data-file="handlers.py"]`);
+  await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "handlers.py"`);
+  check(await evaluate<boolean>(`document.querySelector('#tabs .tab[data-file="lib/deep/inner.py"]').textContent.includes("●")`), "il pallino resta sulla scheda modificata anche quando non è in primo piano");
+  await click(`#tabs .tab[data-file="lib/deep/inner.py"] .tab-close`);
+  check(
+    (await waitFor(`!document.getElementById("edit-close").hidden && document.querySelector("#tabs .tab.is-active")?.dataset.file === "lib/deep/inner.py"`)) &&
+      (await evaluate<string>(`document.getElementById("code-input").value`)).startsWith("from ..util"),
+    "chiudere una scheda modificata chiede conferma e la mostra",
+  );
+  await click("#edit-close-cancel");
+  check((await tabFiles()).includes("lib/deep/inner.py") && (await evaluate<boolean>(`document.getElementById("edit-close").hidden`)), "Annulla lascia la scheda aperta");
+  await click(`#tabs .tab[data-file="lib/deep/inner.py"] .tab-close`);
+  await waitFor(`!document.getElementById("edit-close").hidden`);
+  await click("#edit-close-discard");
+  check(
+    (await waitFor(`!document.querySelector('#tabs .tab[data-file="lib/deep/inner.py"]') && !!document.querySelector("#tabs .tab.is-active[data-file]")`)) &&
+      (await fs.readFile(path.join(project, "lib", "deep", "inner.py"), "utf8")) === "from ..util import aiuto\nX = 2\n",
+    "Non salvare chiude la scheda senza toccare il file e passa a quella accanto",
+  );
+  // tornando a una scheda si ritrova lo scorrimento
+  await click(`#tabs .tab[data-file="protocol.py"]`);
+  await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "protocol.py"`);
+  await evaluate(`document.getElementById("editor").scrollTop = 60`);
+  await click(`#tabs .tab[data-file="handlers.py"]`);
+  await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "handlers.py"`);
+  await click(`#tabs .tab[data-file="protocol.py"]`);
+  check(await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "protocol.py" && Math.abs(document.getElementById("editor").scrollTop - 60) < 4`), "ogni scheda ricorda il suo scorrimento");
+  await viewport(390, 844);
+  check(await noOverflow(), "a 390 px le schede scorrono senza allargare la pagina");
+  for (const f of await tabFiles()) await click(`#tabs .tab[data-file="${f}"] .tab-close`);
+  check(await waitFor(`!document.getElementById("editor-empty").hidden && !document.querySelector("#tabs .tab[data-file]")`), "chiusa l'ultima scheda l'editor torna vuoto");
 
   check(errors.length === 0, `nessun errore JavaScript nella pagina${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } catch (e) {

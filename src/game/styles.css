@@ -1224,3 +1224,6 @@ button.board-node:hover { color: var(--lantern); }
 .font-leggibile .choice { font-size: calc(16px * var(--fs)); }
 .font-leggibile .dialog-text { line-height: 1.6; }
 
+
+/* Ctrl/Cmd premuto: le righe che portano a un file si possono seguire */
+.editor.is-follow .line code, .editor.is-follow .code-input { cursor: pointer; }
