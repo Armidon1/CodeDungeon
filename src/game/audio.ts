@@ -515,14 +515,22 @@ export function configure(s: SoundSettings): void {
   syncMusic();
 }
 
-/** Da chiamare al primo gesto dell'utente: prima il browser non permette di suonare. */
-export function unlock(): void {
+/**
+ * Da chiamare a ogni gesto dell'utente finché non risolve true: prima il browser non permette di suonare.
+ * Alcuni motori (WebKitGTK dell'app su Linux) non accettano ogni gesto: si riprova al successivo.
+ */
+export async function unlock(): Promise<boolean> {
   graph ??= build();
-  if (!graph) return;
+  if (!graph) return true;
   unlocked = true;
-  void graph.ctx.resume();
+  try {
+    await Promise.race([graph.ctx.resume(), new Promise((r) => setTimeout(r, 300))]);
+  } catch {
+    // resume rifiutato: si riprova al prossimo gesto
+  }
   applyVolumes();
   syncMusic();
+  return graph.ctx.state === "running";
 }
 
 // finestra nascosta: musica in pausa (l'orologio audio si ferma e riparte da dove era)

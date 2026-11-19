@@ -220,13 +220,13 @@ export class App {
     this.applyLang();
     this.applyMode();
     // il browser lascia suonare solo dopo un gesto dell'utente
-    const unlock = () => {
-      sound.unlock();
-      window.removeEventListener("pointerdown", unlock, true);
-      window.removeEventListener("keydown", unlock, true);
-    };
-    window.addEventListener("pointerdown", unlock, true);
-    window.addEventListener("keydown", unlock, true);
+    // (si riprova a ogni gesto finché l'audio non parte davvero)
+    const gestures = ["pointerdown", "pointerup", "click", "keydown", "touchend"] as const;
+    const unlock = () =>
+      void sound.unlock().then((running) => {
+        if (running) for (const g of gestures) window.removeEventListener(g, unlock, true);
+      });
+    for (const g of gestures) window.addEventListener(g, unlock, true);
     source.onStatus((s) => {
       this.connection = s;
       this.renderStatus();
