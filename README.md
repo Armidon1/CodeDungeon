@@ -18,7 +18,7 @@ Already working:
 
 - two modes, chosen in the menu: **Flow** (the guide leads with tours, the code is read-only) and **Tutor** (you write the code, the guide helps only when you ask). See [Tutor mode](#tutor-mode);
 - interface in English (default) or Italian, chosen in the menu. The agent receives the chosen language and writes tours and answers in it;
-- pixelated VS Code editor with syntax highlighting (Python, JS/TS) and line highlighting;
+- pixelated VS Code editor with syntax highlighting (C, C++, C#, Python, assembly, Rust, Go, Java, Kotlin, Swift, JS/TS, PHP, Ruby, Lua, Haskell, shell, SQL, HTML, CSS, Markdown, JSON, YAML, TOML, Makefile, Dockerfile) and line highlighting;
 - activity bar on the left, as in VS Code: files, search, tours, diagrams, questions and things to review, one panel at a time (click the open one to close the side bar). Search looks through every project file (Ctrl+F, with the selected text already in); `:42` or Ctrl+G jumps to a line;
 - the guide with 5 animated expressions and a mini guide that walks between files, with a pixel dissolve when the file changes;
 - guide chosen in the menu: Lumen, Aria, Patrizio, Nilo, or your own photo or drawing turned into pixel art (three compression levels side by side and a slider), with automatic expressions or one uploaded per expression; you pick the name. The image stays in the browser;

@@ -54,6 +54,9 @@ await fs.rm(path.join(project, ".tour", "conversazioni"), { recursive: true, for
 await fs.mkdir(path.join(project, "lib", "deep"), { recursive: true });
 await fs.writeFile(path.join(project, "lib", "util.py"), "def aiuto():\n    return 1\n");
 await fs.writeFile(path.join(project, "lib", "deep", "inner.py"), "from ..util import aiuto\nX = 2\n");
+// file in altri linguaggi per l'evidenziazione
+await fs.writeFile(path.join(project, "lib", "deep", "vuln.c"), '#include <stdio.h>\n/* buffer\n   piccolo */\nint main(void) {\n  char buf[8]; // pila\n  printf("%s\\n", buf);\n  return 0;\n}\n');
+await fs.writeFile(path.join(project, "lib", "deep", "page.html"), '<!-- pagina -->\n<a href="/x">ciao</a>\n<script>\nconst n = 1;\n</script>\n');
 
 // modalità mcp con lo stdin aperto e muto: il gioco vede un agente collegato e le domande partono davvero
 const server = spawn("npx", ["tsx", "src/server/cli.ts", "mcp", "--project", project, "--port", String(PORT)], {
@@ -645,6 +648,28 @@ try {
   check(await noOverflow(), "a 390 px le schede scorrono senza allargare la pagina");
   for (const f of await tabFiles()) await click(`#tabs .tab[data-file="${f}"] .tab-close`);
   check(await waitFor(`!document.getElementById("editor-empty").hidden && !document.querySelector("#tabs .tab[data-file]")`), "chiusa l'ultima scheda l'editor torna vuoto");
+
+  // evidenziazione di C e HTML (con <script> dentro), anche a 390 px
+  await callTool("open_file", { path: "lib/deep/vuln.c" });
+  await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "lib/deep/vuln.c"`);
+  const tk = (n: number, cls: string) => evaluate<string[]>(`[...document.querySelectorAll('#editor .line[data-n="${n}"] .tk-${cls}')].map((e) => e.textContent)`);
+  check(
+    (await tk(1, "pre")).includes("#include") && (await tk(1, "str")).some((x) => x.includes("<stdio.h>")) && (await tk(3, "com")).length === 1 &&
+      (await tk(4, "type")).includes("int") && (await tk(5, "com")).includes("// pila") && (await tk(6, "builtin")).includes("printf") && (await tk(7, "kw")).includes("return"),
+    "il C ha i colori: direttive, tipi, commenti anche su più righe, funzioni note",
+  );
+  check(
+    (await evaluate(`document.getElementById("status-lang").textContent === "C"`)) && (await evaluate(`!!document.querySelector('#tabs .tab.is-active .file-icon.ext-c')`)),
+    "barra di stato e scheda dicono che il file è in C",
+  );
+  await callTool("open_file", { path: "lib/deep/page.html" });
+  await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "lib/deep/page.html"`);
+  check(
+    (await tk(1, "com")).length > 0 && (await tk(2, "tag")).includes("<a") && (await tk(2, "attr")).includes("href") && (await tk(4, "kw")).includes("const"),
+    "l'HTML colora tag, attributi e commenti, e il JavaScript dentro <script>",
+  );
+  check(await noOverflow(), "a 390 px il codice colorato non allarga la pagina");
+  for (const f of await tabFiles()) await click(`#tabs .tab[data-file="${f}"] .tab-close`);
 
   // numeri di riga: clic e Maiusc+clic scelgono righe intere, il pulsante "Chiedi a <guida>" le cita
   await viewport(1400, 900);

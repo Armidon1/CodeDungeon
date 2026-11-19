@@ -28,6 +28,12 @@
   --tk-call: #b9d3f0;
   --tk-const: #f2a96a;
   --tk-builtin: var(--ember);
+  --tk-type: #7fd6c2;
+  --tk-pre: #e58fb6;
+  --tk-tag: var(--ember);
+  --tk-attr: var(--tk-const);
+  --tk-prop: var(--sky);
+  --tk-var: var(--tk-const);
   /* tipografia */
   --font-display: "Press Start 2P", ui-monospace, "Courier New", monospace;
   --font-body: "Pixelify Sans", ui-rounded, system-ui, sans-serif;
@@ -346,6 +352,16 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 .file-icon.ext-python { background: var(--sky); box-shadow: inset 0 -5px 0 var(--lantern); }
 .file-icon.ext-js { background: var(--lantern); }
 .file-icon.ext-json { background: var(--moss); }
+.file-icon.ext-ts { background: var(--sky); }
+.file-icon.ext-c, .file-icon.ext-cpp { background: var(--sky); box-shadow: inset 0 -4px 0 var(--ink-faint); }
+.file-icon.ext-csharp, .file-icon.ext-haskell, .file-icon.ext-php { background: var(--plum); }
+.file-icon.ext-java, .file-icon.ext-rust, .file-icon.ext-swift, .file-icon.ext-html, .file-icon.ext-ruby { background: var(--ember); }
+.file-icon.ext-go, .file-icon.ext-css, .file-icon.ext-docker { background: var(--tk-type); }
+.file-icon.ext-kotlin, .file-icon.ext-asm { background: var(--tk-pre); }
+.file-icon.ext-shell, .file-icon.ext-make { background: var(--moss); box-shadow: inset 0 -4px 0 var(--ink-faint); }
+.file-icon.ext-lua, .file-icon.ext-sql { background: var(--tk-call); }
+.file-icon.ext-xml, .file-icon.ext-yaml, .file-icon.ext-toml { background: var(--tk-const); }
+.file-icon.ext-markdown { background: var(--ink-dim); }
 
 .walker {
   position: absolute;
@@ -524,6 +540,12 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 .tk-const { color: var(--tk-const); }
 .tk-builtin { color: var(--tk-builtin); }
 .tk-dec { color: var(--plum); }
+.tk-type { color: var(--tk-type); }
+.tk-pre { color: var(--tk-pre); }
+.tk-tag { color: var(--tk-tag); }
+.tk-attr { color: var(--tk-attr); }
+.tk-prop { color: var(--tk-prop); }
+.tk-var { color: var(--tk-var); }
 
 /* ---------- Modalità tutor: barra del file e editor modificabile ---------- */
 .edit-bar {
