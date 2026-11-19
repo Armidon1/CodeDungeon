@@ -523,6 +523,13 @@ try {
     "il clic apre la cartella, quelle dentro restano chiuse",
   );
 
+  // file e cartelle creati fuori dal gioco (dall'agente o dal terminale) compaiono senza ricaricare
+  await fs.mkdir(path.join(project, "nuova"), { recursive: true });
+  await fs.writeFile(path.join(project, "nuova", "fuori.py"), "x = 1\n");
+  check(await waitFor(`!!document.querySelector('#file-list .dir[data-dir="nuova"]')`, 6000), "una cartella creata fuori dal gioco compare nell'albero senza ricaricare");
+  await fs.rm(path.join(project, "nuova"), { recursive: true });
+  check(await waitFor(`!document.querySelector('#file-list .dir[data-dir="nuova"]')`, 6000), "una cartella cancellata fuori dal gioco sparisce dall'albero");
+
   await viewport(390, 844);
   check(await load(), "a 390 px il gioco si apre in tutor");
   check(dialogs.includes("beforeunload"), "lasciare la pagina con modifiche non salvate chiede conferma");

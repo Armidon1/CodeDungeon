@@ -75,10 +75,17 @@ export interface BridgeOptions {
   terminal?: boolean;
 }
 
+/** Ogni quanto il ponte ricontrolla i file del progetto mentre il gioco è aperto. */
+const FILES_POLL_MS = 1500;
+
 export class Bridge {
   private http: Server;
   private wss: WebSocketServer;
   private clients = new Set<WebSocket>();
+  /** Elenco dei file mandato per ultimo al gioco, e controllo periodico attivo finché c'è almeno una finestra. */
+  private lastFiles = "";
+  private filesTimer: ReturnType<typeof setInterval> | undefined;
+  private filesBusy = false;
   /** Domande senza risposta. Restano qui finché l'agente risponde (show_dialog con question_id) o le legge con get_user_questions. */
   private questions: UserQuestion[] = [];
   /**
@@ -209,6 +216,36 @@ export class Bridge {
     this.remember(msg);
     this.record(msg);
     return this.broadcast(msg);
+  }
+
+  // ---------- File del progetto ----------
+
+  /** Ricontrolla l'elenco dei file ogni FILES_POLL_MS: i file creati dall'agente o dal terminale compaiono senza ricaricare. */
+  private watchFiles(): void {
+    if (this.filesTimer) return;
+    this.filesTimer = setInterval(() => void this.checkFiles(), FILES_POLL_MS);
+    this.filesTimer.unref?.();
+  }
+
+  private stopWatchingFiles(): void {
+    clearInterval(this.filesTimer);
+    this.filesTimer = undefined;
+  }
+
+  private async checkFiles(): Promise<void> {
+    if (this.filesBusy || !this.clients.size) return;
+    this.filesBusy = true;
+    try {
+      const files = await this.opts.project.listFiles();
+      const key = files.join("\n");
+      if (key === this.lastFiles) return;
+      this.lastFiles = key;
+      this.broadcast({ type: "files", files });
+    } catch {
+      // cartella sparita o illeggibile per un momento: si riprova al prossimo giro
+    } finally {
+      this.filesBusy = false;
+    }
   }
 
   private broadcast(msg: ServerMessage): number {
@@ -401,7 +438,10 @@ export class Bridge {
   private async onConnection(ws: WebSocket): Promise<void> {
     this.clients.add(ws);
     log(`gioco collegato (${this.clients.size} finestre)`);
-    ws.on("close", () => this.clients.delete(ws));
+    ws.on("close", () => {
+      this.clients.delete(ws);
+      if (!this.clients.size) this.stopWatchingFiles();
+    });
     ws.on("message", (raw) => {
       let msg: ClientMessage;
       try {
@@ -412,6 +452,8 @@ export class Bridge {
       this.onMessage(ws, msg).catch((e) => log(`errore messaggio: ${String(e)}`));
     });
     const files = await this.opts.project.listFiles().catch(() => []);
+    this.lastFiles = files.join("\n");
+    this.watchFiles();
     const hello: ServerMessage = { type: "hello", project: this.opts.project.name, files, agent: this.opts.agent, prefs: this.opts.store.load(), terminal: !!this.terminals };
     ws.send(JSON.stringify(hello));
     for (const m of this.replay()) ws.send(JSON.stringify(m));
@@ -459,6 +501,7 @@ export class Bridge {
           const saved = await p.writeFile(msg.path, msg.content);
           log(`file salvato dal gioco: ${saved}`);
           data = await p.listFiles();
+          void this.checkFiles();
         }
         else if (msg.op === "list_tours") data = await p.listTours();
         else if (msg.op === "load_tour") data = await p.loadTour(msg.id);

@@ -39,6 +39,8 @@ export interface GameSource {
   savePrefs(prefs: StoredPrefs): void;
   /** Impostazioni cambiate da un'altra finestra del gioco. */
   onPrefs(cb: (prefs: StoredPrefs) => void): void;
+  /** I file del progetto sono cambiati fuori dal gioco. */
+  onFiles(cb: (files: string[]) => void): void;
   onCommand(cb: (cmd: AgentCommand) => void): void;
   onStatus(cb: (state: ConnectionState) => void): void;
   /** Risolve quando arrivano i primi dati (file del progetto). */
@@ -66,6 +68,7 @@ export class BridgeSource implements GameSource {
   private commandCbs: ((cmd: AgentCommand) => void)[] = [];
   private statusCbs: ((s: ConnectionState) => void)[] = [];
   private prefsCbs: ((p: StoredPrefs) => void)[] = [];
+  private filesCbs: ((files: string[]) => void)[] = [];
   private readyResolve!: () => void;
   private readyPromise = new Promise<void>((r) => (this.readyResolve = r));
   private retry = 0;
@@ -132,6 +135,9 @@ export class BridgeSource implements GameSource {
       } else if (msg.type === "prefs") {
         this.prefs = msg.prefs;
         for (const cb of this.prefsCbs) cb(msg.prefs);
+      } else if (msg.type === "files") {
+        this.files = msg.files;
+        for (const cb of this.filesCbs) cb(msg.files);
       } else {
         for (const cb of this.commandCbs) cb(msg);
       }
@@ -198,6 +204,9 @@ export class BridgeSource implements GameSource {
   savePrefs(prefs: StoredPrefs): void {
     this.prefs = prefs;
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: "save_prefs", prefs }));
+  }
+  onFiles(cb: (files: string[]) => void): void {
+    this.filesCbs.push(cb);
   }
   onPrefs(cb: (prefs: StoredPrefs) => void): void {
     this.prefsCbs.push(cb);

@@ -236,6 +236,7 @@ export class App {
     });
     source.onCommand((cmd) => void this.onAgentCommand(cmd));
     source.onPrefs((p) => this.applyStored(p));
+    source.onFiles(() => this.renderFileList());
     this.titlePortrait.set({ expression: "felice" });
     this.renderGuide();
     void this.guidePicker.init().then((look) => {

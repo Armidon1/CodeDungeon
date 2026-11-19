@@ -82,6 +82,7 @@ export class DemoSource implements GameSource {
   sendState(): void {}
   savePrefs(): void {}
   onPrefs(): void {}
+  onFiles(): void {}
   onCommand(): void {}
   onStatus(cb: (s: ConnectionState) => void): void {
     cb("demo");

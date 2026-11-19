@@ -334,6 +334,8 @@ export interface SessionInfo {
 export type ServerMessage =
   /** terminal: il ponte apre terminali su /term (spenti con --terminal off). */
   | { type: "hello"; project: string; files: string[]; agent: boolean; prefs: StoredPrefs; terminal: boolean }
+  /** I file del progetto sono cambiati (creati, spostati o cancellati da fuori, es. dall'agente). */
+  | { type: "files"; files: string[] }
   /** Preferenze cambiate da un'altra finestra del gioco. */
   | { type: "prefs"; prefs: StoredPrefs }
   | { type: "open_file"; path: string; content: string }
