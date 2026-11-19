@@ -733,6 +733,7 @@ button.board-node:hover { color: var(--lantern); }
 .chat-who { margin: 0; font-family: var(--font-display); font-size: calc(9px * var(--fs)); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lantern); }
 .chat-msg.is-user .chat-who { color: var(--sky); }
 .chat-text { margin: 0; font-size: calc(17px * var(--fs)); line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
+.chat-text.rich { white-space: normal; }
 .chat-quote { margin: 0; padding-left: 8px; border-left: 3px solid var(--sky); font-family: var(--font-code); font-size: calc(17px * var(--fs)); color: var(--ink-dim); overflow-wrap: anywhere; }
 .chat-diagram { justify-self: start; margin-left: 0; }
 .chat-code { margin: 0; min-width: 0; background: var(--code-bg); border: 2px solid var(--line); }
@@ -809,6 +810,26 @@ button.board-node:hover { color: var(--lantern); }
   overflow: auto;
   cursor: pointer;
 }
+/* testo formattato della guida (richtext.ts): paragrafi, elenchi, codice, grassetto, link */
+.rich { overflow-wrap: anywhere; }
+.rich p { margin: 0; }
+.rich p + p, .rich p + ul, .rich p + ol, .rich ul + p, .rich ol + p, .rich ul + ul, .rich ol + ol, .rich ul + ol, .rich ol + ul { margin-top: 0.45em; }
+.rich ul, .rich ol { margin: 0; padding-left: 1.5em; }
+.rich ul { list-style: square; }
+.rich li + li { margin-top: 0.15em; }
+.rich li::marker { color: var(--lantern); }
+.rich code {
+  font-family: var(--font-code);
+  font-size: 1.15em;
+  color: var(--tk-str);
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  padding: 0 0.25em;
+}
+.rich strong { color: var(--lantern); font-weight: inherit; }
+.rich a { color: var(--sky); text-decoration: underline; text-underline-offset: 0.15em; cursor: pointer; }
+.rich a:hover, .rich a:focus-visible { color: var(--ink); }
+.rich a.is-copied::after { content: " ✓ " attr(data-copied); color: var(--moss); text-decoration: none; display: inline-block; }
 .dialog-note { margin: 0; font-size: calc(14px * var(--fs)); color: var(--sky); }
 /* pannello della guida ridimensionato: il testo occupa lo spazio, la domanda resta in fondo */
 @media (min-width: 761px) {

@@ -5,6 +5,7 @@ import type { Expression } from "../shared/types";
 import { highlightLines, langOf } from "./highlight";
 import { t } from "./i18n";
 import { drawStill, guideLook } from "./portrait";
+import { renderRich } from "./richtext";
 
 export interface ChatCode {
   file: string;
@@ -104,9 +105,11 @@ export class ChatLog {
       bubble.append(q);
     }
     if (entry.text) {
-      const p = document.createElement("p");
+      const p = document.createElement("div");
       p.className = "chat-text";
-      p.textContent = entry.text;
+      // le domande dell'utente restano testo semplice; le risposte della guida sono formattate
+      if (entry.who === "guide") renderRich(p, entry.text);
+      else p.textContent = entry.text;
       bubble.append(p);
     }
     if (entry.code) bubble.append(this.codeCard(entry.code));

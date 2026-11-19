@@ -47,6 +47,9 @@ const cleanup = async () => {
 
 const project = path.join(tmp, "packet-server");
 await fs.cp(path.resolve("examples/packet-server"), project, { recursive: true });
+// lacune e conversazioni sono dati locali di chi prova il gioco: il test parte da un registro vuoto
+await fs.rm(path.join(project, ".tour", "lacune.json"), { force: true });
+await fs.rm(path.join(project, ".tour", "conversazioni"), { recursive: true, force: true });
 
 // modalità mcp con lo stdin aperto e muto: il gioco vede un agente collegato e le domande partono davvero
 const server = spawn("npx", ["tsx", "src/server/cli.ts", "mcp", "--project", project, "--port", String(PORT)], {
@@ -505,6 +508,7 @@ try {
     "a 390 px il commento del segno sta nello schermo",
   );
   check(await noOverflow(), "tutor senza scorrimento orizzontale a 390 px");
+
   await click("#edit-ask-btn");
   check(
     (await evaluate(`[...document.querySelectorAll("#edit-ask button")].every((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.right <= innerWidth; })`)) &&
@@ -516,6 +520,23 @@ try {
     (await evaluate(`(() => { const r = document.getElementById("edit-error").getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth; })()`)) && (await noOverflow()),
     "a 390 px il riquadro dell'errore sta nella finestra",
   );
+
+  // risposte formattate (dopo l'ultimo ricaricamento: il ponte rimanda l'ultimo fumetto e chiuderebbe il menu): paragrafi, elenchi, codice e link, senza apici inversi visibili
+  const RICH = "Due fonti:\n\n- Indice: https://docs.pwntools.com.\n- Classe `ELF(\"./vuln\")`, vedi [la pagina](https://docs.pwntools.com/en/stable/elf/elf.html)\n\n1. Web\n2. **Offline**";
+  await callTool("show_dialog", { text: RICH });
+  check(
+    await waitFor(`(() => {
+      const d = document.getElementById("dialog-text");
+      const links = [...d.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+      return d.querySelectorAll("ul > li").length === 2 && d.querySelectorAll("ol > li").length === 2 &&
+        d.querySelector("code")?.textContent === 'ELF("./vuln")' && d.querySelector("strong")?.textContent === "Offline" &&
+        links[0] === "https://docs.pwntools.com" && links[1].endsWith("elf.html") && !d.textContent.includes("\`");
+    })()`, 8000),
+    "il fumetto mostra elenchi, codice, grassetto e link (senza il punto finale nell'indirizzo)",
+  );
+  check(/• Indice/.test(await evaluate<string>(`document.getElementById("dialog-live").textContent`)), "il lettore di schermo riceve il testo con i punti dell'elenco");
+
+  check(await noOverflow(), "a 390 px elenchi e indirizzi lunghi vanno a capo senza scorrimento orizzontale");
 
   check(errors.length === 0, `nessun errore JavaScript nella pagina${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } catch (e) {

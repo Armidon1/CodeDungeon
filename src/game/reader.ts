@@ -20,22 +20,52 @@ export const reducedMotion = (): boolean => profile.aids.includes("meno_moviment
 /** Lunghezza massima di una pagina del fumetto con "poco testo per volta". */
 const PAGE = 160;
 
+/** Frasi di una riga: la fine è . ! ? … : seguita da uno spazio, mai dentro un `codice` (indirizzi e numeri restano interi). */
+function sentences(line: string): string[] {
+  const out: string[] = [];
+  let from = 0;
+  let inCode = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === "`") inCode = !inCode;
+    if (inCode || !/[.!?…:]/.test(c)) continue;
+    let j = i + 1;
+    while (j < line.length && /[.!?…:"»)]/.test(line[j])) j++;
+    if (j < line.length && !/\s/.test(line[j])) continue;
+    out.push(line.slice(from, j).trim());
+    from = i = j;
+  }
+  out.push(line.slice(from).trim());
+  return out.filter(Boolean);
+}
+
 /**
- * Divide un testo in pagine corte, tagliando tra le frasi (una frase più lunga resta intera).
- * Senza "poco testo per volta" resta una pagina sola.
+ * Divide un testo in pagine corte, tagliando tra le frasi e tra i punti degli elenchi
+ * (una frase più lunga resta intera). Gli a capo restano. Senza "poco testo per volta" resta una pagina sola.
  */
 export function pages(text: string): string[] {
   if (!profile.aids.includes("poco_testo") || text.length <= PAGE) return [text];
-  const sentences = text
-    .split(/\n\s*\n/)
-    .flatMap((para) => para.match(/[^.!?…:]+(?:[.!?…:]+["»)]?|$)\s*/g) ?? [para])
-    .map((x) => x.trim())
-    .filter(Boolean);
+  // pezzi col separatore che li precede: spazio nella stessa riga, a capo tra righe, riga vuota tra paragrafi
+  const parts: { sep: string; text: string }[] = [];
+  let sep = "";
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    if (!line.trim()) {
+      if (parts.length) sep = "\n\n";
+      continue;
+    }
+    // un punto d'elenco è un pezzo solo, come una frase
+    const units = /^\s*(?:[-*•·]|\d{1,3}[.)])\s+/.test(line) ? [line.trimEnd()] : sentences(line);
+    for (const u of units) {
+      parts.push({ sep, text: u });
+      sep = " ";
+    }
+    sep = sep === "\n\n" ? sep : "\n";
+  }
   const out: string[] = [];
-  for (const s of sentences) {
+  for (const p of parts) {
     const last = out.at(-1);
-    if (last !== undefined && last.length + 1 + s.length <= PAGE) out[out.length - 1] = `${last} ${s}`;
-    else out.push(s);
+    if (last !== undefined && last.length + p.sep.length + p.text.length <= PAGE) out[out.length - 1] = last + p.sep + p.text;
+    else out.push(p.text);
   }
   return out.length ? out : [text];
 }

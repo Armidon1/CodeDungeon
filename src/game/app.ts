@@ -30,6 +30,7 @@ import { GuidePicker } from "./guide";
 import { DEFAULT_GUIDE_NAMES, LANGS, LANG_INFO, setLang, t, type Lang } from "./i18n";
 import { Portrait, drawMiniGuide, setGuideLook } from "./portrait";
 import { applyReader, pages, reducedMotion } from "./reader";
+import { renderRich, richPlain, richSpoken } from "./richtext";
 import { FRAMES, TEXT_SCALE_MAX, TEXT_SCALE_MIN, TEXT_SCALE_STEP, cleanTextScale, fromStored, isEmpty, loadSettings, saveSettings, toStored, type Frame, type Settings } from "./settings";
 import { isDesktopApp, type AgentCommand, type ConnectionState, type GameSource } from "./source";
 import { pickSession, switchSession } from "./sessions";
@@ -1570,7 +1571,7 @@ export class App {
     this.speakerIsGuide = !line.speaker;
     $("speaker").textContent = line.speaker ?? this.settings.guide.name;
     // chi usa un lettore di schermo riceve il testo intero, non le pagine
-    $("dialog-live").textContent = line.text;
+    $("dialog-live").textContent = richSpoken(line.text);
     this.dialogLine = line;
     const slot = $("dialog-code");
     slot.replaceChildren(...(line.code ? [this.chat.codeCard(line.code)] : []));
@@ -1616,7 +1617,7 @@ export class App {
 
     const finish = () => {
       this.stopTyping();
-      textEl.textContent = text;
+      renderRich(textEl, text);
       this.portrait.set({ talking: false });
       $("dialog").classList.remove("is-typing");
       const choices: Choice[] = !last
@@ -1641,19 +1642,43 @@ export class App {
       finish();
       return;
     }
+    // la macchina da scrivere scrive il testo visibile, dentro la formattazione (codice, elenchi, link)
+    const plain = richPlain(text);
     let i = 0;
-    textEl.textContent = "";
+    renderRich(textEl, text, 0);
     const timer = window.setInterval(() => {
       const from = i;
-      i = Math.min(text.length, i + 2);
-      textEl.textContent = text.slice(0, i);
+      i = Math.min(plain.length, i + 2);
+      renderRich(textEl, text, i);
       // un bip per sillaba, non per spazi e punteggiatura (come nei Mystery Dungeon)
-      if (/[\p{L}\p{N}]/u.test(text.slice(from, i))) voice();
-      if (i >= text.length) finish();
+      if (/[\p{L}\p{N}]/u.test(plain.slice(from, i))) voice();
+      if (i >= plain.length) finish();
     }, 24);
     this.typing = { full: text, timer };
     this.typingFinish = finish;
     this.updateNav();
+  }
+
+  /**
+   * Link nelle risposte della guida. Nel browser si aprono in una scheda nuova; l'app desktop
+   * non ha il permesso di aprire il browser di sistema, quindi il clic copia l'indirizzo.
+   */
+  private bindRichLinks(): void {
+    if (!isDesktopApp()) return;
+    document.addEventListener("pointerover", (e) => {
+      const a = (e.target as Element).closest?.("a.rich-link");
+      if (a instanceof HTMLAnchorElement) a.title = `${t().msg.linkCopy}: ${a.href}`;
+    });
+    document.addEventListener("click", (e) => {
+      const a = (e.target as Element).closest?.("a.rich-link");
+      if (!(a instanceof HTMLAnchorElement)) return;
+      e.preventDefault();
+      void navigator.clipboard?.writeText(a.href).then(() => {
+        a.dataset.copied = t().msg.linkCopied;
+        a.classList.add("is-copied");
+        setTimeout(() => a.classList.remove("is-copied"), 1500);
+      }, () => {});
+    });
   }
 
   /** Altre pagine del fumetto corrente da leggere. */
@@ -2298,11 +2323,14 @@ export class App {
   }
 
   private bindControls(): void {
+    this.bindRichLinks();
     $("next-btn").addEventListener("click", () => this.next());
     $("prev-btn").addEventListener("click", () => this.prev());
     // un clic avanza, ma non quando si sta selezionando del testo da chiedere
-    $("dialog-text").addEventListener("click", () => {
+    $("dialog-text").addEventListener("click", (e) => {
       if (!getSelection()?.isCollapsed) return;
+      // un link si apre e basta, non fa avanzare il fumetto
+      if ((e.target as Element).closest("a")) return;
       this.next();
     });
     this.layout = initLayout(() => this.relayout());

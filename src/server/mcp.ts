@@ -322,7 +322,11 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         "Mostra un fumetto della guida. Usalo per rispondere alle domande dell'utente o commentare ciò che è evidenziato. " +
         "Scrivi al livello attuale dell'utente (vedi get_game_state) e nella sua lingua (campo lang: en inglese, it italiano).",
       inputSchema: {
-        text: z.string().min(1).max(4000),
+        text: z
+          .string()
+          .min(1)
+          .max(4000)
+          .describe("Riga vuota tra i paragrafi, un punto per riga negli elenchi (- o 1.), `codice`, **evidenza**, link come indirizzo o [etichetta](https://...)."),
         expression: expression.optional(),
         speaker: z.string().max(40).optional().describe("Nome mostrato sopra il fumetto. Predefinito: il nome della guida."),
         question_id: z.string().max(64).optional().describe("Id della domanda a cui rispondi: la toglie dalla coda di get_user_questions."),
