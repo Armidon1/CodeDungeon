@@ -505,6 +505,7 @@ export class App {
   /** Righe e lavagne si rimisurano dopo un cambio di dimensioni (finestra o testo). */
   private relayout(): void {
     this.renderActivity();
+    this.fitAsk();
     this.editLayer.fit();
     if (this.currentFile) void this.walkTo(this.currentFile);
     if (!$("board-pop").hidden) this.popBoard.refresh();
@@ -2072,9 +2073,21 @@ export class App {
     this.prefillAsk(t().quick[kind].question);
   }
 
+  /** Il campo della domanda prende l'altezza del testo, fino al tetto di styles.css (poi scorre). */
+  private fitAsk(): void {
+    const input = $<HTMLTextAreaElement>("ask-input");
+    input.style.height = "auto";
+    const max = parseFloat(getComputedStyle(input).maxHeight) || Infinity;
+    // scrollHeight non conta i bordi: con box-sizing border-box vanno aggiunti
+    const h = input.scrollHeight + input.offsetHeight - input.clientHeight;
+    input.style.height = `${Math.min(h, max)}px`;
+    input.classList.toggle("is-tall", h > max);
+  }
+
   private prefillAsk(text: string): void {
-    const input = $<HTMLInputElement>("ask-input");
+    const input = $<HTMLTextAreaElement>("ask-input");
     input.value = text;
+    this.fitAsk();
     input.focus();
     input.setSelectionRange(text.length, text.length);
     sound.play("select");
@@ -2282,7 +2295,7 @@ export class App {
   /** Il campo delle domande dice se la prossima continua la conversazione o riguarda il testo selezionato. */
   private renderAskHint(): void {
     const name = this.settings.guide.name;
-    $<HTMLInputElement>("ask-input").placeholder = this.quote
+    $<HTMLTextAreaElement>("ask-input").placeholder = this.quote
       ? t().msg.askSelectedPlaceholder
       : this.liveAnswer && this.conversation
         ? t().msg.followUp
@@ -2751,11 +2764,19 @@ export class App {
     void document.fonts?.ready.then(() => this.editLayer.fit());
     $("ask-form").addEventListener("submit", (e) => {
       e.preventDefault();
-      const input = $<HTMLInputElement>("ask-input");
+      const input = $<HTMLTextAreaElement>("ask-input");
       const text = input.value;
       input.value = "";
+      this.fitAsk();
       void this.ask(text);
     });
+    // Invio manda la domanda, Maiusc+Invio va a capo (come nella chat degli agenti)
+    $("ask-input").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+      e.preventDefault();
+      $<HTMLFormElement>("ask-form").requestSubmit();
+    });
+    $("ask-input").addEventListener("input", () => this.fitAsk());
     document.addEventListener("keydown", (e) => {
       const inField = (e.target as HTMLElement).closest("input, textarea");
       // Ctrl+` come in VS Code: apre e chiude i terminali, anche dall'editor o da dentro un terminale

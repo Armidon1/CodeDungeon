@@ -919,16 +919,25 @@ button.board-node:hover { color: var(--lantern); }
 .ask-quote-label { color: var(--sky); white-space: nowrap; }
 .ask-quote-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: calc(17px * var(--fs)); }
 .ask-sel { position: fixed; z-index: 15; padding: 6px 10px; }
-.ask input {
+/* il campo cresce con il testo (Maiusc+Invio va a capo) fino a un tetto, poi scorre */
+.ask textarea {
   flex: 1;
   min-width: 0;
+  max-height: min(40vh, calc(10 * 1.35em + 18px));
   padding: 7px 10px;
+  font: inherit;
+  font-size: calc(16px * var(--fs));
+  line-height: 1.35;
+  color: inherit;
   background: var(--code-bg);
   border: 2px solid var(--line);
-  font-size: calc(16px * var(--fs));
+  resize: none;
+  overflow-y: hidden;
 }
-.ask input::placeholder { color: var(--ink-faint); }
-.ask input:focus { border-color: var(--lantern); outline: none; }
+.ask textarea.is-tall { overflow-y: auto; }
+.ask textarea::placeholder { color: var(--ink-faint); }
+.ask textarea:focus { border-color: var(--lantern); outline: none; }
+.ask > button[type="submit"] { align-self: flex-end; }
 
 /* ---------- Barra di stato ---------- */
 .statusbar {

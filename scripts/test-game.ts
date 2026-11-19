@@ -739,6 +739,26 @@ try {
     });
   check(!(await termFrom("http://localhost:3000")) && (await termFrom(`http://127.0.0.1:${PORT}`)), "/term rifiuta le altre pagine su localhost");
 
+  // campo della domanda: Maiusc+Invio va a capo e il campo cresce, Invio manda
+  const askH = () => evaluate<number>(`document.getElementById("ask-input").getBoundingClientRect().height`);
+  await evaluate(`(() => { const i = document.getElementById("ask-input"); i.value = ""; i.focus(); })()`);
+  const h1 = await askH();
+  await typeText("prima riga");
+  await press("Enter", 8);
+  await typeText("seconda riga");
+  await press("Enter", 8);
+  await typeText("terza riga");
+  check(
+    (await evaluate<string>(`document.getElementById("ask-input").value`)) === "prima riga\nseconda riga\nterza riga" && (await askH()) > h1 + 20,
+    "Maiusc+Invio va a capo e il campo della domanda cresce",
+  );
+  await press("Enter");
+  check(await waitFor(`document.getElementById("ask-input").value === ""`), "Invio manda la domanda");
+  check((await askH()) < h1 + 4, "mandata la domanda il campo torna di una riga");
+  await viewport(390, 844);
+  check(await noOverflow(), "a 390 px il campo della domanda non allarga la pagina");
+  await viewport(1400, 900);
+
   check(errors.length === 0, `nessun errore JavaScript nella pagina${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } catch (e) {
   failures++;
