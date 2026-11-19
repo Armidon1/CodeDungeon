@@ -411,6 +411,62 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 .term-view .xterm { height: 100%; }
 .term-view .xterm-viewport { background: var(--code-bg) !important; }
 .app.is-chat :is(.term-panel, .splitter-term) { display: none; }
+
+/* pulsante che sposta la guida: un riquadro con la parte piena dove andrà la guida */
+.dock-btn { display: grid; place-items: center; width: 26px; height: 22px; padding: 0; background: none; border: 2px solid var(--line); }
+.dock-btn:hover, .dock-btn:focus-visible { border-color: var(--lantern); }
+.dock-ico { position: relative; width: 14px; height: 10px; border: 2px solid var(--ink-dim); }
+.dock-ico::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 4px; background: var(--ink-dim); }
+.dock-btn[aria-pressed="true"] .dock-ico::after { left: 0; right: 0; top: auto; width: auto; height: 3px; }
+.dock-btn:hover .dock-ico, .dock-btn:focus-visible .dock-ico { border-color: var(--lantern); }
+.dock-btn:hover .dock-ico::after, .dock-btn:focus-visible .dock-ico::after { background: var(--lantern); }
+.app.is-chat .dock-btn { display: none; }
+
+/* guida a destra dell'editor: colonna a tutta altezza con divisore verticale; sul telefono resta sotto */
+@media (min-width: 761px) {
+  .app:not(.is-chat) .main.is-dialog-right {
+    grid-template-columns: minmax(0, 1fr) 6px var(--dialog-w, 400px);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "tabs splitd dialog" "editor splitd dialog";
+  }
+  .app:not(.is-chat) .main.is-dialog-right.has-term {
+    grid-template-rows: auto minmax(0, 1fr) auto var(--term-h, 220px);
+    grid-template-areas: "tabs splitd dialog" "editor splitd dialog" "splitt splitd dialog" "term splitd dialog";
+  }
+  .app:not(.is-chat) .main.is-dialog-right > .tabs { grid-area: tabs; }
+  .app:not(.is-chat) .main.is-dialog-right > .editor-wrap { grid-area: editor; }
+  .app:not(.is-chat) .main.is-dialog-right > .splitter-term { grid-area: splitt; }
+  .app:not(.is-chat) .main.is-dialog-right > .term-panel { grid-area: term; }
+  .app:not(.is-chat) .main.is-dialog-right > .splitter-dialog {
+    grid-area: splitd;
+    height: auto;
+    cursor: col-resize;
+    border-top: 0;
+    border-left: 2px solid var(--line);
+  }
+  .app:not(.is-chat) .main.is-dialog-right > .splitter-dialog::after { top: 50%; left: 1px; width: 2px; height: 28px; transform: translateY(-50%); }
+  /* dentro la colonna: ritratto piccolo accanto al nome, testo a tutta larghezza che occupa lo spazio, domanda in fondo */
+  .app:not(.is-chat) .main.is-dialog-right > .dialog {
+    grid-area: dialog;
+    height: auto;
+    min-height: 0;
+    margin: 10px 10px 10px 4px;
+    gap: 10px 12px;
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-content: stretch;
+    overflow-y: auto;
+  }
+  .main.is-dialog-right .portrait-frame { grid-column: 1; grid-row: 1; width: 72px; height: 72px; padding: 4px; }
+  .main.is-dialog-right .dialog-body { grid-column: 1 / -1; grid-row: 1; display: flex; flex-direction: column; min-height: 0; padding-left: 84px; }
+  .main.is-dialog-right .dialog-head { min-height: 72px; align-content: center; }
+  .main.is-dialog-right :is(.dialog-text, .dialog-note, .choices, .dialog-foot) { margin-left: -84px; }
+  .main.is-dialog-right .dialog-text { flex: 1 1 auto; max-width: none; max-height: none; }
+  .main.is-dialog-right .level-switch { margin-left: 0; }
+  .main.is-dialog-right .ask { align-self: end; }
+}
+@media (max-width: 760px) {
+  .dock-btn { display: none; }
+}
 .tabs { display: flex; min-height: 34px; background: var(--panel-2); border-bottom: 2px solid var(--line); }
 .tab {
   display: flex;

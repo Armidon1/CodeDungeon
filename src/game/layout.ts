@@ -12,6 +12,9 @@ const SIDE_MAX = 520;
 const SIDE_CLOSE = 90;
 const DIALOG_MIN = 110;
 const TERM_MIN = 90;
+/** Guida a destra: larghezza minima della colonna e spazio che il codice tiene comunque. */
+const DIALOG_W_MIN = 300;
+const EDITOR_MIN_W = 360;
 /** Il codice tiene sempre almeno queste righe di spazio. */
 const EDITOR_MIN = 120;
 const KEY_STEP = 24;
@@ -33,6 +36,9 @@ interface Layout {
   side?: number;
   /** Altezza del pannello della guida in px; undefined = quella naturale. */
   dialog?: number;
+  /** Pannello della guida a destra dell'editor invece che sotto; larghezza in px (undefined = quella di styles.css). */
+  dialogRight?: boolean;
+  dialogW?: number;
   /** Altezza del pannello dei terminali in px; undefined = quella di styles.css. */
   term?: number;
   /** Misure della finestra della lavagna in px; undefined = quelle iniziali. */
@@ -63,6 +69,9 @@ export interface LayoutControls {
   sideOpen(): boolean;
   /** Apre (alla misura di prima o a quella iniziale) o chiude la barra laterale. */
   setSideOpen(open: boolean): void;
+  /** Guida a destra dell'editor (scelta salvata; sul telefono e nella chat resta sotto). */
+  dialogRight(): boolean;
+  setDialogRight(on: boolean): void;
 }
 
 type Size = { w: number; h: number };
@@ -78,6 +87,8 @@ function load(): Layout {
       side: typeof raw.side === "number" ? raw.side : undefined,
       dialog: typeof raw.dialog === "number" ? raw.dialog : undefined,
       term: typeof raw.term === "number" ? raw.term : undefined,
+      dialogRight: raw.dialogRight === true || undefined,
+      dialogW: typeof raw.dialogW === "number" ? raw.dialogW : undefined,
       pop: readSize(raw.pop),
       frame: readSize(raw.frame),
       panel: typeof raw.panel === "string" ? raw.panel : undefined,
@@ -127,12 +138,32 @@ export function initLayout(onChange: () => void): LayoutControls {
   };
   const dialogMax = () => Math.max(DIALOG_MIN, main.clientHeight - (inChat() ? CHAT_LOG_MIN : EDITOR_MIN) - 40);
   const dialogSaved = () => (inChat() ? layout.chatDialog : layout.dialog);
+  /** La guida sta davvero a destra: scelta, non nella chat, finestra abbastanza larga (vedi styles.css). */
+  const isRight = () => layout.dialogRight === true && !inChat() && matchMedia("(min-width: 761px)").matches;
+  const dialogWMax = () => Math.max(DIALOG_W_MIN, main.clientWidth - EDITOR_MIN_W);
+  const applyDialogW = () => {
+    main.classList.toggle("is-dialog-right", layout.dialogRight === true);
+    if (layout.dialogW === undefined) main.style.removeProperty("--dialog-w");
+    else main.style.setProperty("--dialog-w", `${Math.min(dialogWMax(), Math.max(DIALOG_W_MIN, layout.dialogW))}px`);
+  };
+  const setDialogW = (w: number | undefined) => {
+    layout.dialogW = w === undefined ? undefined : Math.round(Math.min(dialogWMax(), Math.max(DIALOG_W_MIN, w)));
+    applyDialog();
+    onChange();
+  };
   const applyDialog = () => {
+    applyDialogW();
+    const right = isRight();
+    dialogSplit.setAttribute("aria-orientation", right ? "vertical" : "horizontal");
+    if (right) {
+      dialogSplit.setAttribute("aria-valuemin", String(DIALOG_W_MIN));
+      dialogSplit.setAttribute("aria-valuenow", String(Math.round(dialog.getBoundingClientRect().width)));
+    } else dialogSplit.setAttribute("aria-valuemin", String(DIALOG_MIN));
     const saved = dialogSaved();
     const h = saved === undefined ? undefined : Math.min(dialogMax(), Math.max(DIALOG_MIN, saved));
     main.classList.toggle("has-dialog-h", h !== undefined);
     if (h !== undefined) main.style.setProperty("--dialog-h", `${h}px`);
-    dialogSplit.setAttribute("aria-valuenow", String(Math.round(h ?? dialog.getBoundingClientRect().height)));
+    if (!right) dialogSplit.setAttribute("aria-valuenow", String(Math.round(h ?? dialog.getBoundingClientRect().height)));
   };
   const setSide = (w: number) => {
     layout.side = w < SIDE_CLOSE ? 0 : Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(w)));
@@ -149,7 +180,7 @@ export function initLayout(onChange: () => void): LayoutControls {
   };
 
   // pannello dei terminali: tra il codice e la guida, il codice tiene sempre EDITOR_MIN
-  const termMax = () => Math.max(TERM_MIN, main.clientHeight - EDITOR_MIN - dialog.getBoundingClientRect().height - 50);
+  const termMax = () => Math.max(TERM_MIN, main.clientHeight - EDITOR_MIN - (isRight() ? 0 : dialog.getBoundingClientRect().height) - 50);
   const applyTerm = () => {
     if (layout.term === undefined) main.style.removeProperty("--term-h");
     else main.style.setProperty("--term-h", `${Math.min(termMax(), Math.max(TERM_MIN, layout.term))}px`);
@@ -233,7 +264,6 @@ export function initLayout(onChange: () => void): LayoutControls {
 
   sideSplit.setAttribute("aria-valuemin", "0");
   sideSplit.setAttribute("aria-valuemax", String(SIDE_MAX));
-  dialogSplit.setAttribute("aria-valuemin", String(DIALOG_MIN));
   applySide();
   applyDialog();
   applyTerm();
@@ -267,7 +297,12 @@ export function initLayout(onChange: () => void): LayoutControls {
 
   // da chiuso, il trascinamento riparte da zero: basta tirare verso destra per riaprirlo
   drag(sideSplit, () => layout.side ?? SIDE_DEFAULT, (w0, dx) => setSide(w0 + dx));
-  drag(dialogSplit, () => dialog.getBoundingClientRect().height, (h0, _dx, dy) => setDialog(Math.min(dialogMax(), Math.max(DIALOG_MIN, h0 - dy))));
+  // guida sotto: si trascina in verticale; guida a destra: in orizzontale, verso sinistra si allarga
+  drag(
+    dialogSplit,
+    () => ({ toRight: isRight(), width: dialog.getBoundingClientRect().width, height: dialog.getBoundingClientRect().height }),
+    (r0, dx, dy) => (r0.toRight ? setDialogW(r0.width + 14 - dx) : setDialog(Math.min(dialogMax(), Math.max(DIALOG_MIN, r0.height - dy)))),
+  );
 
   drag(termSplit, () => termPanel.getBoundingClientRect().height, (h0, _dx, dy) => setTerm(h0 - dy));
   termSplit.addEventListener("dblclick", () => {
@@ -309,7 +344,8 @@ export function initLayout(onChange: () => void): LayoutControls {
     save(layout);
   });
   dialogSplit.addEventListener("dblclick", () => {
-    setDialog(undefined);
+    if (isRight()) setDialogW(undefined);
+    else setDialog(undefined);
     save(layout);
   });
 
@@ -357,7 +393,13 @@ export function initLayout(onChange: () => void): LayoutControls {
   });
   dialogSplit.addEventListener("keydown", (e) => {
     const h = dialog.getBoundingClientRect().height;
-    if (e.key === "ArrowUp") setDialog(Math.min(dialogMax(), h + KEY_STEP));
+    if (isRight()) {
+      const w = dialog.getBoundingClientRect().width + 14;
+      if (e.key === "ArrowLeft") setDialogW(w + KEY_STEP);
+      else if (e.key === "ArrowRight") setDialogW(w - KEY_STEP);
+      else if (e.key === "Enter") setDialogW(undefined);
+      else return;
+    } else if (e.key === "ArrowUp") setDialog(Math.min(dialogMax(), h + KEY_STEP));
     else if (e.key === "ArrowDown") setDialog(Math.max(DIALOG_MIN, h - KEY_STEP));
     else if (e.key === "Enter") setDialog(undefined);
     else return;
@@ -400,6 +442,14 @@ export function initLayout(onChange: () => void): LayoutControls {
       save(layout);
       applyDialog();
       applyChatBoard();
+    },
+    dialogRight: () => layout.dialogRight === true,
+    setDialogRight(on) {
+      layout.dialogRight = on || undefined;
+      save(layout);
+      applyDialog();
+      applyTerm();
+      onChange();
     },
     sideOpen: () => layout.side !== 0,
     setSideOpen(open) {

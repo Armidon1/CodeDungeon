@@ -79,7 +79,9 @@ Pubblico: dal non programmatore che ha generato uno script e non sa cosa fa, fin
 
     - campo della domanda su più righe: Invio manda, Maiusc+Invio va a capo, il campo cresce con il testo fino a 10 righe e poi scorre (domande fino a 2000 caratteri, il limite del ponte);
 
-    Da fare: pannello della guida (fumetto e chat) anche a destra dell'editor, con divisore verticale e posizione salvata in `layout.ts`, che a 390 px torna sotto. Eseguire il codice per conto dell'agente resta legato alla sandbox della tappa 11.
+    - guida a destra dell'editor: un pulsante nella testata del fumetto la sposta in una colonna a tutta altezza, con divisore verticale (trascinamento, frecce, doppio clic) e scelta e larghezza salvate in `layout.ts`; i terminali restano sotto il codice; nella chat e sotto i 760 px la guida torna sotto.
+
+    Eseguire il codice per conto dell'agente resta legato alla sandbox della tappa 11.
 13. **Formattazione delle risposte** ✅ base: `richtext.ts` costruisce con nodi DOM (mai `innerHTML`) paragrafi, a capo, elenchi (`- ` e `1. `), `codice`, `**grassetto**` e link, nel fumetto e nelle risposte della chat. La macchina da scrivere scrive dentro la formattazione, il fumetto a pagine taglia tra frasi e punti dell'elenco senza spezzare codice, indirizzi e numeri, il lettore di schermo riceve il testo con i punti dell'elenco. Le regole arrivano all'agente nella descrizione di `show_dialog` e nel prompt `crea_tour`. Link: nel browser in una scheda nuova, nell'app desktop il clic copia l'indirizzo. Da fare: aprirli nel browser di sistema dall'app (plugin opener di Tauri, permesso nuovo).
 
 ## Questioni aperte

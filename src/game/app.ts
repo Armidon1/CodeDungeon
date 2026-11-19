@@ -394,6 +394,7 @@ export class App {
     this.renderGuide();
     this.setQuote(this.quote);
     this.renderStatus();
+    this.renderDock();
     this.renderTitleSource();
     this.syncTitleOptions();
     this.syncSoundOptions();
@@ -510,6 +511,16 @@ export class App {
     if (this.currentFile) void this.walkTo(this.currentFile);
     if (!$("board-pop").hidden) this.popBoard.refresh();
     if (this.view !== undefined) this.tabBoard.refresh();
+  }
+
+  /** Pulsante della guida a destra o sotto: icona, stato e testo nella lingua scelta. */
+  private renderDock(): void {
+    const b = $("dialog-dock");
+    const right = this.layout?.dialogRight() ?? false;
+    b.setAttribute("aria-pressed", String(right));
+    const label = right ? t().ui.dockBelow : t().ui.dockRight;
+    b.setAttribute("aria-label", label);
+    b.title = label;
   }
 
   private toggleMute(): void {
@@ -2561,6 +2572,12 @@ export class App {
     });
     this.layout = initLayout(() => this.relayout());
     $("term-btn").addEventListener("click", () => this.terminals.toggle());
+    $("dialog-dock").addEventListener("click", () => {
+      this.layout?.setDialogRight(!this.layout.dialogRight());
+      this.renderDock();
+      sound.play("select");
+    });
+    this.renderDock();
     for (const b of document.querySelectorAll<HTMLButtonElement>("[data-text-step]")) {
       b.addEventListener("click", () => this.changeTextScale(b.dataset.textStep === "1" ? 1 : -1));
     }

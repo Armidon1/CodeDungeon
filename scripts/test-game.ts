@@ -759,6 +759,40 @@ try {
   check(await noOverflow(), "a 390 px il campo della domanda non allarga la pagina");
   await viewport(1400, 900);
 
+  // guida a destra: colonna a tutta altezza accanto al codice, divisore verticale, sul telefono torna sotto
+  const rectOf = (sel: string) => evaluate<DOMRect>(`JSON.parse(JSON.stringify(document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect()))`);
+  await click("#dialog-dock");
+  await sleep(200);
+  let ed = await rectOf(".editor-wrap");
+  let dl = await rectOf("#dialog");
+  check(
+    (await evaluate<boolean>(`document.querySelector(".main").classList.contains("is-dialog-right")`)) && dl.left >= ed.right && dl.height > 500 && ed.height > 500,
+    "il pulsante sposta la guida a destra del codice, a tutta altezza",
+  );
+  check(await waitFor(`document.getElementById("split-dialog").getAttribute("aria-orientation") === "vertical"`), "a destra il divisore della guida è verticale");
+  await evaluate(`document.getElementById("split-dialog").focus()`);
+  await press("ArrowLeft");
+  check((await rectOf("#dialog")).width > dl.width + 10, "le frecce allargano la guida a destra");
+  await ctrlBackquote();
+  await waitFor(`!document.getElementById("term-panel").hidden`, 8000);
+  const tp = await rectOf("#term-panel");
+  check(tp.right <= (await rectOf("#dialog")).left && tp.top >= (await rectOf(".editor-wrap")).bottom - 1, "i terminali stanno sotto il codice, accanto alla guida");
+  if (process.env.SCREENSHOT) {
+    const shot = await send("Page.captureScreenshot", { format: "png" });
+    await fs.writeFile(path.join(process.env.SCREENSHOT, "guida-destra.png"), Buffer.from(shot.data, "base64"));
+  }
+  await ctrlBackquote();
+  await viewport(390, 844);
+  ed = await rectOf(".editor-wrap");
+  dl = await rectOf("#dialog");
+  check(dl.top >= ed.bottom - 1 && (await noOverflow()), "a 390 px la guida torna sotto il codice");
+  await viewport(1400, 900);
+  // il ponte ripropone la scena: dopo il ricaricamento il menu può non comparire
+  await send("Page.navigate", { url: URL_GAME });
+  check(await waitFor(`document.readyState === "complete" && document.querySelector(".main").classList.contains("is-dialog-right") && document.getElementById("dialog-dock").getAttribute("aria-pressed") === "true"`), "la guida a destra resta dopo il ricaricamento");
+  await click("#dialog-dock");
+  check(!(await evaluate<boolean>(`document.querySelector(".main").classList.contains("is-dialog-right")`)), "di nuovo il pulsante la riporta sotto");
+
   check(errors.length === 0, `nessun errore JavaScript nella pagina${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } catch (e) {
   failures++;
