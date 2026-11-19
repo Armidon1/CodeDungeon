@@ -799,6 +799,8 @@ try {
     "Maiusc+Invio va a capo e il campo della domanda cresce",
   );
   // suono dei tasti: si conta quanti suoni nascono scrivendo, acceso e spento dal menu
+  // la musica crea oscillatori anche lei: si spegne, così si contano solo i tasti
+  await evaluate(`(() => { const r = document.getElementById("opt-music-off"); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); document.getElementById("ask-input").focus(); })()`);
   await evaluate(`(() => {
     window.__osc = 0;
     const orig = AudioContext.prototype.createOscillator;
@@ -851,6 +853,17 @@ try {
   check(await waitFor(`document.readyState === "complete" && document.querySelector(".main").classList.contains("is-dialog-right") && document.getElementById("dialog-dock").getAttribute("aria-pressed") === "true"`), "la guida a destra resta dopo il ricaricamento");
   await click("#dialog-dock");
   check(!(await evaluate<boolean>(`document.querySelector(".main").classList.contains("is-dialog-right")`)), "di nuovo il pulsante la riporta sotto");
+
+  // uscita a clip dell'app su Linux: suoni calcolati in WAV e suonati da elementi <audio>
+  await send("Page.navigate", { url: `${URL_GAME}?audio=clips` });
+  await waitFor(`document.readyState === "complete"`);
+  // un clic vero (Maiusc da solo non conta come gesto): sblocca l'audio
+  for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: 2, y: 2, button: "left", clickCount: 1 });
+  await evaluate(`(() => { const r = document.getElementById("opt-music-taverna"); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+  check(
+    await waitFor(`(() => { const m = document.querySelector("audio.cd-music"); return !!m && m.src.startsWith("blob:") && !m.paused && m.duration > 5; })()`, 10000),
+    "con ?audio=clips la musica è un WAV calcolato che suona in loop da un elemento <audio>",
+  );
 
   check(errors.length === 0, `nessun errore JavaScript nella pagina${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } catch (e) {

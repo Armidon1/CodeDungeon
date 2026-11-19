@@ -3,12 +3,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    // WebKitGTK con pulsesink smette di suonare dopo mezzo secondo (il contesto audio resta "running"):
-    // si preferisce pipewiresink. Se manca, GStreamer ripiega da solo; una scelta dell'utente vince.
-    #[cfg(target_os = "linux")]
-    if std::env::var_os("GST_PLUGIN_FEATURE_RANK").is_none() {
-        std::env::set_var("GST_PLUGIN_FEATURE_RANK", "pipewiresink:MAX");
-    }
     tauri::Builder::default()
         .run(tauri::generate_context!())
         .expect("avvio di Code Dungeon fallito");

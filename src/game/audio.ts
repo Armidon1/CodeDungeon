@@ -1,6 +1,11 @@
 // Suoni del gioco, tutti sintetizzati con Web Audio: musiche chiptune, effetti dell'interfaccia
 // e la voce della guida (un bip a ogni sillaba, come nei Mystery Dungeon).
 // Nessun file audio: niente licenze da gestire e la demo resta un file unico.
+//
+// Due uscite. Nel browser il grafo suona dal vivo su un AudioContext. Nell'app su Linux (WebKitGTK)
+// l'uscita di Web Audio si guasta con alcune schede audio (con le cuffie bluetooth tace o cambia velocità):
+// lì ogni suono si calcola senza uscita (OfflineAudioContext), diventa un WAV in memoria e suona da un
+// elemento <audio>, che quel motore riproduce bene. La musica è un giro intero suonato in loop.
 
 import type { Expression } from "../shared/types";
 
@@ -43,7 +48,7 @@ export function cleanSound(raw: unknown): SoundSettings {
 type Wave = OscillatorType | "pulse25" | "pulse12";
 
 interface Graph {
-  ctx: AudioContext;
+  ctx: BaseAudioContext;
   master: GainNode;
   music: GainNode;
   sfx: GainNode;
@@ -54,14 +59,28 @@ interface Graph {
 }
 
 let graph: Graph | undefined;
+/** Contesto dal vivo (solo nel browser): si sospende e riprende. */
+let live: AudioContext | undefined;
 let settings: SoundSettings = { ...SOUND_DEFAULTS };
 /** Il browser fa suonare solo dopo un gesto dell'utente (clic o tasto). */
 let unlocked = false;
 
+/** Uscita a clip: app desktop su Linux, oppure ?audio=clips per provarla nel browser. */
+const CLIPS =
+  typeof OfflineAudioContext !== "undefined" &&
+  (("__TAURI_INTERNALS__" in window && /Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent)) ||
+    new URLSearchParams(location.search).get("audio") === "clips");
+
 function build(): Graph | undefined {
+  if (CLIPS) return wire(new OfflineAudioContext(1, 1, CLIP_RATE));
   const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AC) return undefined;
-  const ctx = new AC();
+  live = new AC();
+  return wire(live);
+}
+
+/** Bus, compressore ed eco del gioco su un contesto qualsiasi (dal vivo o di calcolo). */
+function wire(ctx: BaseAudioContext): Graph {
   const master = ctx.createGain();
   const comp = ctx.createDynamicsCompressor();
   master.connect(comp).connect(ctx.destination);
@@ -152,6 +171,10 @@ const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
 const level = (v: number) => v * v;
 
 function applyVolumes(): void {
+  if (CLIPS) {
+    if (musicEl) musicEl.volume = settings.muted ? 0 : level(settings.musicVolume);
+    return;
+  }
   if (!graph) return;
   const t = graph.ctx.currentTime;
   graph.master.gain.setTargetAtTime(settings.muted ? 0 : 1, t, 0.03);
@@ -344,6 +367,16 @@ function startMusic(id: TrackId): void {
   if (!g) return;
   stopMusic();
   const tr = TRACKS[id];
+  if (CLIPS) {
+    playing = { id, step: 0, next: 0, timer: 0 };
+    void clip(`music:${id}`, () => renderMusic(tr)).then((url) => {
+      if (playing?.id !== id || !musicEl) return;
+      musicEl.src = url;
+      applyVolumes();
+      void musicEl.play().catch(() => undefined);
+    });
+    return;
+  }
   const state = { id, step: 0, next: g.ctx.currentTime + 0.12, timer: 0 };
   // pianificazione in anticipo: il timer di JS non è preciso, l'orologio audio sì
   state.timer = window.setInterval(() => {
@@ -359,6 +392,7 @@ function startMusic(id: TrackId): void {
 function stopMusic(): void {
   if (playing) clearInterval(playing.timer);
   playing = undefined;
+  musicEl?.pause();
 }
 
 function syncMusic(): void {
@@ -419,7 +453,11 @@ const SFX: Record<Exclude<Sfx, "step">, Note[]> = {
 export function play(name: Sfx): void {
   const g = graph;
   if (!g || !unlocked || settings.muted || settings.sfxVolume === 0) return;
-  const t = g.ctx.currentTime + 0.01;
+  if (CLIPS) return clipSound(`sfx:${name}`, (c) => drawSfx(c, name, 0.01));
+  drawSfx(g, name, g.ctx.currentTime + 0.01);
+}
+
+function drawSfx(g: Graph, name: Sfx, t: number): void {
   if (name === "step") {
     // due passi della mini guida tra i file
     noiseHit(g, g.sfx, t, 0.05, 0.12, "lowpass", 900);
@@ -448,13 +486,14 @@ let lastBlip = 0;
 export function blip(guide: string, expression: Expression): void {
   const g = graph;
   if (!g || !unlocked || settings.muted || !settings.voice || settings.sfxVolume === 0) return;
-  const now = g.ctx.currentTime;
+  const now = performance.now() / 1000;
   if (now - lastBlip < 0.06) return;
   lastBlip = now;
   const v = VOICES[guide] ?? VOICES.custom;
   // un po' di variazione: sembra che parli, non che suoni una nota sola
-  const f = v.base * MOOD[expression] * [1, 1, 1.06, 0.95, 1.12][Math.floor(Math.random() * 5)];
-  tone(g, g.sfx, v.wave, f, now + 0.005, 0.045, 0.09);
+  const f = Math.round(v.base * MOOD[expression] * [1, 1, 1.06, 0.95, 1.12][Math.floor(Math.random() * 5)]);
+  if (CLIPS) return clipSound(`blip:${v.wave}:${f}`, (c) => tone(c, c.sfx, v.wave, f, 0.005, 0.045, 0.09));
+  tone(g, g.sfx, v.wave, f, g.ctx.currentTime + 0.005, 0.045, 0.09);
 }
 
 // ---------- Tasti ----------
@@ -478,14 +517,22 @@ let lastKey = 0;
 export function keyClick(kind: KeyKind, repeat = false): void {
   const g = graph;
   if (!g || !unlocked || settings.muted || !settings.keys || settings.sfxVolume === 0) return;
-  const now = g.ctx.currentTime;
+  const now = performance.now() / 1000;
   // tasto tenuto premuto o raffica: al massimo un clic ogni 35 ms, e più piano
   if (now - lastKey < 0.035) return;
   lastKey = now;
+  const vol = (repeat ? 0.55 : 1) * (0.85 + Math.random() * 0.3);
+  if (CLIPS) {
+    // quattro varianti d'altezza per tasto, calcolate una volta; il volume cambia sull'elemento
+    const v = Math.floor(Math.random() * 4);
+    return clipSound(`key:${kind}:${v}`, (c) => drawKey(c, kind, 0.94 + v * 0.04, 1, 0.003), vol);
+  }
+  drawKey(g, kind, 1 + (Math.random() - 0.5) * 0.12, vol, g.ctx.currentTime + 0.003);
+}
+
+function drawKey(g: Graph, kind: KeyKind, jitter: number, gain: number, t: number): void {
   const k = KEY_SOUND[kind];
-  const jitter = 1 + (Math.random() - 0.5) * 0.12;
-  const vol = k.vol * (repeat ? 0.55 : 1) * (0.85 + Math.random() * 0.3);
-  const t = now + 0.003;
+  const vol = k.vol * gain;
   // clic: rumore passa-banda, attacco immediato e coda cortissima
   const src = g.ctx.createBufferSource();
   src.buffer = g.noise;
@@ -522,20 +569,137 @@ export function configure(s: SoundSettings): void {
 export async function unlock(): Promise<boolean> {
   graph ??= build();
   if (!graph) return true;
+  if (CLIPS) return unlockClips();
   unlocked = true;
   try {
-    await Promise.race([graph.ctx.resume(), new Promise((r) => setTimeout(r, 300))]);
+    await Promise.race([live!.resume(), new Promise((r) => setTimeout(r, 300))]);
   } catch {
     // resume rifiutato: si riprova al prossimo gesto
   }
   applyVolumes();
   syncMusic();
-  return graph.ctx.state === "running";
+  return live!.state === "running";
 }
 
 // finestra nascosta: musica in pausa (l'orologio audio si ferma e riparte da dove era)
 document.addEventListener("visibilitychange", () => {
   if (!graph || !unlocked) return;
-  if (document.hidden) void graph.ctx.suspend();
-  else void graph.ctx.resume();
+  if (CLIPS) {
+    if (document.hidden) musicEl?.pause();
+    else if (playing && musicEl?.src) void musicEl.play().catch(() => undefined);
+  } else if (document.hidden) void live?.suspend();
+  else void live?.resume();
 });
+
+// ---------- Uscita a clip (app su Linux) ----------
+
+const CLIP_RATE = 44100;
+/** Elementi che suonano gli effetti, a turno: più suoni insieme senza aprire un elemento per suono. */
+const POOL_SIZE = 8;
+const pool: HTMLAudioElement[] = [];
+let poolNext = 0;
+let musicEl: HTMLAudioElement | undefined;
+const clips = new Map<string, Promise<string>>();
+
+/** Calcola una volta il suono `key` e ne tiene l'indirizzo del WAV in memoria. */
+function clip(key: string, render: () => Promise<Float32Array>): Promise<string> {
+  let p = clips.get(key);
+  if (!p) {
+    p = render().then((data) => URL.createObjectURL(wavBlob(data)));
+    clips.set(key, p);
+  }
+  return p;
+}
+
+/** Disegna un suono breve su un contesto di calcolo; il silenzio in coda si taglia. */
+async function renderShort(draw: (g: Graph) => void, seconds = 2): Promise<Float32Array> {
+  const ctx = new OfflineAudioContext(1, Math.ceil(seconds * CLIP_RATE), CLIP_RATE);
+  const g = wire(ctx);
+  draw(g);
+  const data = (await ctx.startRendering()).getChannelData(0);
+  let end = data.length;
+  while (end > 0 && Math.abs(data[end - 1]) < 0.0003) end--;
+  return data.slice(0, Math.max(end, 1));
+}
+
+/** Un giro intero del brano; la coda dell'eco oltre la fine si somma all'inizio, così il loop non si sente. */
+async function renderMusic(tr: Track): Promise<Float32Array> {
+  const sd = 60 / tr.bpm / 4;
+  const steps = tr.chords.length * 16;
+  const len = Math.round(steps * sd * CLIP_RATE);
+  const ctx = new OfflineAudioContext(1, len + 4 * CLIP_RATE, CLIP_RATE);
+  const g = wire(ctx);
+  g.music.gain.value = 0.9;
+  for (let i = 0; i < steps; i++) scheduleStep(g, tr, i, i * sd);
+  const all = (await ctx.startRendering()).getChannelData(0);
+  const out = all.slice(0, len);
+  for (let i = len; i < all.length; i++) out[(i - len) % len] += all[i];
+  return out;
+}
+
+function wavBlob(data: Float32Array): Blob {
+  const buf = new ArrayBuffer(44 + data.length * 2);
+  const v = new DataView(buf);
+  const text = (at: number, s: string) => {
+    for (let i = 0; i < s.length; i++) v.setUint8(at + i, s.charCodeAt(i));
+  };
+  text(0, "RIFF");
+  v.setUint32(4, 36 + data.length * 2, true);
+  text(8, "WAVEfmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); // PCM
+  v.setUint16(22, 1, true); // mono
+  v.setUint32(24, CLIP_RATE, true);
+  v.setUint32(28, CLIP_RATE * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  text(36, "data");
+  v.setUint32(40, data.length * 2, true);
+  for (let i = 0; i < data.length; i++) v.setInt16(44 + i * 2, Math.round(Math.max(-1, Math.min(1, data[i])) * 32767), true);
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+/** Suona un effetto dal pool, al volume degli effetti (per `gain` in più). */
+function clipSound(key: string, draw: (g: Graph) => void, gain = 1): void {
+  void clip(key, () => renderShort(draw)).then((url) => {
+    if (settings.muted) return;
+    const a = pool[poolNext++ % pool.length];
+    if (!a) return;
+    a.src = url;
+    a.volume = Math.min(1, level(settings.sfxVolume) * gain);
+    void a.play().catch(() => undefined);
+  });
+}
+
+/** Un istante di silenzio da far partire durante il gesto: da lì il motore lascia suonare questi elementi. */
+let silence: string | undefined;
+
+async function unlockClips(): Promise<boolean> {
+  silence ??= URL.createObjectURL(wavBlob(new Float32Array(441)));
+  if (!musicEl) {
+    musicEl = document.createElement("audio");
+    musicEl.className = "cd-music";
+    musicEl.loop = true;
+    musicEl.hidden = true;
+    document.body.append(musicEl);
+    for (let i = 0; i < POOL_SIZE; i++) pool.push(new Audio());
+  }
+  const els = [musicEl, ...pool];
+  const ok = await Promise.all(
+    els.map((a) => {
+      if (a.src && a.src !== silence) return true;
+      a.src = silence!;
+      return a.play().then(
+        () => true,
+        () => false,
+      );
+    }),
+  );
+  if (!ok.every(Boolean)) return false;
+  unlocked = true;
+  applyVolumes();
+  syncMusic();
+  // effetti pronti prima che servano: il primo clic non aspetta il calcolo
+  for (const name of Object.keys(SFX) as Sfx[]) void clip(`sfx:${name}`, () => renderShort((c) => drawSfx(c, name, 0.01)));
+  return true;
+}
