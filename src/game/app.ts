@@ -438,6 +438,24 @@ export class App {
       this.setSound({ voice: (e.target as HTMLInputElement).checked });
       sound.blip(this.settings.guide.id, "felice");
     });
+    $<HTMLInputElement>("keys-on").addEventListener("change", (e) => {
+      this.setSound({ keys: (e.target as HTMLInputElement).checked });
+      sound.keyClick("key");
+    });
+    // suono dei tasti: solo scrivendo in un campo di testo, nell'editor o in un terminale, mai con le scorciatoie
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+        const el = e.target as HTMLElement | null;
+        const typing = el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && /^(text|search|email|url|password|number|)$/.test(el.type)) || el?.isContentEditable;
+        if (!typing) return;
+        const kind: sound.KeyKind | undefined =
+          e.key === "Enter" ? "enter" : e.key === " " ? "space" : e.key === "Backspace" || e.key === "Delete" ? "back" : e.key.length === 1 || e.key === "Tab" ? "key" : undefined;
+        if (kind) sound.keyClick(kind, e.repeat);
+      },
+      true,
+    );
     $("sound-btn").addEventListener("click", () => this.toggleMute());
     const fsBtn = $("fullscreen-btn");
     if (fullscreenAvailable()) {
@@ -461,6 +479,7 @@ export class App {
     $<HTMLInputElement>("music-volume").value = String(Math.round(s.musicVolume * 100));
     $<HTMLInputElement>("sfx-volume").value = String(Math.round(s.sfxVolume * 100));
     $<HTMLInputElement>("voice-on").checked = s.voice;
+    $<HTMLInputElement>("keys-on").checked = s.keys;
     const btn = $("sound-btn");
     btn.setAttribute("aria-pressed", String(s.muted));
     btn.setAttribute("aria-label", s.muted ? t().msg.muted : t().msg.unmuted);

@@ -16,11 +16,13 @@ export interface SoundSettings {
   sfxVolume: number;
   /** Bip della guida mentre parla. */
   voice: boolean;
+  /** Suono dei tasti mentre si scrive (domanda, editor, terminali). */
+  keys: boolean;
   /** Tutto spento (pulsante nella barra o tasto M). */
   muted: boolean;
 }
 
-export const SOUND_DEFAULTS: SoundSettings = { music: "taverna", musicVolume: 0.5, sfxVolume: 0.7, voice: true, muted: false };
+export const SOUND_DEFAULTS: SoundSettings = { music: "taverna", musicVolume: 0.5, sfxVolume: 0.7, voice: true, keys: true, muted: false };
 
 const unit = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback);
 
@@ -31,6 +33,7 @@ export function cleanSound(raw: unknown): SoundSettings {
     musicVolume: unit(s.musicVolume, SOUND_DEFAULTS.musicVolume),
     sfxVolume: unit(s.sfxVolume, SOUND_DEFAULTS.sfxVolume),
     voice: typeof s.voice === "boolean" ? s.voice : SOUND_DEFAULTS.voice,
+    keys: typeof s.keys === "boolean" ? s.keys : SOUND_DEFAULTS.keys,
     muted: s.muted === true,
   };
 }
@@ -452,6 +455,56 @@ export function blip(guide: string, expression: Expression): void {
   // un po' di variazione: sembra che parli, non che suoni una nota sola
   const f = v.base * MOOD[expression] * [1, 1, 1.06, 0.95, 1.12][Math.floor(Math.random() * 5)];
   tone(g, g.sfx, v.wave, f, now + 0.005, 0.045, 0.09);
+}
+
+// ---------- Tasti ----------
+
+export type KeyKind = "key" | "space" | "enter" | "back";
+
+/**
+ * Tasto di una tastiera meccanica morbida: un clic breve e attutito (rumore filtrato) sopra un colpo
+ * grave che dà corpo. Altezza e volume cambiano di poco a ogni tasto, così non sembra una mitragliatrice.
+ * Spazio e Invio più pieni e gravi, Cancella più leggero.
+ */
+const KEY_SOUND: Record<KeyKind, { click: number; thump: number; vol: number; dur: number }> = {
+  key: { click: 2600, thump: 190, vol: 1, dur: 0.028 },
+  back: { click: 3200, thump: 230, vol: 0.75, dur: 0.022 },
+  space: { click: 1700, thump: 130, vol: 1.15, dur: 0.04 },
+  enter: { click: 1500, thump: 115, vol: 1.3, dur: 0.05 },
+};
+
+let lastKey = 0;
+
+export function keyClick(kind: KeyKind, repeat = false): void {
+  const g = graph;
+  if (!g || !unlocked || settings.muted || !settings.keys || settings.sfxVolume === 0) return;
+  const now = g.ctx.currentTime;
+  // tasto tenuto premuto o raffica: al massimo un clic ogni 35 ms, e più piano
+  if (now - lastKey < 0.035) return;
+  lastKey = now;
+  const k = KEY_SOUND[kind];
+  const jitter = 1 + (Math.random() - 0.5) * 0.12;
+  const vol = k.vol * (repeat ? 0.55 : 1) * (0.85 + Math.random() * 0.3);
+  const t = now + 0.003;
+  // clic: rumore passa-banda, attacco immediato e coda cortissima
+  const src = g.ctx.createBufferSource();
+  src.buffer = g.noise;
+  const band = g.ctx.createBiquadFilter();
+  band.type = "bandpass";
+  band.frequency.value = k.click * jitter;
+  band.Q.value = 1.2;
+  const soft = g.ctx.createBiquadFilter();
+  soft.type = "lowpass";
+  soft.frequency.value = 5000;
+  const env = g.ctx.createGain();
+  env.gain.setValueAtTime(0.0005, t);
+  env.gain.linearRampToValueAtTime(0.09 * vol, t + 0.001);
+  env.gain.exponentialRampToValueAtTime(0.0005, t + k.dur);
+  src.connect(band).connect(soft).connect(env).connect(g.sfx);
+  src.start(t, Math.random() * 0.8);
+  src.stop(t + k.dur + 0.02);
+  // corpo: un colpo grave che scende subito (il "thock" del tasto che tocca il fondo)
+  tone(g, g.sfx, "sine", k.thump * jitter, t, k.dur * 1.6, 0.07 * vol, { attack: 0.002, slideTo: k.thump * 0.7 });
 }
 
 // ---------- Ciclo di vita ----------

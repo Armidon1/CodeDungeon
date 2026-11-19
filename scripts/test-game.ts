@@ -752,6 +752,19 @@ try {
     (await evaluate<string>(`document.getElementById("ask-input").value`)) === "prima riga\nseconda riga\nterza riga" && (await askH()) > h1 + 20,
     "Maiusc+Invio va a capo e il campo della domanda cresce",
   );
+  // suono dei tasti: si conta quanti suoni nascono scrivendo, acceso e spento dal menu
+  await evaluate(`(() => {
+    window.__osc = 0;
+    const orig = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function () { window.__osc++; return orig.call(this); };
+  })()`);
+  for (const ch of "abc") await press(ch);
+  const withKeys = await evaluate<number>(`window.__osc`);
+  await evaluate(`(() => { const c = document.getElementById("keys-on"); c.checked = false; c.dispatchEvent(new Event("change")); window.__osc = 0; document.getElementById("ask-input").focus(); })()`);
+  for (const ch of "def") await press(ch);
+  const withoutKeys = await evaluate<number>(`window.__osc`);
+  check(withKeys >= 3 && withoutKeys <= 1, `i tasti suonano mentre si scrive e si spengono dal menu (${withKeys} / ${withoutKeys})`);
+  await evaluate(`(() => { const c = document.getElementById("keys-on"); c.checked = true; c.dispatchEvent(new Event("change")); const i = document.getElementById("ask-input"); i.value = i.value.replace(/abcdef$/, ""); i.focus(); })()`);
   await press("Enter");
   check(await waitFor(`document.getElementById("ask-input").value === ""`), "Invio manda la domanda");
   check((await askH()) < h1 + 4, "mandata la domanda il campo torna di una riga");
