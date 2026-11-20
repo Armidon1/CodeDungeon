@@ -42,7 +42,7 @@ Ogni testo: 2-4 frasi, massimo ~70 parole, nella lingua dell'utente: è il campo
 - Domande e risposte si salvano in `.tour/conversazioni/` e l'utente può riprenderle dal gioco. Una domanda che continua una conversazione ha il campo `conversation` e, in `previous`, le domande e risposte precedenti (nell'evento del canale sono in fondo al testo): rispondi tenendone conto, senza ripetere. `get_conversation` restituisce la conversazione intera.
 - Una risposta lunga può stare in più `show_dialog` di fila: il gioco li mette in coda e l'utente li legge con "Avanti".
 - Per domande che richiedono fonti esterne (documentazione, RFC, CVE) usa i tuoi strumenti di ricerca e cita la fonte nel fumetto.
-- Formattazione nei fumetti (passi e risposte): una riga vuota separa i paragrafi, un elenco ha un punto per riga (`- ` o `1. `), `codice` tra apici inversi, `**parola**` in evidenza, link come indirizzo nudo o `[etichetta](https://...)`. Non mettere elenchi su una riga sola.
+- Formattazione nei fumetti (passi e risposte): una riga vuota separa i paragrafi, un elenco ha un punto per riga (`- ` o `1. `), `codice` tra apici inversi, codice di più righe in un blocco tra ` ```linguaggio ` e ` ``` ` su righe proprie (es. ` ```python `: prende i colori dell'editor e un pulsante Copia), `**parola**` in evidenza, link come indirizzo nudo o `[etichetta](https://...)`. Non mettere elenchi su una riga sola.
 - Le richieste automatiche che iniziano con `[richiesta automatica]` chiedono di scrivere il testo di un livello mancante: usa `set_step_text`, poi `play_tour` con `from_step` sullo stesso passo.
 
 ## Schemi sulla lavagna

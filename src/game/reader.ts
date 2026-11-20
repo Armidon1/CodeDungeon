@@ -2,6 +2,7 @@
 // Gli altri aiuti (frasi brevi, schemi, esempi, termini) li applica l'agente quando scrive.
 
 import type { ReaderProfile } from "../shared/types";
+import { FENCE } from "./richtext";
 
 let profile: ReaderProfile = { aids: [] };
 
@@ -48,7 +49,24 @@ export function pages(text: string): string[] {
   // pezzi col separatore che li precede: spazio nella stessa riga, a capo tra righe, riga vuota tra paragrafi
   const parts: { sep: string; text: string }[] = [];
   let sep = "";
+  /** Blocco di codice in corso: resta un pezzo solo, righe vuote comprese. */
+  let code: { fence: string; lines: string[] } | undefined;
   for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const f = FENCE.exec(line);
+    if (code) {
+      code.lines.push(line);
+      if (f && f[1][0] === code.fence[0] && f[1].length >= code.fence.length && !f[2]) {
+        parts.push({ sep, text: code.lines.join("\n") });
+        code = undefined;
+        sep = "\n";
+      }
+      continue;
+    }
+    if (f) {
+      if (parts.length && sep !== "\n\n") sep = "\n";
+      code = { fence: f[1], lines: [line] };
+      continue;
+    }
     if (!line.trim()) {
       if (parts.length) sep = "\n\n";
       continue;
@@ -61,6 +79,7 @@ export function pages(text: string): string[] {
     }
     sep = sep === "\n\n" ? sep : "\n";
   }
+  if (code) parts.push({ sep, text: code.lines.join("\n") });
   const out: string[] = [];
   for (const p of parts) {
     const last = out.at(-1);

@@ -584,6 +584,29 @@ try {
 
   check(await noOverflow(), "a 390 px elenchi e indirizzi lunghi vanno a capo senza scorrimento orizzontale");
 
+  // blocchi di codice: cornice col linguaggio, colori dell'editor, rientro conservato, pulsante Copia
+  const C_CODE = "int main(void) {\n    return 0; /* una riga di commento molto lunga che a 390 px deve scorrere dentro il blocco */\n}";
+  await callTool("show_dialog", { text: `Prova così:\n\`\`\`C\n${C_CODE}\n\`\`\`\nPoi compila.` });
+  // il fumetto nuovo aspetta in coda finché non si va avanti
+  await waitFor(`!document.getElementById("next-btn").disabled`, 4000);
+  await click("#next-btn");
+  check(
+    await waitFor(`(() => {
+      const d = document.getElementById("dialog-text");
+      const box = d.querySelector(".rich-code");
+      return !!box && box.querySelector(".rich-code-lang").textContent === "C" && box.querySelector("code").textContent === ${JSON.stringify(C_CODE)} &&
+        !!box.querySelector(".tk-kw") && !!box.querySelector(".tk-com") && !d.textContent.includes("\`\`\`") && d.textContent.includes("Poi compila.");
+    })()`, 8000),
+    "un blocco \`\`\`C ha la cornice col linguaggio, i colori dell'editor e il rientro",
+  );
+  check(await noOverflow(), "a 390 px una riga lunga scorre dentro il blocco di codice, non la pagina");
+  await evaluate(`navigator.clipboard.writeText = async (s) => { window.__copied = s; }`);
+  await click("#dialog-text .rich-copy");
+  check(
+    (await waitFor(`window.__copied === ${JSON.stringify(C_CODE)} && document.querySelector("#dialog-text .rich-copy").classList.contains("is-copied")`)),
+    "il pulsante Copia copia il codice del blocco",
+  );
+
   // l'agente apre un file in una cartella chiusa (in fondo: il ponte rimanderebbe open_file a ogni ricaricamento)
   await viewport(1400, 900);
   await click(`#file-list .dir[data-dir="lib"] .dir-btn`);
@@ -758,9 +781,14 @@ try {
   await click("#ask-quote-clear");
   // tutor: la selezione dentro la textarea
   await evaluate(`(() => { const ta = document.getElementById("code-input"); ta.focus(); ta.setSelectionRange(0, ta.value.indexOf("\\n", 40)); })()`);
-  await sleep(300); // la focus fa scorrere l'editor, e lo scorrimento nasconde il pulsante
-  await press("Shift");
-  check(await waitFor(`!document.getElementById("ask-sel").hidden`), "anche la selezione nell'editor del tutor mostra Chiedi a <guida>");
+  // la focus fa scorrere l'editor, e lo scorrimento nasconde il pulsante: si riprova finché lo scorrimento non si ferma
+  let selShown = false;
+  for (let k = 0; k < 5 && !selShown; k++) {
+    await sleep(300);
+    await press("Shift");
+    selShown = await waitFor(`!document.getElementById("ask-sel").hidden`, 600);
+  }
+  check(selShown, "anche la selezione nell'editor del tutor mostra Chiedi a <guida>");
   await click("#ask-sel");
   check(await waitFor(`!document.getElementById("ask-quote").hidden && /protocol\\.py/.test(document.getElementById("ask-quote-label").textContent)`), "la selezione del tutor diventa la citazione della domanda");
   await click("#ask-quote-clear");
