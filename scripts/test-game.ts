@@ -182,7 +182,7 @@ const waitFor = async (expression: string, ms = 5000): Promise<boolean> => {
   }
   return false;
 };
-const KEYS: Record<string, number> = { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Enter: 13, Escape: 27, PageUp: 33, PageDown: 34 };
+const KEYS: Record<string, number> = { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Enter: 13, Escape: 27, PageUp: 33, PageDown: 34, Backspace: 8 };
 /** modifiers: 2 = Ctrl, 8 = Maiusc. */
 const press = async (key: string, modifiers = 0) => {
   const code = KEYS[key] ?? (key === "Tab" ? 9 : key.toUpperCase().charCodeAt(0));
@@ -554,6 +554,17 @@ try {
   check(await noOverflow(), "tutor senza scorrimento orizzontale a 390 px");
   check(await evaluate(`document.querySelector('#file-list .file[data-path="lib/deep/inner.py"]').getClientRects().length > 0`), "a 390 px la striscia dei file mostra anche quelli nelle cartelle chiuse");
   check(await evaluate(`document.querySelector('#file-list .dir[data-dir="lib"]').classList.contains("is-open")`), "la cartella aperta resta aperta dopo il ricaricamento");
+
+  // risposta della guida in tutor (dopo l'ultimo ricaricamento: il ponte rimanderebbe la scena): righe in giallo, che spariscono tornando a scrivere
+  const lit = await callTool("highlight_lines", { path: "protocol.py", start: 3, end: 4 });
+  check(
+    !lit?.isError && (await waitFor(`document.querySelectorAll("#editor .line.hl").length === 2 && document.querySelector('#editor .line[data-n="3"]').classList.contains("hl-first")`)),
+    "in tutor highlight_lines colora di giallo le righe della risposta",
+  );
+  await evaluate(`(() => { const ta = document.getElementById("code-input"); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); })()`);
+  await typeText("x");
+  check(await waitFor(`!document.querySelector("#editor .line.hl")`), "tornando a scrivere il giallo sparisce");
+  await press("Backspace");
 
   await click("#edit-ask-btn");
   check(

@@ -1290,6 +1290,11 @@ export class App {
     const file = this.currentFile;
     if (!file) return;
     const wasDirty = this.isDirty(file);
+    // il giallo della risposta della guida serviva per leggerla: tornando a scrivere sparisce
+    if (this.highlight) {
+      this.highlight = undefined;
+      this.applyHighlight();
+    }
     // i segni seguono le righe; quelli sulle righe cambiate spariscono
     const mk = this.marks.get(file);
     if (mk) {

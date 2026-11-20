@@ -72,7 +72,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
         "create_tour e add_step (un passo per ogni punto del flusso, nell'ordine di esecuzione), poi play_tour. Il prompt crea_tour contiene la guida completa. " +
         (bridge.listening ? `Il gioco è su ${bridge.url}: dai questo indirizzo all'utente. ` : "") +
         'Le domande che l\'utente scrive nel gioco possono arrivare da sole come <channel source="code-dungeon" question_id="..." ...>: ' +
-        "rispondi subito nel gioco con show_dialog passando question_id (highlight_lines prima, se parli di altro codice). " +
+        "rispondi subito nel gioco con show_dialog passando question_id; prima evidenzia con highlight_lines le righe di cui parla la risposta. " +
         "L'utente legge la risposta nel gioco, non nel terminale. " +
         "Se le domande non arrivano da sole, chiama wait_for_question appena hai dato l'indirizzo (o dopo play_tour) e dopo ogni risposta, e resta in ascolto: " +
         "l'utente non deve tornare al terminale per chiedertelo. Smetti solo se l'utente ti scrive nel terminale. " +
@@ -214,7 +214,9 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     "highlight_lines",
     {
       title: "Evidenzia righe",
-      description: "Apre il file se serve ed evidenzia un intervallo di righe (incluso, da 1).",
+      description:
+        "Apre il file se serve ed evidenzia in giallo un intervallo di righe (incluso, da 1). Usalo prima di show_dialog per mostrare le righe di cui parla la risposta. " +
+        "In tutor il giallo sparisce quando l'utente torna a scrivere; i numeri di riga sono quelli di context.buffer.",
       inputSchema: {
         path: z.string(),
         start: z.number().int().min(1),
@@ -735,6 +737,7 @@ export const TUTOR_RULES =
   'Domande con context.mode "tutor": l\'utente scrive codice da solo e tu fai da insegnante. ' +
   "Non scrivere la soluzione: un aiuto per richiesta, a livelli (domanda guida, poi concetto, poi frammento minimo; soluzione completa solo se la chiede esplicitamente). " +
   "Leggi context.buffer (codice attuale, anche non salvato) e parti dalle righe in context.changed; context.output è l'errore del terminale. " +
+  "Prima di ogni risposta evidenzia con highlight_lines le righe di cui parli (il giallo sparisce quando l'utente torna a scrivere). " +
   "Correggi con highlight_lines o mark_lines (ondina e commento sulla riga, senza la correzione) e spiega il perché; se il codice è giusto dillo in breve. Non modificare mai i file dell'utente. " +
   "Errore di concetto (non refuso): annotalo con record_gap; get_gaps dice cosa ripassare. " +
   "Regole complete nel prompt tutor.";
