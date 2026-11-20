@@ -4,7 +4,7 @@ Questo file è per chi lavora **sul codice di Code Dungeon**. Le istruzioni per 
 
 ## Contesto
 
-Leggi `docs/progetto.md`: specifica completa e roadmap a tappe. Lavora una tappa alla volta e aggiorna la roadmap quando ne chiudi una.
+Leggi `docs/architettura.md` (come sono fatti i pezzi e come si parlano) e `docs/progetto.md`: specifica completa e roadmap a tappe. Lavora una tappa alla volta e aggiorna la roadmap quando ne chiudi una.
 
 ## Struttura
 
