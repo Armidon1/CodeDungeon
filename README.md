@@ -43,6 +43,8 @@ Already working:
 
 Pick **Tutor** in the start menu (Game tab). The editor becomes writable and the guide stops leading: it waits for your questions.
 
+To use it this way, just ask the agent to *open Code Dungeon*: it gives you the game's address and waits for your questions, without building a tour. It builds one only when you ask for a tour.
+
 - **Write and save.** Ctrl+S saves, "+ New file" creates a file in the project. Tab and Enter keep the indentation. Before each question the game saves the files you changed; a file changed on disk in the meantime is not overwritten.
 - **Ask.** Type a question or use the quick choices: *Hint*, *Check* (is my code right?) and *Error*, where you paste the terminal output. The agent receives your current code, the lines you changed since the last question and the output.
 - **Help in levels, no solutions.** The guide answers with a guiding question first, then the concept, then a minimal example. It writes the full solution only if you ask for it explicitly, and it never edits your files.

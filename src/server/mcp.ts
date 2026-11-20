@@ -66,14 +66,15 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       // canale di Claude Code: le domande scritte nel gioco arrivano nella sessione senza che l'utente torni al terminale
       capabilities: { experimental: { "claude/channel": {} } },
       instructions:
-        "Code Dungeon è un gioco in pixel art che spiega il codice seguendo il flusso reale del programma. " +
-        "Costruisci un tour con create_tour e add_step (un passo per ogni punto del flusso, nell'ordine di esecuzione), " +
-        "poi avvialo con play_tour. Il prompt crea_tour contiene la guida completa. " +
+        "Code Dungeon è un gioco in pixel art: una guida spiega il codice e fa da tutor mentre l'utente scrive. " +
+        "Quando l'utente chiede solo di aprire Code Dungeon, non costruire un tour: dagli l'indirizzo del gioco e mettiti in ascolto delle sue domande " +
+        "(di solito lo usa come tutor). Costruisci un tour solo se lo chiede (un tour, un giro, la spiegazione del flusso di un programma): " +
+        "create_tour e add_step (un passo per ogni punto del flusso, nell'ordine di esecuzione), poi play_tour. Il prompt crea_tour contiene la guida completa. " +
         (bridge.listening ? `Il gioco è su ${bridge.url}: dai questo indirizzo all'utente. ` : "") +
         'Le domande che l\'utente scrive nel gioco possono arrivare da sole come <channel source="code-dungeon" question_id="..." ...>: ' +
         "rispondi subito nel gioco con show_dialog passando question_id (highlight_lines prima, se parli di altro codice). " +
         "L'utente legge la risposta nel gioco, non nel terminale. " +
-        "Se le domande non arrivano da sole, dopo play_tour e dopo ogni risposta chiama wait_for_question e resta in ascolto: " +
+        "Se le domande non arrivano da sole, chiama wait_for_question appena hai dato l'indirizzo (o dopo play_tour) e dopo ogni risposta, e resta in ascolto: " +
         "l'utente non deve tornare al terminale per chiedertelo. Smetti solo se l'utente ti scrive nel terminale. " +
         "L'utente può indicare nel gioco cosa lo aiuta a capire (frasi brevi, più schemi...): lo trovi in get_game_state (reader) " +
         "e insieme alle domande. Rispettalo in ogni testo. " +
@@ -458,7 +459,8 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     {
       title: "Crea un tour",
       description:
-        "Crea un tour vuoto in .tour/<tour_id>.json. Poi aggiungi i passi con add_step seguendo l'ordine di esecuzione reale del programma.",
+        "Crea un tour vuoto in .tour/<tour_id>.json. Poi aggiungi i passi con add_step seguendo l'ordine di esecuzione reale del programma. " +
+        "Solo se l'utente chiede un tour: per aprire il gioco basta dargli l'indirizzo.",
       inputSchema: {
         tour_id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).describe("Es. flusso-pacchetto"),
         title: z.string().min(1).max(120),

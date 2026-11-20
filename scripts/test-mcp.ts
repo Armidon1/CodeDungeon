@@ -49,6 +49,10 @@ check(client.getProtocolEra() === "legacy", "un client 2025 viene servito col pr
 check((client.getServerCapabilities()?.experimental as any)?.["claude/channel"], "il server si dichiara canale di Claude Code");
 
 const tools = (await client.listTools()).tools.map((t) => t.name).sort();
+check(
+  /non costruire un tour/.test(client.getInstructions() ?? "") && /Costruisci un tour solo se lo chiede/.test(client.getInstructions() ?? ""),
+  "le istruzioni dicono di aprire il gioco senza tour, a meno che l'utente non lo chieda",
+);
 console.log("strumenti:", tools.join(", "));
 check(tools.includes("highlight_lines") && tools.includes("mark_lines") && tools.includes("add_step") && tools.includes("get_user_questions"), "strumenti esposti");
 
