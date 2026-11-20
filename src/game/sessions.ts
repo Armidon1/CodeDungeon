@@ -111,16 +111,30 @@ export function pickSession(initial?: SessionInfo[], current?: number): Promise<
           if (s.port === current) btn.setAttribute("aria-current", "true");
           const title = document.createElement("span");
           title.className = "tour-title";
-          title.textContent = s.title || s.project;
+          // titolo: quello della chat (name_session o tour), altrimenti l'ultima conversazione nel gioco, altrimenti il progetto
+          const name = s.title || s.topic;
+          title.textContent = name || s.project;
+          const clock = (ms: number) => new Date(ms).toLocaleTimeString(document.documentElement.lang || undefined, { hour: "2-digit", minute: "2-digit" });
+          const where = document.createElement("span");
+          where.className = "tour-meta session-folder";
+          where.textContent = s.folder ?? s.project;
+          where.title = s.folder ?? s.project;
           const meta = document.createElement("span");
           meta.className = "tour-meta";
           meta.textContent = [
-            ...(s.title ? [s.project] : []),
             t().msg.sessionMeta(s.port, s.agent),
-            ...(s.started ? [t().msg.sessionSince(new Date(s.started).toLocaleTimeString(document.documentElement.lang || undefined, { hour: "2-digit", minute: "2-digit" }))] : []),
+            ...(s.started ? [t().msg.sessionSince(clock(s.started))] : []),
+            ...(s.active ? [t().msg.sessionActive(clock(s.active))] : []),
             ...(s.port === current ? [t().msg.sessionCurrent] : []),
           ].join(" · ");
-          btn.append(title, meta);
+          btn.append(title, where, meta);
+          // server avviato prima dei titoli: non sa dire di che chat si tratta
+          if (!s.started) {
+            const old = document.createElement("span");
+            old.className = "tour-meta session-old";
+            old.textContent = t().msg.sessionOld;
+            btn.append(old);
+          }
           btn.addEventListener("click", () => finish(s));
           li.append(btn);
           return li;

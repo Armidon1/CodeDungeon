@@ -79,9 +79,10 @@ check(evilResult === "rifiutata", "origine esterna rifiutata");
 // /session: il gioco elenca le sessioni aperte; un sito estraneo non le vede
 const sessionUrl = `http://127.0.0.1:${PORT}/session`;
 const session = await fetch(sessionUrl, { headers: { origin: "http://tauri.localhost" } });
-const info = (await session.json()) as { project?: string; agent?: boolean; port?: number };
+const info = (await session.json()) as { project?: string; agent?: boolean; port?: number; folder?: string; started?: number };
 check(
   session.ok && info.project === "packet-server" && info.agent === true && info.port === PORT &&
+    !!info.folder?.endsWith("packet-server") && typeof info.started === "number" &&
     session.headers.get("access-control-allow-origin") === "http://tauri.localhost",
   "/session descrive la sessione all'app",
 );

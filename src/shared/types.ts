@@ -328,6 +328,12 @@ export interface SessionInfo {
   title?: string;
   /** Avvio della sessione, in millisecondi: distingue due sessioni sullo stesso progetto. */
   started?: number;
+  /** Argomento della conversazione in corso nel gioco (la sua prima domanda): titolo di riserva se l'agente non ne ha dato uno. */
+  topic?: string;
+  /** Cartella del progetto, con ~ al posto della cartella home. */
+  folder?: string;
+  /** Ultima attività (domanda dal gioco o messaggio dell'agente), in millisecondi. */
+  active?: number;
 }
 
 /** Dal ponte (server) al gioco. */

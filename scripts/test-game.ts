@@ -737,14 +737,20 @@ try {
     window.fetch = (u, o) => {
       const m = /^http:\\/\\/127\\.0\\.0\\.1:(\\d+)\\/session$/.exec(String(u));
       if (!m) return real(u, o);
+      // la 7338 finge un server vecchio, senza ora di avvio né titolo
+      if (m[1] === "7338") return Promise.resolve(new Response(JSON.stringify({ project: "vecchio", agent: true, port: 7338 })));
       if (m[1] !== "7337") return Promise.reject(new Error("chiusa"));
       return real("/session", o).then((r) => r.json()).then((j) => new Response(JSON.stringify({ ...j, port: 7337 })));
     };
   })()`);
   await click("#project-name");
   check(
-    await waitFor(`(() => { const b = document.querySelector('#session-list .session-item[data-port="7337"]'); return !!b && b.querySelector(".tour-title").textContent === "Buffer overflow in vuln.c" && b.querySelector(".tour-meta").textContent.startsWith("packet-server"); })()`),
-    "l'elenco delle sessioni mostra il titolo della chat e sotto il progetto",
+    await waitFor(`(() => { const b = document.querySelector('#session-list .session-item[data-port="7337"]'); return !!b && b.querySelector(".tour-title").textContent === "Buffer overflow in vuln.c" && b.querySelector(".session-folder").textContent.endsWith("packet-server") && !b.querySelector(".session-old"); })()`),
+    "l'elenco delle sessioni mostra il titolo della chat e sotto la cartella del progetto",
+  );
+  check(
+    await waitFor(`!!document.querySelector('#session-list .session-item[data-port="7338"] .session-old')`),
+    "una sessione col server vecchio dice di riavviarlo per vedere il titolo",
   );
   check(await noOverflow(), "a 390 px l'elenco delle sessioni non allarga la pagina");
   await click("#session-close");

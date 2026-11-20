@@ -3,6 +3,7 @@
 // - inoltra al gioco i comandi dell'agente;
 // - raccoglie le domande dell'utente e lo stato del gioco per l'agente.
 
+import os from "node:os";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -102,6 +103,9 @@ export class Bridge {
   private title: string | undefined;
   private named = false;
   private readonly started = Date.now();
+  /** Argomento della conversazione in corso e ultima attività: aiutano a riconoscere la sessione nell'elenco. */
+  private topic: string | undefined;
+  private active: number | undefined;
   /**
    * Scena corrente, rimandata a chi si collega dopo (gioco aperto in ritardo o ricaricato):
    * l'ultimo tour, l'ultimo file aperto o evidenziato, l'ultimo fumetto e l'ultimo schema, nell'ordine in cui sono arrivati.
@@ -213,6 +217,7 @@ export class Bridge {
 
   /** Invia un messaggio a tutte le finestre del gioco. Ritorna quante lo hanno ricevuto. */
   send(msg: ServerMessage): number {
+    this.active = Date.now();
     this.remember(msg);
     this.record(msg);
     return this.broadcast(msg);
@@ -358,6 +363,8 @@ export class Bridge {
     const turn: ConversationTurn = { question: { id: q.id, text: q.text, askedAt: q.askedAt, context: saved }, answers: [] };
     c.turns.push(turn);
     q.conversation = c.id;
+    this.topic = c.title;
+    this.active = Date.now();
     this.questionConversation.set(q.id, c.id);
     this.answering = { conversation: c, turn };
     this.saveConversation(c);
@@ -538,7 +545,13 @@ export class Bridge {
       res.end();
       return;
     }
-    const info: SessionInfo = { project: this.opts.project.name, agent: this.opts.agent, port: this.port, title: this.title, started: this.started };
+    const home = os.homedir();
+    const root = this.opts.project.root;
+    const folder = home && (root === home || root.startsWith(home + path.sep)) ? `~${root.slice(home.length)}` : root;
+    const info: SessionInfo = {
+      project: this.opts.project.name, agent: this.opts.agent, port: this.port, title: this.title, started: this.started,
+      topic: this.topic, folder, active: this.active,
+    };
     res.writeHead(200, {
       "content-type": "application/json",
       "cache-control": "no-store",
