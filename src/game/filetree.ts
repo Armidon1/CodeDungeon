@@ -1,10 +1,15 @@
 // Albero dei file nella barra laterale: cartelle che si aprono e si chiudono (chiuse di partenza),
 // prima le cartelle e poi i file come in VS Code. Le cartelle aperte si ricordano per progetto in localStorage.
 // Quando un tour o l'agente apre un file, le sue cartelle si aprono da sole.
+// In tutor un file si trascina su una cartella (o sullo spazio vuoto, per la radice) per spostarlo.
 
 import { langOf } from "./highlight";
 
 const STORE_PREFIX = "code-dungeon:open-dirs:";
+/** Pixel di movimento prima che la pressione diventi un trascinamento. */
+const DRAG_PX = 6;
+/** Fermi su una cartella chiusa per tanto così, durante il trascinamento: si apre. */
+const OPEN_DELAY_MS = 700;
 
 interface Dir {
   name: string;
@@ -16,6 +21,10 @@ interface Dir {
 export interface FileTreeHooks {
   /** Clic su un file; ev serve a riconoscere Ctrl/Cmd+clic e il clic centrale. */
   open(path: string, ev: MouseEvent): void;
+  /** true se i file si possono spostare adesso (modalità tutor). */
+  canMove(): boolean;
+  /** File lasciato sulla cartella toDir ("" = radice). */
+  move(path: string, toDir: string): void;
 }
 
 export class FileTree {
@@ -108,9 +117,85 @@ export class FileTree {
       btn.addEventListener("mousedown", (e) => {
         if (e.button === 1) e.preventDefault(); // niente scorrimento automatico
       });
+      this.dragFile(btn, file);
       li.append(btn);
       into.append(li);
     }
+  }
+
+  /** Trascinamento di un file: la cartella sotto il puntatore si illumina, al rilascio il file ci finisce dentro. */
+  private dragFile(btn: HTMLButtonElement, file: string): void {
+    btn.addEventListener("pointerdown", (down) => {
+      if (down.button !== 0 || !this.hooks.canMove()) return;
+      // striscia dei file dello schermo stretto: le cartelle non si vedono, niente dove lasciarlo
+      const firstDir = this.el.querySelector(".dir");
+      if (firstDir && firstDir.getClientRects().length === 0) return;
+      const from = file.includes("/") ? file.slice(0, file.lastIndexOf("/")) : "";
+      let dragging = false;
+      let target: string | undefined;
+      let lit: HTMLElement | undefined;
+      let opener = 0;
+      const light = (el: HTMLElement | undefined, dir: string | undefined) => {
+        if (el === lit) return;
+        lit?.classList.remove("is-drop");
+        lit = el;
+        lit?.classList.add("is-drop");
+        clearTimeout(opener);
+        // una cartella chiusa si apre se ci si ferma sopra
+        if (dir && !this.open.has(dir)) opener = window.setTimeout(() => this.toggle(dir), OPEN_DELAY_MS);
+      };
+      const move = (e: PointerEvent) => {
+        if (!dragging) {
+          if (Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < DRAG_PX) return;
+          dragging = true;
+          btn.setPointerCapture(e.pointerId);
+          btn.classList.add("is-dragging");
+          this.el.classList.add("is-moving");
+        }
+        // vicino ai bordi l'elenco scorre, per arrivare alle cartelle nascoste
+        const r = this.el.getBoundingClientRect();
+        if (e.clientY < r.top + 24) this.el.scrollTop -= 10;
+        else if (e.clientY > r.bottom - 24) this.el.scrollTop += 10;
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        const li = under?.closest<HTMLElement>("#" + this.el.id + " > li");
+        if (li?.dataset.dir !== undefined) {
+          target = li.dataset.dir;
+          light(li, target);
+        } else if (li) {
+          // sopra un file: va nella sua cartella
+          target = li.dataset.parent ?? "";
+          const parent = target ? this.el.querySelector<HTMLElement>(`:scope > li[data-dir="${CSS.escape(target)}"]`) ?? undefined : this.el;
+          light(parent, undefined);
+        } else if (under && this.el.contains(under)) {
+          target = "";
+          light(this.el, undefined);
+        } else {
+          target = undefined;
+          light(undefined, undefined);
+        }
+      };
+      const end = (e: PointerEvent) => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", end);
+        window.removeEventListener("pointercancel", end);
+        if (!dragging) return;
+        light(undefined, undefined);
+        btn.classList.remove("is-dragging");
+        this.el.classList.remove("is-moving");
+        // il clic che segue il rilascio non deve aprire il file
+        const eat = (c: Event) => {
+          c.stopImmediatePropagation();
+          c.preventDefault();
+        };
+        btn.addEventListener("click", eat, { capture: true, once: true });
+        setTimeout(() => btn.removeEventListener("click", eat, { capture: true }), 0);
+        if (e.type !== "pointercancel" && target !== undefined && target !== from) this.hooks.move(file, target);
+      };
+      // sulla finestra: un movimento veloce può lasciare il pulsante prima che il trascinamento inizi
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
+    });
   }
 
   private toggle(dir: string): void {

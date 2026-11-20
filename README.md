@@ -45,9 +45,10 @@ Pick **Tutor** in the start menu (Game tab). The editor becomes writable and the
 
 To use it this way, just ask the agent to *open Code Dungeon*: it gives you the game's address and waits for your questions, without building a tour. It builds one only when you ask for a tour.
 
-- **Write and save.** Ctrl+S saves, "+ New file" creates a file in the project. Tab and Enter keep the indentation. Before each question the game saves the files you changed; a file changed on disk in the meantime is not overwritten.
+- **Write and save.** Ctrl+S saves, "+ New file" creates a file in the project. Drag a file onto a folder in the file tree to move it there (a file with the same name is never overwritten). Tab and Enter keep the indentation. Before each question the game saves the files you changed; a file changed on disk in the meantime is not overwritten.
 - **Ask.** Type a question or use the quick choices: *Hint*, *Check* (is my code right?) and *Error*, where you paste the terminal output. The agent receives your current code, the lines you changed since the last question and the output.
 - **Help in levels, no solutions.** The guide answers with a guiding question first, then the concept, then a minimal example. It writes the full solution only if you ask for it explicitly, and it never edits your files.
+- **Lines in yellow.** Before each answer the guide highlights the lines it talks about. The yellow goes away as soon as you type again.
 - **Marks on the lines.** The guide can underline lines with a wavy line (error, warning, hint) and a short note on where to look. The marks follow the lines while you type and disappear when you change them; "Clear marks" removes them all.
 - **To review.** When a mistake comes from a concept you haven't got yet (not a typo), the guide notes it in `.tour/lacune.json`. The bookmark panel in the activity bar lists them, most frequent first, with a counter on the icon. "Got it" moves one among the understood ones; "Exercise" asks the guide for a short exercise on it. If the same mistake comes back, it returns to review.
 

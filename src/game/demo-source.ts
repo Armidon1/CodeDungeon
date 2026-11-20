@@ -48,6 +48,17 @@ export class DemoSource implements GameSource {
     this.files = [...this.contents.keys()].sort();
     return this.files;
   }
+  async moveFile(path: string, toDir: string): Promise<string> {
+    const text = this.contents.get(path);
+    if (text === undefined) throw new Error(t().msg.notFound(path));
+    const to = (toDir ? `${toDir}/` : "") + path.split("/").pop()!;
+    if (to === path) return to;
+    if (this.contents.has(to)) throw new Error(t().msg.fileExists(to));
+    this.contents.delete(path);
+    this.contents.set(to, text);
+    this.files = [...this.contents.keys()].sort();
+    return to;
+  }
   async listTours(): Promise<TourSummary[]> {
     const t = this.tour;
     return [{ id: t.id, title: t.title, description: t.description, steps: t.steps.length }];

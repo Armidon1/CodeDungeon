@@ -318,6 +318,11 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 .file-list, .tour-list { list-style: none; margin: 0; padding: 0 6px; }
 /* cartelle richiudibili (filetree.ts): una voce dentro una cartella chiusa resta nascosta */
 .file-list .is-folded { display: none; }
+/* tutor: un file trascinato verso una cartella */
+.file-list.is-moving { cursor: grabbing; }
+.file-list .file.is-dragging { opacity: 0.55; }
+.file-list .dir.is-drop > .dir-btn { background: var(--panel-2); color: var(--ink); box-shadow: inset 0 0 0 2px var(--lantern); }
+.file-list.is-drop { box-shadow: inset 0 0 0 2px var(--lantern); }
 .dir-btn {
   display: flex;
   align-items: center;

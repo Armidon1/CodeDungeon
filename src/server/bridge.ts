@@ -10,7 +10,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
-import { GAPS_MAX, SELECTION_MAX, cleanTutorContext, gapKey, sortGaps, type ClientMessage, type Gap, type GapLog, type Conversation, type ConversationTurn, type GameContext, type ReaderProfile, type ServerMessage, type SessionInfo, type UserQuestion } from "../shared/types.js";
+import { GAPS_MAX, SELECTION_MAX, cleanTutorContext, gapKey, sortGaps, type ClientMessage, type Gap, type GapLog, type Conversation, type ConversationTurn, type GameContext, type MovedFile, type ReaderProfile, type ServerMessage, type SessionInfo, type UserQuestion } from "../shared/types.js";
 import { conversationSummary, type Project } from "./project.js";
 import type { Store } from "./store.js";
 import { log } from "./log.js";
@@ -509,6 +509,12 @@ export class Bridge {
           const saved = await p.writeFile(msg.path, msg.content);
           log(`file salvato dal gioco: ${saved}`);
           data = await p.listFiles();
+          void this.checkFiles();
+        }
+        else if (msg.op === "move_file") {
+          const moved = await p.moveFile(String(msg.path), String(msg.to ?? ""));
+          log(`file spostato dal gioco: ${msg.path} → ${moved}`);
+          data = { path: moved, files: await p.listFiles() } satisfies MovedFile;
           void this.checkFiles();
         }
         else if (msg.op === "list_tours") data = await p.listTours();

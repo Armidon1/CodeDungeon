@@ -530,6 +530,32 @@ try {
   await fs.rm(path.join(project, "nuova"), { recursive: true });
   check(await waitFor(`!document.querySelector('#file-list .dir[data-dir="nuova"]')`, 6000), "una cartella cancellata fuori dal gioco sparisce dall'albero");
 
+  // tutor: un file trascinato su una cartella ci finisce dentro, e la sua scheda lo segue
+  await fs.mkdir(path.join(project, "dentro"), { recursive: true });
+  await fs.writeFile(path.join(project, "dentro", "gia.py"), "y = 2\n");
+  await fs.writeFile(path.join(project, "sposta.py"), "z = 3\n");
+  await waitFor(`!!document.querySelector('#file-list .file[data-path="sposta.py"]') && !!document.querySelector('#file-list .dir[data-dir="dentro"]')`, 6000);
+  await click(`#file-list .file[data-path="sposta.py"]`);
+  await waitFor(`!!document.querySelector('#tabs .tab.is-active[data-file="sposta.py"]')`);
+  {
+    const box = (sel: string) => evaluate<{ x: number; y: number }>(`(() => { const el = document.querySelector('${sel}'); el.scrollIntoView({ block: "nearest" }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    const a = await box(`#file-list .file[data-path="sposta.py"]`);
+    const b = await box(`#file-list .dir[data-dir="dentro"] .dir-btn`);
+    const mouse = (type: string, x: number, y: number) => send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mouseReleased" ? 0 : 1, clickCount: 1 });
+    await mouse("mousePressed", a.x, a.y);
+    for (let k = 1; k <= 6; k++) await mouse("mouseMoved", a.x + ((b.x - a.x) * k) / 6, a.y + ((b.y - a.y) * k) / 6);
+    check(await evaluate(`document.querySelector('#file-list .dir[data-dir="dentro"]').classList.contains("is-drop")`), "trascinando un file la cartella sotto si illumina");
+    await mouse("mouseReleased", b.x, b.y);
+  }
+  check(
+    (await waitFor(`!!document.querySelector('#file-list .file[data-path="dentro/sposta.py"]') && !document.querySelector('#file-list .file[data-path="sposta.py"]')`)) &&
+      (await fs.readFile(path.join(project, "dentro", "sposta.py"), "utf8")) === "z = 3\n" &&
+      !(await fs.stat(path.join(project, "sposta.py")).then(() => true, () => false)),
+    "lasciato su una cartella, il file si sposta su disco e nell'albero",
+  );
+  check(await evaluate(`!!document.querySelector('#tabs .tab.is-active[data-file="dentro/sposta.py"]') && !document.querySelector('#tabs .tab[data-file="sposta.py"]')`), "la scheda del file spostato segue il percorso nuovo");
+  await fs.rm(path.join(project, "dentro"), { recursive: true });
+
   await viewport(390, 844);
   check(await load(), "a 390 px il gioco si apre in tutor");
   check(dialogs.includes("beforeunload"), "lasciare la pagina con modifiche non salvate chiede conferma");

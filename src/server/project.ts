@@ -1,8 +1,9 @@
 // Accesso ai file del progetto da spiegare, più la cartella .tour/.
 // Ogni percorso passa da resolveInside(): niente "../", link simbolici o percorsi assoluti
 // che escono dalla radice del progetto.
-// L'unica scrittura nei file dell'utente è writeFile(), usata dal gioco in modalità tutor (op "write_file"
-// del ponte): solo file di testo, entro MAX_FILE_BYTES, mai dentro .tour/ o .git/, scrittura atomica.
+// Le uniche scritture nei file dell'utente sono writeFile() e moveFile(), usate dal gioco in modalità tutor
+// (op "write_file" e "move_file" del ponte): solo file di testo entro MAX_FILE_BYTES, scrittura atomica,
+// spostamenti senza sovrascrivere; mai dentro .tour/ o .git/.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -99,6 +100,36 @@ export class Project {
       throw e;
     }
     return rel.join("/");
+  }
+
+  /**
+   * Sposta un file dell'utente nella cartella toDir ("" = radice), con lo stesso nome (modalità tutor).
+   * Non sovrascrive un file che c'è già. Restituisce il percorso relativo nuovo (con "/").
+   */
+  async moveFile(relPath: string, toDir: string): Promise<string> {
+    const root = await this.getRealRoot();
+    const from = await this.resolveInside(relPath);
+    if (!(await fs.lstat(from)).isFile()) throw new Error(`Non è un file: ${relPath}`);
+    const dir = toDir === "" || toDir === "." ? root : await this.resolveInside(toDir);
+    if (!(await fs.stat(dir)).isDirectory()) throw new Error(`Non è una cartella: ${toDir}`);
+    const to = path.join(dir, path.basename(from));
+    const blocked = (abs: string) => path.relative(root, abs).split(path.sep).some((part) => part === TOUR_DIR || part === ".git");
+    if (blocked(from) || blocked(to)) throw new Error("Non si sposta dentro o fuori da .tour/ o .git/.");
+    const rel = path.relative(root, to).split(path.sep).join("/");
+    if (to === from) return rel;
+    // link al posto di rename: fallisce se la destinazione esiste già, così niente viene sovrascritto
+    try {
+      await fs.link(from, to);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code === "EEXIST") throw new Error(`C'è già un file con questo nome: ${rel}`);
+      // file system senza link fisici: si controlla e si rinomina
+      if (await fs.lstat(to).then(() => true, () => false)) throw new Error(`C'è già un file con questo nome: ${rel}`);
+      await fs.rename(from, to);
+      return rel;
+    }
+    await fs.unlink(from);
+    return rel;
   }
 
   async lineCount(relPath: string): Promise<number> {

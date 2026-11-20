@@ -3,7 +3,7 @@
 // - DemoSource (demo-source.ts): il progetto d'esempio incorporato, senza agente.
 
 import { t } from "./i18n";
-import type { Conversation, ConversationSummary, Diagram, DiagramSummary, GameContext, Gap, ServerMessage, StoredPrefs, Tour, TourSummary } from "../shared/types";
+import type { Conversation, ConversationSummary, Diagram, DiagramSummary, GameContext, Gap, MovedFile, ServerMessage, StoredPrefs, Tour, TourSummary } from "../shared/types";
 
 export type AgentCommand = Extract<ServerMessage, { type: "open_file" | "highlight" | "marks" | "gaps" | "dialog" | "play_tour" | "diagram" | "conversation" }>;
 
@@ -24,6 +24,8 @@ export interface GameSource {
   readFile(path: string): Promise<string>;
   /** Modalità tutor: salva (o crea) un file del progetto; risolve con l'elenco aggiornato dei file. */
   writeFile(path: string, content: string): Promise<string[]>;
+  /** Modalità tutor: sposta un file nella cartella toDir ("" = radice); risolve col percorso nuovo. */
+  moveFile(path: string, toDir: string): Promise<string>;
   listTours(): Promise<TourSummary[]>;
   loadTour(id: string): Promise<Tour>;
   listDiagrams(): Promise<DiagramSummary[]>;
@@ -168,6 +170,11 @@ export class BridgeSource implements GameSource {
   async writeFile(path: string, content: string): Promise<string[]> {
     this.files = await this.request<string[]>({ op: "write_file", path, content });
     return this.files;
+  }
+  async moveFile(path: string, toDir: string): Promise<string> {
+    const moved = await this.request<MovedFile>({ op: "move_file", path, to: toDir });
+    this.files = moved.files;
+    return moved.path;
   }
   listTours(): Promise<TourSummary[]> {
     return this.request<TourSummary[]>({ op: "list_tours" });

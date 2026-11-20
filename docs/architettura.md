@@ -56,7 +56,7 @@ Per questo le istruzioni del server dicono all'agente di restare in ascolto: l'u
 | `cli.ts` | Punto d'ingresso. Legge `--project` e `--port`, crea `Project`, `Store` e `Bridge`, poi avvia MCP su stdio. Due modi: `mcp` (con agente) e `play` (solo il gioco, per riprodurre tour salvati). |
 | `mcp.ts` | Strumenti e prompt MCP, e le **istruzioni** che l'agente legge quando si collega. Qui si decide cosa l'agente può fare. |
 | `bridge.ts` | Server HTTP (serve i file del gioco da `dist/game` e `GET /session`) e WebSocket verso il gioco. Tiene lo stato della sessione: domande in coda, titolo, ultima attività. Mentre il gioco è aperto ricontrolla i file ogni 1,5 s. |
-| `project.ts` | Unico accesso ai file del progetto, confinato nella sua cartella. Legge e scrive anche `.tour/`: tour, schemi, conversazioni, `lacune.json`. |
+| `project.ts` | Unico accesso ai file del progetto, confinato nella sua cartella. Le uniche scritture nei file dell'utente vengono dal gioco in tutor: salvare (`writeFile`) e spostare un file in un'altra cartella (`moveFile`, senza sovrascrivere). Legge e scrive anche `.tour/`: tour, schemi, conversazioni, `lacune.json`. |
 | `store.ts` | Impostazioni dell'utente (livello, lingua, guida…) in un database SQLite in `~/.local/share/code-dungeon/`. Valgono per tutti i progetti. |
 | `chat-title.ts` | Titolo della chat dell'agente ("Cartelle e terminale nel TODO") per l'elenco delle sessioni. Claude Code non lo passa via MCP: il server lo legge da `~/.claude`, partendo dal processo che l'ha avviato. Solo lettura; con altri agenti non c'è. |
 | `terminal.ts` | Terminali del gioco su `/term`: una shell vera nella cartella del progetto. È l'unico punto che avvia processi; l'agente non può usarli. |

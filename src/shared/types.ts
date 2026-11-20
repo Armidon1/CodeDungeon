@@ -360,11 +360,19 @@ export type ServerMessage =
   | { type: "response"; reqId: string; ok: true; data: unknown }
   | { type: "response"; reqId: string; ok: false; error: string };
 
+/** Risposta di move_file: percorso nuovo ed elenco aggiornato dei file. */
+export interface MovedFile {
+  path: string;
+  files: string[];
+}
+
 /** Dal gioco al ponte. */
 export type ClientMessage =
   | { type: "request"; reqId: string; op: "read_file"; path: string }
   /** Modalità tutor: salva il file dell'utente (crea anche un file nuovo). Risponde con l'elenco aggiornato dei file. */
   | { type: "request"; reqId: string; op: "write_file"; path: string; content: string }
+  /** Modalità tutor: sposta un file in un'altra cartella del progetto ("" = radice). Risponde con MovedFile. */
+  | { type: "request"; reqId: string; op: "move_file"; path: string; to: string }
   | { type: "request"; reqId: string; op: "list_tours" }
   | { type: "request"; reqId: string; op: "load_tour"; id: string }
   | { type: "request"; reqId: string; op: "list_diagrams" }

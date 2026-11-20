@@ -8,7 +8,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { WebSocket } from "ws";
-import { conversationSummary } from "../src/server/project";
+import { Project, conversationSummary } from "../src/server/project";
 import type { Conversation } from "../src/shared/types";
 
 const PORT = 7400 + Math.floor(Math.random() * 500); // porta casuale: evita conflitti con esecuzioni precedenti
@@ -27,6 +27,7 @@ await fs.writeFile(
   ['{"type":"user","message":"ciao"}', '{"type":"ai-title","aiTitle":"Titolo vecchio","sessionId":"x"}', '{"type":"ai-title","aiTitle":"Cartelle e \\"terminale\\"","sessionId":"x"}', ""].join("\n"),
 );
 const env = { ...process.env, CODE_DUNGEON_DATA: dataDir, CLAUDE_CONFIG_DIR: claudeDir } as Record<string, string>;
+
 // le conversazioni del test finiscono nel progetto d'esempio: alla fine si tolgono le nuove
 const convDir = path.join(project, ".tour", "conversazioni");
 const convsBefore = new Set(await fs.readdir(convDir).catch(() => [] as string[]));
@@ -40,6 +41,23 @@ const check = (cond: unknown, label: string) => {
   console.log(`${cond ? "ok  " : "FAIL"} ${label}`);
   if (!cond) failures++;
 };
+// spostare un file (gioco in tutor): resta nel progetto e non sovrascrive
+{
+  const box = path.join(dataDir, "sposta");
+  await fs.mkdir(path.join(box, "dir"), { recursive: true });
+  await fs.mkdir(path.join(box, ".tour"), { recursive: true });
+  await fs.writeFile(path.join(box, "a.py"), "a\n");
+  await fs.writeFile(path.join(box, "dir", "b.py"), "b\n");
+  await fs.writeFile(path.join(box, "b.py"), "altro\n");
+  const p = new Project(box);
+  const fails = (f: () => Promise<unknown>) => f().then(() => false, () => true);
+  const moved = await p.moveFile("a.py", "dir");
+  check(moved === "dir/a.py" && (await fs.readFile(path.join(box, "dir", "a.py"), "utf8")) === "a\n", "moveFile sposta un file in una cartella");
+  const guard =
+    (await fails(() => p.moveFile("b.py", "dir"))) && (await fs.readFile(path.join(box, "dir", "b.py"), "utf8")) === "b\n" &&
+    (await fails(() => p.moveFile("dir/a.py", ".."))) && (await fails(() => p.moveFile("dir/a.py", ".tour"))) && (await fails(() => p.moveFile("dir", "")));
+  check(guard, "moveFile non sovrascrive, non esce dal progetto, non entra in .tour/, non sposta cartelle");
+}
 const text = (r: any): string => r.content?.map((c: any) => c.text).join("\n") ?? "";
 
 const transport = new StdioClientTransport({

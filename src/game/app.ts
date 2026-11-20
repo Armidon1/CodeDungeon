@@ -183,6 +183,8 @@ export class App {
   private fileTree = new FileTree($("file-list"), {
     // Ctrl/Cmd+clic o clic centrale: in una scheda nuova
     open: (path, e) => void this.goToFile(path, undefined, undefined, { newTab: e.ctrlKey || e.metaKey || e.button === 1 }),
+    canMove: () => this.tutor,
+    move: (path, toDir) => void this.moveFile(path, toDir),
   });
   private tabBoard = new Board({ onOpenCode: (file, lines) => this.openFromBoard(file, lines, false) });
   /** Schemi aperti come schede, nell'ordine di apertura. */
@@ -1473,6 +1475,36 @@ export class App {
     this.editLayer.area.focus();
   }
 
+  /** Sposta un file in un'altra cartella: schede, bozza, segni e stato della scheda seguono il percorso nuovo. */
+  private async moveFile(file: string, toDir: string): Promise<void> {
+    let to: string;
+    try {
+      to = await this.source.moveFile(file, toDir);
+    } catch (e) {
+      sound.play("error");
+      this.setEditMessage(t().msg.moveFailed(this.errText(e)), "error");
+      return;
+    }
+    const rekey = <V>(map: Map<string, V>) => {
+      const v = map.get(file);
+      if (v === undefined) return;
+      map.delete(file);
+      map.set(to, v);
+    };
+    for (const map of [this.tabState, this.fileCache, this.drafts, this.askedText, this.marks] as Map<string, unknown>[]) rekey(map);
+    this.openFiles = this.openFiles.map((f) => (f === file ? to : f));
+    if (this.currentFile === file) {
+      this.currentFile = to;
+      $("status-lang").textContent = langLabel(langOf(to));
+    }
+    sound.play("select");
+    this.fileTree.reveal(to);
+    this.renderFileList();
+    this.renderTabs();
+    this.setEditMessage(t().msg.moved(to.split("/").pop()!, toDir || t().msg.projectRoot));
+    this.reportState();
+  }
+
   private applyHighlight(): void {
     const [a, b] = this.highlight ?? [0, -1];
     for (const el of $("editor").querySelectorAll<HTMLElement>(".line")) {
@@ -1626,9 +1658,9 @@ export class App {
         }
       };
       const end = (e: PointerEvent) => {
-        btn.removeEventListener("pointermove", move);
-        btn.removeEventListener("pointerup", end);
-        btn.removeEventListener("pointercancel", end);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", end);
+        window.removeEventListener("pointercancel", end);
         if (!dragging) return;
         clear();
         btn.classList.remove("is-dragging");
@@ -1649,9 +1681,10 @@ export class App {
         sound.play("select");
         this.renderTabs();
       };
-      btn.addEventListener("pointermove", move);
-      btn.addEventListener("pointerup", end);
-      btn.addEventListener("pointercancel", end);
+      // sulla finestra: un movimento veloce può lasciare il pulsante prima che il trascinamento inizi
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
     });
   }
 
