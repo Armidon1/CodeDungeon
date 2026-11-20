@@ -58,6 +58,7 @@ Per questo le istruzioni del server dicono all'agente di restare in ascolto: l'u
 | `bridge.ts` | Server HTTP (serve i file del gioco da `dist/game` e `GET /session`) e WebSocket verso il gioco. Tiene lo stato della sessione: domande in coda, titolo, ultima attività. Mentre il gioco è aperto ricontrolla i file ogni 1,5 s. |
 | `project.ts` | Unico accesso ai file del progetto, confinato nella sua cartella. Legge e scrive anche `.tour/`: tour, schemi, conversazioni, `lacune.json`. |
 | `store.ts` | Impostazioni dell'utente (livello, lingua, guida…) in un database SQLite in `~/.local/share/code-dungeon/`. Valgono per tutti i progetti. |
+| `chat-title.ts` | Titolo della chat dell'agente ("Cartelle e terminale nel TODO") per l'elenco delle sessioni. Claude Code non lo passa via MCP: il server lo legge da `~/.claude`, partendo dal processo che l'ha avviato. Solo lettura; con altri agenti non c'è. |
 | `terminal.ts` | Terminali del gioco su `/term`: una shell vera nella cartella del progetto. È l'unico punto che avvia processi; l'agente non può usarli. |
 
 **Strumenti MCP**, divisi per scopo:
@@ -115,7 +116,7 @@ Se cambi il server e non ricompili, gli agenti continuano a usare la versione ve
 ## Sicurezza, in breve
 
 - Il ponte ascolta solo su `127.0.0.1` e accetta WebSocket solo dalle pagine del gioco.
-- Ogni file del progetto passa da `Project.resolveInside()`: l'agente non può leggere o scrivere fuori dalla cartella del progetto.
+- Ogni file del progetto passa da `Project.resolveInside()`: l'agente non può leggere o scrivere fuori dalla cartella del progetto. Fuori ci sono solo il database delle impostazioni e la lettura del titolo della chat in `~/.claude`.
 - I terminali sono dell'utente: nessuno strumento MCP li legge o ci scrive.
 
 ## Test

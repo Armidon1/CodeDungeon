@@ -111,8 +111,8 @@ export function pickSession(initial?: SessionInfo[], current?: number): Promise<
           if (s.port === current) btn.setAttribute("aria-current", "true");
           const title = document.createElement("span");
           title.className = "tour-title";
-          // titolo: quello della chat (name_session o tour), altrimenti l'ultima conversazione nel gioco, altrimenti il progetto
-          const name = s.title || s.topic;
+          // titolo: quello della chat nel client (Claude Code), poi name_session o tour, altrimenti l'ultima conversazione nel gioco, altrimenti il progetto
+          const name = s.chat || s.title || s.topic;
           title.textContent = name || s.project;
           const clock = (ms: number) => new Date(ms).toLocaleTimeString(document.documentElement.lang || undefined, { hour: "2-digit", minute: "2-digit" });
           const where = document.createElement("span");

@@ -3,6 +3,7 @@
 // - inoltra al gioco i comandi dell'agente;
 // - raccoglie le domande dell'utente e lo stato del gioco per l'agente.
 
+import { chatTitle } from "./chat-title.js";
 import os from "node:os";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { promises as fs } from "node:fs";
@@ -550,7 +551,7 @@ export class Bridge {
     const folder = home && (root === home || root.startsWith(home + path.sep)) ? `~${root.slice(home.length)}` : root;
     const info: SessionInfo = {
       project: this.opts.project.name, agent: this.opts.agent, port: this.port, title: this.title, started: this.started,
-      topic: this.topic, folder, active: this.active,
+      topic: this.topic, folder, active: this.active, chat: chatTitle(),
     };
     res.writeHead(200, {
       "content-type": "application/json",

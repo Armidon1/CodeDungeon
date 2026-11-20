@@ -16,7 +16,17 @@ const project = path.resolve("examples/packet-server");
 const TOUR = "prova-automatica";
 // preferenze in una cartella temporanea: il test non tocca quelle dell'utente
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "code-dungeon-test-"));
-const env = { ...process.env, CODE_DUNGEON_DATA: dataDir } as Record<string, string>;
+// finta cartella di Claude Code: questo processo fa da "claude" e la sua chat ha un titolo
+const claudeDir = path.join(dataDir, "claude");
+const fakeSession = "test-sessione-1234";
+await fs.mkdir(path.join(claudeDir, "sessions"), { recursive: true });
+await fs.mkdir(path.join(claudeDir, "projects", "-progetto"), { recursive: true });
+await fs.writeFile(path.join(claudeDir, "sessions", `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: fakeSession, cwd: "/progetto" }));
+await fs.writeFile(
+  path.join(claudeDir, "projects", "-progetto", `${fakeSession}.jsonl`),
+  ['{"type":"user","message":"ciao"}', '{"type":"ai-title","aiTitle":"Titolo vecchio","sessionId":"x"}', '{"type":"ai-title","aiTitle":"Cartelle e \\"terminale\\"","sessionId":"x"}', ""].join("\n"),
+);
+const env = { ...process.env, CODE_DUNGEON_DATA: dataDir, CLAUDE_CONFIG_DIR: claudeDir } as Record<string, string>;
 // le conversazioni del test finiscono nel progetto d'esempio: alla fine si tolgono le nuove
 const convDir = path.join(project, ".tour", "conversazioni");
 const convsBefore = new Set(await fs.readdir(convDir).catch(() => [] as string[]));
@@ -83,7 +93,7 @@ check(evilResult === "rifiutata", "origine esterna rifiutata");
 // /session: il gioco elenca le sessioni aperte; un sito estraneo non le vede
 const sessionUrl = `http://127.0.0.1:${PORT}/session`;
 const session = await fetch(sessionUrl, { headers: { origin: "http://tauri.localhost" } });
-const info = (await session.json()) as { project?: string; agent?: boolean; port?: number; folder?: string; started?: number };
+const info = (await session.json()) as { project?: string; agent?: boolean; port?: number; folder?: string; started?: number; chat?: string };
 check(
   session.ok && info.project === "packet-server" && info.agent === true && info.port === PORT &&
     !!info.folder?.endsWith("packet-server") && typeof info.started === "number" &&
@@ -91,6 +101,7 @@ check(
   "/session descrive la sessione all'app",
 );
 const evilSession = await fetch(sessionUrl, { headers: { origin: "https://sito-malevolo.example" } });
+check(info.chat === 'Cartelle e "terminale"', `/session dà il titolo della chat di Claude Code (${info.chat})`);
 check(evilSession.status === 403, "/session rifiuta le origini esterne");
 
 let r = await client.callTool({ name: "highlight_lines", arguments: { path: "protocol.py", start: 27, end: 35 } });

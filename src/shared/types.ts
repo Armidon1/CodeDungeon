@@ -334,6 +334,8 @@ export interface SessionInfo {
   folder?: string;
   /** Ultima attività (domanda dal gioco o messaggio dell'agente), in millisecondi. */
   active?: number;
+  /** Titolo della chat dell'agente come lo mostra il client (oggi solo Claude Code). */
+  chat?: string;
 }
 
 /** Dal ponte (server) al gioco. */
