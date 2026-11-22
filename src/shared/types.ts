@@ -182,14 +182,17 @@ export interface TutorBuffer {
   content: string;
   /** true se nell'editor ci sono modifiche non salvate su disco. */
   dirty: boolean;
-  /** true se content è stato tagliato a BUFFER_MAX. */
+  /** true se il contenuto ricevuto o mostrato è parziale. */
   truncated?: boolean;
+  /** Solo verso l'agente, prima riga dell'estratto e numero di righe disponibili nel buffer ricevuto. */
+  startLine?: number;
+  lineCount?: number;
 }
 
 /** Lunghezza massima del testo selezionato che accompagna una domanda. */
 export const SELECTION_MAX = 2000;
 /** Lunghezza massima del buffer dell'editor che accompagna una domanda in tutor. */
-export const BUFFER_MAX = 20_000;
+export const BUFFER_MAX = 512 * 1024;
 /** Lunghezza massima dell'output del terminale che accompagna una domanda in tutor. */
 export const OUTPUT_MAX = 4000;
 /** Numero massimo di intervalli di righe cambiate. */
@@ -218,14 +221,33 @@ export function cleanTutorContext(ctx: GameContext): GameContext {
   return out;
 }
 
+export const QUESTION_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
+export type QuestionImageType = (typeof QUESTION_IMAGE_TYPES)[number];
+export const QUESTION_IMAGES_MAX = 4;
+export const QUESTION_IMAGE_BYTES = 5 * 1024 * 1024; // somma degli allegati di una domanda
+export const QUESTION_IMAGE_WIRE = 4 * Math.ceil(QUESTION_IMAGE_BYTES / 3) + QUESTION_IMAGES_MAX * 4;
+
+export interface QuestionImage {
+  mimeType: QuestionImageType;
+  data: string; // Base64, senza prefisso data:
+}
+
+export interface QuestionSubmission {
+  text: string;
+  context: GameContext;
+  /** Id della conversazione che la domanda continua. */
+  conversation?: string;
+}
+
 export interface UserQuestion {
   id: string;
   text: string;
   askedAt: string;
   context: GameContext;
+  imageCount?: number;
   /** Conversazione a cui appartiene la domanda (id in .tour/conversazioni/). */
   conversation?: string;
-  /** Domande e risposte precedenti della stessa conversazione: la domanda è un seguito di queste. */
+  /** Ultimo scambio della stessa conversazione. Gli altri si recuperano con get_conversation. */
   previous?: { question: string; answers: string[] }[];
 }
 
@@ -254,7 +276,7 @@ export interface LineMark {
 
 /** Una domanda e ciò che l'agente ha mostrato per rispondere. */
 export interface ConversationTurn {
-  question: { id: string; text: string; askedAt: string; context: GameContext };
+  question: Pick<UserQuestion, "id" | "text" | "askedAt" | "context" | "imageCount">;
   answers: ConversationAnswer[];
   /** Ultimo codice mostrato nella risposta. */
   code?: { file: string; lines?: [number, number] };
@@ -338,12 +360,25 @@ export interface SessionInfo {
   chat?: string;
 }
 
+export interface ProjectTree {
+  files: string[];
+  dirs: string[];
+}
+
+export type EntryKind = "file" | "dir";
+
+export interface TrashEntry {
+  id: string;
+  path: string;
+  deletedAt: string;
+}
+
 /** Dal ponte (server) al gioco. */
 export type ServerMessage =
   /** terminal: il ponte apre terminali su /term (spenti con --terminal off). */
-  | { type: "hello"; project: string; files: string[]; agent: boolean; prefs: StoredPrefs; terminal: boolean }
-  /** I file del progetto sono cambiati (creati, spostati o cancellati da fuori, es. dall'agente). */
-  | { type: "files"; files: string[] }
+  | { type: "hello"; project: string; files: string[]; dirs?: string[]; agent: boolean; prefs: StoredPrefs; terminal: boolean }
+  /** I file o le cartelle del progetto sono cambiati. */
+  | { type: "files"; files: string[]; dirs?: string[] }
   /** Preferenze cambiate da un'altra finestra del gioco. */
   | { type: "prefs"; prefs: StoredPrefs }
   | { type: "open_file"; path: string; content: string }
@@ -373,6 +408,13 @@ export type ClientMessage =
   | { type: "request"; reqId: string; op: "write_file"; path: string; content: string }
   /** Modalità tutor: sposta un file in un'altra cartella del progetto ("" = radice). Risponde con MovedFile. */
   | { type: "request"; reqId: string; op: "move_file"; path: string; to: string }
+  /** Modalità tutor: rinomina un file nella sua cartella. Risponde con il nuovo percorso. */
+  | { type: "request"; reqId: string; op: "rename_file"; path: string; name: string }
+  /** Modalità tutor: sposta un file nel cestino del progetto. */
+  | { type: "request"; reqId: string; op: "delete_file" | "trash_file"; path: string }
+  | { type: "request"; reqId: string; op: "list_trash" }
+  | { type: "request"; reqId: string; op: "restore_file"; id: string }
+  | { type: "request"; reqId: string; op: "create_entry"; dir: string; name: string; kind: EntryKind }
   | { type: "request"; reqId: string; op: "list_tours" }
   | { type: "request"; reqId: string; op: "load_tour"; id: string }
   | { type: "request"; reqId: string; op: "list_diagrams" }
@@ -382,8 +424,8 @@ export type ClientMessage =
   | { type: "request"; reqId: string; op: "list_gaps" }
   /** Segna una lacuna come risolta (o la riapre). Risponde con l'elenco aggiornato. */
   | { type: "request"; reqId: string; op: "resolve_gap"; id: string; resolved: boolean }
-  /** conversation: id della conversazione che la domanda continua; assente per una nuova. */
-  | { type: "question"; text: string; context: GameContext; conversation?: string }
+  | ({ type: "question" } & QuestionSubmission)
+  | ({ type: "request"; reqId: string; op: "ask_with_images"; images: QuestionImage[] } & QuestionSubmission)
   | { type: "state"; context: GameContext }
   | { type: "save_prefs"; prefs: StoredPrefs };
 

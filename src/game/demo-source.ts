@@ -1,7 +1,8 @@
 // Sorgente demo: il progetto d'esempio incorporato nella build, senza agente.
 // Importato solo nella build demo (vedi main.ts), così non pesa sulla build normale.
 
-import type { Conversation, ConversationSummary, Diagram, DiagramSummary, Gap, Tour, TourSummary } from "../shared/types";
+import type { Conversation, ConversationSummary, Diagram, DiagramSummary, EntryKind, Gap, Tour, TourSummary, TrashEntry } from "../shared/types";
+import { validRenameName } from "../shared/file-name";
 import { t } from "./i18n";
 import type { ConnectionState, GameSource } from "./source";
 
@@ -27,7 +28,10 @@ export class DemoSource implements GameSource {
     return undefined;
   }
   files: string[];
+  dirs: string[] = [];
   private contents = new Map<string, string>();
+  private trash = new Map<string, { entry: TrashEntry; content: string }>();
+  private trashId = 0;
   private tour = demoTour as unknown as Tour;
 
   constructor() {
@@ -49,15 +53,50 @@ export class DemoSource implements GameSource {
     return this.files;
   }
   async moveFile(path: string, toDir: string): Promise<string> {
+    return this.moveTo(path, (toDir ? `${toDir}/` : "") + path.split("/").pop()!);
+  }
+  async renameFile(path: string, name: string): Promise<string> {
+    const dirEnd = path.lastIndexOf("/") + 1;
+    if (name !== path.slice(dirEnd) && !validRenameName(name)) throw new Error(t().msg.badRenameName);
+    return this.moveTo(path, path.slice(0, dirEnd) + name);
+  }
+  private moveTo(path: string, to: string): string {
     const text = this.contents.get(path);
     if (text === undefined) throw new Error(t().msg.notFound(path));
-    const to = (toDir ? `${toDir}/` : "") + path.split("/").pop()!;
     if (to === path) return to;
-    if (this.contents.has(to)) throw new Error(t().msg.fileExists(to));
+    if (this.contents.has(to) || this.dirs.includes(to)) throw new Error(t().msg.fileExists(to));
     this.contents.delete(path);
     this.contents.set(to, text);
     this.files = [...this.contents.keys()].sort();
     return to;
+  }
+  async trashFile(path: string): Promise<void> {
+    const content = await this.readFile(path);
+    if (!this.contents.delete(path)) throw new Error(t().msg.notFound(path));
+    const id = String(++this.trashId);
+    this.trash.set(id, { entry: { id, path, deletedAt: new Date().toISOString() }, content });
+    this.files = [...this.contents.keys()].sort();
+  }
+  async listTrash(): Promise<TrashEntry[]> {
+    return [...this.trash.values()].reverse().map(({ entry }) => entry);
+  }
+  async restoreFile(id: string): Promise<string> {
+    const stored = this.trash.get(id);
+    if (!stored) throw new Error(t().msg.notFound(id));
+    const { path } = stored.entry;
+    if (this.contents.has(path) || this.dirs.includes(path)) throw new Error(t().msg.fileExists(path));
+    this.trash.delete(id);
+    await this.writeFile(path, stored.content);
+    return path;
+  }
+  async createEntry(dir: string, name: string, kind: EntryKind): Promise<string> {
+    if (!validRenameName(name)) throw new Error(t().msg.badRenameName);
+    if (dir && !this.dirs.includes(dir)) throw new Error(t().msg.notFound(dir));
+    const path = dir ? `${dir}/${name}` : name;
+    if (this.contents.has(path) || this.dirs.includes(path)) throw new Error(t().msg.fileExists(path));
+    if (kind === "dir") this.dirs.push(path);
+    else await this.writeFile(path, "");
+    return path;
   }
   async listTours(): Promise<TourSummary[]> {
     const t = this.tour;
@@ -88,6 +127,9 @@ export class DemoSource implements GameSource {
     throw new Error(t().msg.notFound(id));
   }
   ask(): boolean {
+    return false;
+  }
+  async askWithImages(): Promise<boolean> {
     return false;
   }
   sendState(): void {}

@@ -1,13 +1,14 @@
 // Accesso ai file del progetto da spiegare, più la cartella .tour/.
 // Ogni percorso passa da resolveInside(): niente "../", link simbolici o percorsi assoluti
 // che escono dalla radice del progetto.
-// Le uniche scritture nei file dell'utente sono writeFile() e moveFile(), usate dal gioco in modalità tutor
-// (op "write_file" e "move_file" del ponte): solo file di testo entro MAX_FILE_BYTES, scrittura atomica,
-// spostamenti senza sovrascrivere; mai dentro .tour/ o .git/.
+// Il gioco in modalità tutor può salvare, spostare, rinominare ed eliminare file, esclusi .tour/ e .git/.
 
-import { promises as fs } from "node:fs";
+import { constants, promises as fs } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
-import type { Conversation, ConversationSummary, Diagram, DiagramSummary, GapLog, Tour, TourSummary } from "../shared/types.js";
+import { validRenameName } from "../shared/file-name.js";
+import { QUESTION_IMAGE_WIRE, type Conversation, type ConversationSummary, type Diagram, type DiagramSummary, type EntryKind, type GapLog, type ProjectTree, type QuestionImage, type Tour, type TourSummary, type TrashEntry } from "../shared/types.js";
+import { validateQuestionImages } from "./question-images.js";
 
 const IGNORED_DIRS = new Set([
   ".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", ".idea", ".vscode", "target",
@@ -17,7 +18,10 @@ const MAX_FILES = 2000;
 const TOUR_DIR = ".tour";
 const DIAGRAM_DIR = "schemi"; // dentro .tour/
 const CONVERSATION_DIR = "conversazioni"; // dentro .tour/
+const QUESTION_IMAGE_DIR = `${TOUR_DIR}/${CONVERSATION_DIR}/immagini`;
 const GAPS_FILE = "lacune.json"; // dentro .tour/
+const TRASH_DIR = `${TOUR_DIR}/cestino`;
+const UUID_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 /** Nome di un file nuovo: niente separatori o caratteri di controllo. */
 const FILE_NAME = /^[^\\/:*?"<>|\x00-\x1f]{1,128}$/;
 const TOUR_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -112,24 +116,186 @@ export class Project {
     if (!(await fs.lstat(from)).isFile()) throw new Error(`Non è un file: ${relPath}`);
     const dir = toDir === "" || toDir === "." ? root : await this.resolveInside(toDir);
     if (!(await fs.stat(dir)).isDirectory()) throw new Error(`Non è una cartella: ${toDir}`);
-    const to = path.join(dir, path.basename(from));
-    const blocked = (abs: string) => path.relative(root, abs).split(path.sep).some((part) => part === TOUR_DIR || part === ".git");
-    if (blocked(from) || blocked(to)) throw new Error("Non si sposta dentro o fuori da .tour/ o .git/.");
-    const rel = path.relative(root, to).split(path.sep).join("/");
-    if (to === from) return rel;
+    return this.relocateFile(root, from, path.join(dir, path.basename(from)));
+  }
+
+  /** Rinomina un file dell'utente lasciandolo nella stessa cartella. */
+  async renameFile(relPath: string, name: string): Promise<string> {
+    const root = await this.getRealRoot();
+    const from = await this.resolveRegularFile(relPath, root);
+    if (name !== path.basename(from) && !validRenameName(name)) throw new Error("Nome del file non valido.");
+    return this.relocateFile(root, from, path.join(path.dirname(from), name));
+  }
+
+  private async relocateFile(root: string, from: string, to: string): Promise<string> {
+    this.checkEditable(root, from);
+    this.checkEditable(root, to);
+    const rel = relativePath(root, to);
+    if (to !== from) await this.transferFile(from, to, rel);
+    return rel;
+  }
+
+  private checkEditable(root: string, abs: string): void {
+    if (path.relative(root, abs).split(path.sep).some((part) => [TOUR_DIR, ".git"].includes(part.toLowerCase()))) {
+      throw new Error("I file in .tour/ e .git/ sono protetti.");
+    }
+  }
+
+  private async transferFile(from: string, to: string, rel: string): Promise<void> {
     // link al posto di rename: fallisce se la destinazione esiste già, così niente viene sovrascritto
     try {
       await fs.link(from, to);
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
-      if (code === "EEXIST") throw new Error(`C'è già un file con questo nome: ${rel}`);
-      // file system senza link fisici: si controlla e si rinomina
-      if (await fs.lstat(to).then(() => true, () => false)) throw new Error(`C'è già un file con questo nome: ${rel}`);
-      await fs.rename(from, to);
-      return rel;
+      if (code === "EEXIST") {
+        // Su un file system che ignora le maiuscole, il nome nuovo può indicare la stessa voce.
+        const dir = path.dirname(from);
+        const oldName = path.basename(from);
+        const newName = path.basename(to);
+        if (dir === path.dirname(to) && oldName.toLowerCase() === newName.toLowerCase()) {
+          const entries = await fs.readdir(dir);
+          if (entries.includes(oldName) && !entries.includes(newName)) {
+            await fs.rename(from, to);
+            return;
+          }
+        }
+        throw new Error(`C'è già un file con questo nome: ${rel}`);
+      }
+      if (!["EXDEV", "EPERM", "ENOSYS", "ENOTSUP", "EOPNOTSUPP"].includes(code ?? "")) throw e;
+      // File system senza link fisici o diversi: copia esclusiva, poi rimuove la sorgente.
+      await fs.copyFile(from, to, constants.COPYFILE_EXCL).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "EEXIST") throw new Error(`C'è già un file con questo nome: ${rel}`);
+        throw error;
+      });
     }
-    await fs.unlink(from);
-    return rel;
+    try {
+      await fs.unlink(from);
+    } catch (e) {
+      await fs.unlink(to).catch(() => {});
+      throw e;
+    }
+  }
+
+  /** Sposta un file nel cestino del progetto e restituisce il percorso che aveva. */
+  async deleteFile(relPath: string): Promise<string> {
+    const root = await this.getRealRoot();
+    const abs = await this.resolveRegularFile(relPath, root);
+    this.checkEditable(root, abs);
+    const trash = await this.metadataDirectory(root, TRASH_DIR, true);
+    if (!trash) throw new Error("Cestino non accessibile.");
+    const entry: TrashEntry = { id: randomUUID(), path: relativePath(root, abs), deletedAt: new Date().toISOString() };
+    const folder = path.join(trash, entry.id);
+    await fs.mkdir(folder);
+    try {
+      await fs.writeFile(path.join(folder, "entry.json"), JSON.stringify(entry), { flag: "wx" });
+      await this.transferFile(abs, path.join(folder, "file"), entry.path);
+    } catch (e) {
+      await this.cleanTrashFolder(folder);
+      throw e;
+    }
+    return entry.path;
+  }
+
+  async listTrash(): Promise<TrashEntry[]> {
+    const root = await this.getRealRoot();
+    const trash = await this.metadataDirectory(root, TRASH_DIR);
+    if (!trash) return [];
+    const entries: TrashEntry[] = [];
+    for (const id of await fs.readdir(trash)) {
+      if (!UUID_ID.test(id)) continue;
+      const entry = await this.readTrashEntry(root, id).catch(() => undefined);
+      if (entry) entries.push(entry);
+    }
+    return entries.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+  }
+
+  async restoreFile(id: string): Promise<string> {
+    const root = await this.getRealRoot();
+    const entry = await this.readTrashEntry(root, id);
+    const dest = path.resolve(root, entry.path);
+    this.checkEditable(root, dest);
+    const parents = entry.path.split("/").slice(0, -1);
+    for (let i = 1; i <= parents.length; i++) {
+      const rel = parents.slice(0, i).join("/");
+      await fs.mkdir(path.join(root, rel)).catch((e: NodeJS.ErrnoException) => {
+        if (e.code !== "EEXIST") throw e;
+      });
+      await this.editableDirectory(root, rel);
+    }
+    const from = await this.resolveRegularFile(`${TRASH_DIR}/${id}/file`, root);
+    await this.transferFile(from, dest, entry.path);
+    await this.cleanTrashFolder(path.dirname(from));
+    return entry.path;
+  }
+
+  private async metadataDirectory(root: string, target: string, create = false): Promise<string | undefined> {
+    const parts = target.split("/");
+    for (let i = 1; i <= parts.length; i++) {
+      const rel = parts.slice(0, i).join("/");
+      const abs = path.join(root, rel);
+      if (create) {
+        await fs.mkdir(abs).catch((e: NodeJS.ErrnoException) => {
+          if (e.code !== "EEXIST") throw e;
+        });
+      } else if (!(await fs.lstat(abs).catch((e: NodeJS.ErrnoException) => {
+        if (e.code !== "ENOENT") throw e;
+      }))) return undefined;
+      if ((await this.resolveInside(rel)) !== abs || !(await fs.lstat(abs)).isDirectory()) throw new Error(`Cartella non accessibile: ${rel}`);
+    }
+    return path.join(root, target);
+  }
+
+  private async readTrashEntry(root: string, id: string): Promise<TrashEntry> {
+    if (typeof id !== "string" || !UUID_ID.test(id)) throw new Error("Elemento del cestino non valido.");
+    const folder = `${TRASH_DIR}/${id}`;
+    const meta = await this.resolveRegularFile(`${folder}/entry.json`, root);
+    await this.resolveRegularFile(`${folder}/file`, root);
+    const entry = JSON.parse(await fs.readFile(meta, "utf8")) as TrashEntry;
+    const original = entry.path;
+    if (typeof original !== "string" || !original || original.includes("\0") || !isWithin(root, path.resolve(root, original)) ||
+        relativePath(root, path.resolve(root, original)) !== original || typeof entry.deletedAt !== "string") {
+      throw new Error("Elemento del cestino non valido.");
+    }
+    return { id, path: original, deletedAt: entry.deletedAt };
+  }
+
+  private async cleanTrashFolder(folder: string): Promise<void> {
+    await fs.unlink(path.join(folder, "entry.json")).catch(() => {});
+    await fs.rmdir(folder).catch(() => {});
+  }
+
+  async createEntry(dir: string, name: string, kind: EntryKind): Promise<string> {
+    if (!validRenameName(name) || (kind === "dir" && IGNORED_DIRS.has(name))) throw new Error("Nome non valido.");
+    const root = await this.getRealRoot();
+    const target = path.join(await this.editableDirectory(root, dir), name);
+    this.checkEditable(root, target);
+    try {
+      if (kind === "dir") await fs.mkdir(target);
+      else if (kind === "file") await fs.writeFile(target, "", { flag: "wx" });
+      else throw new Error("Tipo di elemento non valido.");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "EEXIST" || (e as NodeJS.ErrnoException).code === "EISDIR") {
+        throw new Error(`C'è già un elemento con questo nome: ${name}`);
+      }
+      throw e;
+    }
+    return relativePath(root, target);
+  }
+
+  private async editableDirectory(root: string, dir: string): Promise<string> {
+    if (dir === "") return root;
+    const abs = await this.resolveInside(dir);
+    this.checkEditable(root, abs);
+    if (abs !== path.resolve(root, dir) || !(await fs.lstat(abs)).isDirectory()) throw new Error(`Non è una cartella: ${dir}`);
+    return abs;
+  }
+
+  private async resolveRegularFile(relPath: string, root: string): Promise<string> {
+    const abs = await this.resolveInside(relPath);
+    if (abs !== path.resolve(root, relPath) || !(await fs.lstat(abs)).isFile()) {
+      throw new Error(`Non è un file regolare: ${relPath}`);
+    }
+    return abs;
   }
 
   async lineCount(relPath: string): Promise<number> {
@@ -138,26 +304,32 @@ export class Project {
 
   /** Elenco dei file del progetto, percorsi con "/" e ordinati. */
   async listFiles(): Promise<string[]> {
+    return (await this.listTree()).files;
+  }
+
+  async listTree(): Promise<ProjectTree> {
     const root = await this.getRealRoot();
-    const out: string[] = [];
+    const files: string[] = [];
+    const dirs: string[] = [];
     const walk = async (dir: string): Promise<void> => {
-      if (out.length >= MAX_FILES) return;
+      if (files.length >= MAX_FILES) return;
       const entries = await fs.readdir(dir, { withFileTypes: true });
       entries.sort((a, b) => a.name.localeCompare(b.name));
       for (const e of entries) {
-        if (out.length >= MAX_FILES) return;
+        if (files.length >= MAX_FILES) return;
         if (e.isSymbolicLink()) continue;
         const abs = path.join(dir, e.name);
         if (e.isDirectory()) {
           if (IGNORED_DIRS.has(e.name) || e.name === TOUR_DIR) continue;
+          dirs.push(relativePath(root, abs));
           await walk(abs);
         } else if (e.isFile()) {
-          out.push(path.relative(root, abs).split(path.sep).join("/"));
+          files.push(relativePath(root, abs));
         }
       }
     };
     await walk(root);
-    return out;
+    return { files, dirs };
   }
 
   // ---------- Tour ----------
@@ -314,6 +486,23 @@ export class Project {
     await fs.rename(tmp, file);
   }
 
+  /** Le immagini sono salvate a parte, una volta sola per domanda. */
+  async saveQuestionImages(id: string, images: unknown): Promise<number> {
+    if (!UUID_ID.test(id)) throw new Error("Id della domanda non valido.");
+    const checked = validateQuestionImages(images);
+    const dir = await this.metadataDirectory(await this.getRealRoot(), QUESTION_IMAGE_DIR, true);
+    if (!dir) throw new Error("Cartella delle immagini non accessibile.");
+    await fs.writeFile(path.join(dir, `${id}.json`), JSON.stringify(checked), { flag: "wx", mode: 0o600 });
+    return checked.length;
+  }
+
+  async loadQuestionImages(id: string): Promise<QuestionImage[]> {
+    if (!UUID_ID.test(id)) throw new Error("Id della domanda con immagini non valido.");
+    const file = await this.resolveRegularFile(`${QUESTION_IMAGE_DIR}/${id}.json`, await this.getRealRoot());
+    if ((await fs.stat(file)).size > QUESTION_IMAGE_WIRE + 1024) throw new Error("Gli allegati della domanda sono troppo grandi.");
+    return validateQuestionImages(JSON.parse(await fs.readFile(file, "utf8")));
+  }
+
   /** Dalla più recente. */
   async listConversations(): Promise<ConversationSummary[]> {
     const dir = path.join(await this.getRealRoot(), TOUR_DIR, CONVERSATION_DIR);
@@ -342,5 +531,9 @@ export function conversationSummary(c: Conversation): ConversationSummary {
 
 function isWithin(root: string, target: string): boolean {
   const rel = path.relative(root, target);
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  return rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+}
+
+function relativePath(root: string, absolute: string): string {
+  return path.relative(root, absolute).split(path.sep).join("/");
 }

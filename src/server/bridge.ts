@@ -10,14 +10,30 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
-import { GAPS_MAX, SELECTION_MAX, cleanTutorContext, gapKey, sortGaps, type ClientMessage, type Gap, type GapLog, type Conversation, type ConversationTurn, type GameContext, type MovedFile, type ReaderProfile, type ServerMessage, type SessionInfo, type UserQuestion } from "../shared/types.js";
+import { BUFFER_MAX, GAPS_MAX, QUESTION_IMAGE_WIRE, SELECTION_MAX, cleanTutorContext, gapKey, sortGaps, type ClientMessage, type Gap, type GapLog, type Conversation, type ConversationTurn, type GameContext, type MovedFile, type QuestionSubmission, type ReaderProfile, type ServerMessage, type SessionInfo, type UserQuestion, type TutorBuffer } from "../shared/types.js";
 import { conversationSummary, type Project } from "./project.js";
 import type { Store } from "./store.js";
 import { log } from "./log.js";
 import { Terminals } from "./terminal.js";
 
-/** Quante domande precedenti della conversazione arrivano all'agente insieme a un seguito. */
-const PREVIOUS_TURNS = 6;
+/** Estratto iniziale in caratteri. Il resto è leggibile per id della domanda. */
+const PREVIEW_MAX = 1600;
+const SNAPSHOT_COUNT = 16;
+
+function previewBuffer(buffer: TutorBuffer, ctx: GameContext): TutorBuffer {
+  if (buffer.content.length <= PREVIEW_MAX) return buffer;
+  const lines = buffer.content.split("\n");
+  const selected = ctx.file === buffer.file && Array.isArray(ctx.lines) && ctx.lines.length === 2 &&
+    ctx.lines.every(n => Number.isSafeInteger(n) && n >= 1) && ctx.lines[0] <= ctx.lines[1] ? ctx.lines : undefined;
+  const target = (ctx.selection && selected) || ctx.changed?.[0] || selected;
+  const focus = Math.min(lines.length, target?.[0] ?? 1);
+  let first = Math.max(1, focus - 3);
+  // Una riga di contesto molto lunga non deve nascondere la riga richiesta.
+  if (lines.slice(first - 1, focus).join("\n").length > PREVIEW_MAX) first = focus;
+  const last = Math.min(lines.length, first + 39, target ? target[1] + 3 : 40);
+  const content = lines.slice(first - 1, Math.max(focus, last)).join("\n").slice(0, PREVIEW_MAX);
+  return { file: buffer.file, dirty: buffer.dirty, content, startLine: first, lineCount: lines.length, truncated: true };
+}
 
 /** Quante porte provare a partire da quella preferita (più sessioni aperte insieme). */
 const PORT_TRIES = 20;
@@ -90,8 +106,10 @@ export class Bridge {
   private filesBusy = false;
   /** Domande senza risposta. Restano qui finché l'agente risponde (show_dialog con question_id) o le legge con get_user_questions. */
   private questions: UserQuestion[] = [];
+  private snapshots = new Map<string, TutorBuffer>();
+
   /**
-   * Domande già consegnate a wait_for_question o spinte nella sessione: non si riconsegnano all'ascolto,
+   * Domande già restituite da wait_for_question: non si riconsegnano all'ascolto,
    * ma get_user_questions le restituisce ancora (l'agente può aver chiuso il turno senza rispondere).
    */
   private delivered = new Set<string>();
@@ -148,7 +166,8 @@ export class Bridge {
         },
       );
     });
-    this.wss = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
+    // JSON può usare sei byte per un carattere del buffer, oltre alle immagini in Base64 e ai metadati.
+    this.wss = new WebSocketServer({ noServer: true, maxPayload: 6 * BUFFER_MAX + QUESTION_IMAGE_WIRE + 256 * 1024 });
     this.http.on("upgrade", (req, socket, head) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       const term = url.pathname === "/term" && this.terminals;
@@ -242,11 +261,11 @@ export class Bridge {
     if (this.filesBusy || !this.clients.size) return;
     this.filesBusy = true;
     try {
-      const files = await this.opts.project.listFiles();
-      const key = files.join("\n");
+      const tree = await this.opts.project.listTree();
+      const key = JSON.stringify(tree);
       if (key === this.lastFiles) return;
       this.lastFiles = key;
-      this.broadcast({ type: "files", files });
+      this.broadcast({ type: "files", ...tree });
     } catch {
       // cartella sparita o illeggibile per un momento: si riprova al prossimo giro
     } finally {
@@ -352,16 +371,20 @@ export class Bridge {
     let c: Conversation | undefined;
     if (continues) c = await this.conversation(continues).catch(() => undefined);
     if (c?.turns.length) {
-      q.previous = c.turns.slice(-PREVIOUS_TURNS).map((t) => ({ question: t.question.text, answers: t.answers.map((a) => a.text) }));
+      q.previous = c.turns.slice(-1).map((t) => ({ question: t.question.text, answers: t.answers.map((a) => a.text) }));
     } else {
       const now = new Date().toISOString();
-      c = { version: 1, id: q.id, title: q.text.slice(0, 80), startedAt: now, updatedAt: now, turns: [] };
+      const title = q.text.slice(0, 80) || (q.context.lang === "it" ? "Domanda con immagini" : "Question with images");
+      c = { version: 1, id: q.id, title, startedAt: now, updatedAt: now, turns: [] };
       this.conversations.set(c.id, c);
     }
     // nel file della conversazione il buffer del tutor resta senza contenuto: il codice è nel progetto, non va duplicato
     const { buffer, ...context } = q.context;
     const saved: GameContext = buffer ? { ...context, buffer: { ...buffer, content: "" } } : context;
-    const turn: ConversationTurn = { question: { id: q.id, text: q.text, askedAt: q.askedAt, context: saved }, answers: [] };
+    const turn: ConversationTurn = {
+      question: { id: q.id, text: q.text, askedAt: q.askedAt, context: saved, ...(q.imageCount ? { imageCount: q.imageCount } : {}) },
+      answers: [],
+    };
     c.turns.push(turn);
     q.conversation = c.id;
     this.topic = c.title;
@@ -395,6 +418,10 @@ export class Bridge {
         ? { ...m, fromStep: ctx.stepId }
         : m,
     );
+  }
+
+  tutorSnapshot(id: string): TutorBuffer | undefined {
+    return this.snapshots.get(id);
   }
 
   /** Domande in attesa; le consuma. */
@@ -444,6 +471,7 @@ export class Bridge {
   }
 
   private async onConnection(ws: WebSocket): Promise<void> {
+    const first = this.clients.size === 0;
     this.clients.add(ws);
     log(`gioco collegato (${this.clients.size} finestre)`);
     ws.on("close", () => {
@@ -459,12 +487,39 @@ export class Bridge {
       }
       this.onMessage(ws, msg).catch((e) => log(`errore messaggio: ${String(e)}`));
     });
-    const files = await this.opts.project.listFiles().catch(() => []);
-    this.lastFiles = files.join("\n");
+    const tree = await this.opts.project.listTree().catch(() => ({ files: [], dirs: [] }));
+    if (first) this.lastFiles = JSON.stringify(tree);
     this.watchFiles();
-    const hello: ServerMessage = { type: "hello", project: this.opts.project.name, files, agent: this.opts.agent, prefs: this.opts.store.load(), terminal: !!this.terminals };
+    const hello: ServerMessage = { type: "hello", project: this.opts.project.name, ...tree, agent: this.opts.agent, prefs: this.opts.store.load(), terminal: !!this.terminals };
     ws.send(JSON.stringify(hello));
     for (const m of this.replay()) ws.send(JSON.stringify(m));
+  }
+
+  private async acceptQuestion(msg: QuestionSubmission, id: string, imageCount?: number): Promise<UserQuestion | undefined> {
+    const text = String(msg.text ?? "").slice(0, 2000).trim();
+    if (!text && !imageCount) return;
+    const context = cleanTutorContext({ ...msg.context });
+    if (typeof context.selection === "string") context.selection = context.selection.slice(0, SELECTION_MAX);
+    else delete context.selection;
+    const q: UserQuestion = { id, text, askedAt: new Date().toISOString(), context, ...(imageCount ? { imageCount } : {}) };
+    await this.addTurn(q, typeof msg.conversation === "string" ? msg.conversation : undefined);
+    if (context.buffer) {
+      this.snapshots.set(q.id, context.buffer);
+      if (this.snapshots.size > SNAPSHOT_COUNT) this.snapshots.delete(this.snapshots.keys().next().value!);
+      q.context = { ...context, buffer: previewBuffer(context.buffer, context) };
+    }
+    // Lo stato del gioco resta leggero: buffer, righe cambiate e output viaggiano solo con la domanda.
+    const { buffer: _b, changed: _c, output: _o, ...state } = context;
+    this.lastContext = state;
+    log(`domanda dall'utente: ${text}${imageCount ? ` (${imageCount} immagini)` : ""}`);
+    return q;
+  }
+
+  private notifyQuestion(q: UserQuestion): void {
+    this.questions.push(q);
+    if (this.waiter) this.waiter(this.deliver());
+    // Il canale non conferma la ricezione. Un client senza canale può iniziare l'attesa dopo l'invio.
+    else this.onQuestion?.(q);
   }
 
   private async onMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
@@ -480,23 +535,8 @@ export class Bridge {
       return;
     }
     if (msg.type === "question") {
-      const text = String(msg.text ?? "").slice(0, 2000).trim();
-      if (!text) return;
-      const context = cleanTutorContext({ ...msg.context });
-      if (typeof context.selection === "string") context.selection = context.selection.slice(0, SELECTION_MAX);
-      else delete context.selection;
-      const q: UserQuestion = { id: randomUUID().slice(0, 8), text, askedAt: new Date().toISOString(), context };
-      await this.addTurn(q, typeof msg.conversation === "string" ? msg.conversation : undefined);
-      this.questions.push(q);
-      // lo stato del gioco resta leggero: buffer, righe cambiate e output viaggiano solo con la domanda
-      const { buffer: _b, changed: _c, output: _o, ...state } = context;
-      this.lastContext = state;
-      log(`domanda dall'utente: ${text}`);
-      if (this.waiter) this.waiter(this.deliver());
-      else {
-        this.delivered.add(q.id);
-        this.onQuestion?.(q);
-      }
+      const question = await this.acceptQuestion(msg, randomUUID().slice(0, 8));
+      if (question) this.notifyQuestion(question);
       return;
     }
     if (msg.type === "request") {
@@ -504,7 +544,16 @@ export class Bridge {
       try {
         const p = this.opts.project;
         let data: unknown;
-        if (msg.op === "read_file") data = await p.readFile(msg.path);
+        if (msg.op === "ask_with_images") {
+          if (!this.opts.agent) throw new Error("Nessun agente collegato.");
+          const id = randomUUID();
+          const count = await p.saveQuestionImages(id, msg.images);
+          const question = await this.acceptQuestion(msg, id, count);
+          reply({ type: "response", reqId: msg.reqId, ok: true, data: id });
+          if (question) this.notifyQuestion(question);
+          return;
+        }
+        else if (msg.op === "read_file") data = await p.readFile(msg.path);
         else if (msg.op === "write_file") {
           const saved = await p.writeFile(msg.path, msg.content);
           log(`file salvato dal gioco: ${saved}`);
@@ -515,6 +564,28 @@ export class Bridge {
           const moved = await p.moveFile(String(msg.path), String(msg.to ?? ""));
           log(`file spostato dal gioco: ${msg.path} → ${moved}`);
           data = { path: moved, files: await p.listFiles() } satisfies MovedFile;
+          void this.checkFiles();
+        }
+        else if (msg.op === "rename_file") {
+          const renamed = await p.renameFile(msg.path, msg.name);
+          this.scene = this.scene.map((m) => (m.type === "open_file" || m.type === "highlight") && m.path === msg.path ? { ...m, path: renamed } : m);
+          log(`file rinominato dal gioco: ${msg.path} → ${renamed}`);
+          data = renamed;
+          void this.checkFiles();
+        }
+        else if (msg.op === "trash_file" || msg.op === "delete_file") {
+          const deleted = await p.deleteFile(msg.path);
+          this.scene = this.scene.filter((m) => (m.type !== "open_file" && m.type !== "highlight") || m.path !== deleted);
+          log(`file spostato nel cestino dal gioco: ${deleted}`);
+          void this.checkFiles();
+        }
+        else if (msg.op === "list_trash") data = await p.listTrash();
+        else if (msg.op === "restore_file") {
+          data = await p.restoreFile(msg.id);
+          void this.checkFiles();
+        }
+        else if (msg.op === "create_entry") {
+          data = await p.createEntry(msg.dir, msg.name, msg.kind);
           void this.checkFiles();
         }
         else if (msg.op === "list_tours") data = await p.listTours();

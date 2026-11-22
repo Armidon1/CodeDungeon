@@ -12,10 +12,11 @@ import { Project, conversationSummary } from "../src/server/project";
 import type { Conversation } from "../src/shared/types";
 
 const PORT = 7400 + Math.floor(Math.random() * 500); // porta casuale: evita conflitti con esecuzioni precedenti
-const project = path.resolve("examples/packet-server");
 const TOUR = "prova-automatica";
 // preferenze in una cartella temporanea: il test non tocca quelle dell'utente
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "code-dungeon-test-"));
+const project = path.join(dataDir, "packet-server");
+await fs.cp(path.resolve("examples/packet-server"), project, { recursive: true });
 // finta cartella di Claude Code: questo processo fa da "claude" e la sua chat ha un titolo
 const claudeDir = path.join(dataDir, "claude");
 const fakeSession = "test-sessione-1234";
@@ -28,12 +29,9 @@ await fs.writeFile(
 );
 const env = { ...process.env, CODE_DUNGEON_DATA: dataDir, CLAUDE_CONFIG_DIR: claudeDir } as Record<string, string>;
 
-// le conversazioni del test finiscono nel progetto d'esempio: alla fine si tolgono le nuove
+// Le prove lavorano sulla copia temporanea del progetto.
 const convDir = path.join(project, ".tour", "conversazioni");
-const convsBefore = new Set(await fs.readdir(convDir).catch(() => [] as string[]));
-// il registro delle lacune: si rimette com'era alla fine
 const gapsFile = path.join(project, ".tour", "lacune.json");
-const gapsBefore = await fs.readFile(gapsFile, "utf8").catch(() => undefined);
 await fs.rm(gapsFile, { force: true });
 
 let failures = 0;
@@ -57,8 +55,75 @@ const check = (cond: unknown, label: string) => {
     (await fails(() => p.moveFile("b.py", "dir"))) && (await fs.readFile(path.join(box, "dir", "b.py"), "utf8")) === "b\n" &&
     (await fails(() => p.moveFile("dir/a.py", ".."))) && (await fails(() => p.moveFile("dir/a.py", ".tour"))) && (await fails(() => p.moveFile("dir", "")));
   check(guard, "moveFile non sovrascrive, non esce dal progetto, non entra in .tour/, non sposta cartelle");
+  await fs.mkdir(path.join(box, ".git"));
+  await fs.writeFile(path.join(box, ".tour", "tour.json"), "{}");
+  await fs.writeFile(path.join(box, ".git", "config"), "");
+  await fs.symlink("b.py", path.join(box, "alias.py"), "file");
+  await fs.symlink(project, path.join(box, "fuori"), "junction");
+  const protectedFiles = ["dir", "../packet-server/server.py", ".tour/tour.json", ".git/config", "alias.py", "fuori/server.py"];
+  const invalidNames = ["", ".", "..", "../lib.py", "sub/file.py", ".git", ".tour", "file."];
+  check((await Promise.all([
+    ...invalidNames.map((name) => fails(() => p.renameFile("dir/a.py", name))),
+    ...protectedFiles.map((file) => fails(() => p.renameFile(file, "lib.py"))),
+    fails(() => p.renameFile("dir/a.py", "b.py")),
+  ])).every(Boolean) && (await fs.readFile(path.join(box, "dir", "b.py"), "utf8")) === "b\n",
+  "renameFile rifiuta destinazioni occupate, nomi non validi e file protetti");
+  check(await p.renameFile("dir/a.py", "A.py") === "dir/A.py" &&
+    (await p.listFiles()).includes("dir/A.py") && !(await p.listFiles()).includes("dir/a.py") &&
+    (await fs.readFile(path.join(box, "dir", "A.py"), "utf8")) === "a\n", "renameFile può cambiare le maiuscole, nella stessa cartella e con lo stesso contenuto");
+  await p.renameFile("dir/A.py", "a.py");
+  check((await Promise.all(protectedFiles.map((file) => fails(() => p.deleteFile(file))))).every(Boolean) &&
+    (await fs.readFile(path.join(box, "b.py"), "utf8")) === "altro\n", "deleteFile rifiuta cartelle, link simbolici, percorsi esterni e metadati protetti");
+  check((await p.deleteFile("dir/a.py")) === "dir/a.py" &&
+    !(await p.listFiles()).includes("dir/a.py") &&
+    (await p.listFiles()).includes("dir/b.py"), "il cestino toglie dall'albero solo il file richiesto");
+  const reopened = new Project(box);
+  const [entry] = await reopened.listTrash();
+  check(entry?.path === "dir/a.py" && !(await reopened.listFiles()).some((file) => file.includes("cestino")),
+    "il cestino persiste nel progetto e resta fuori dall'albero");
+  check(await reopened.createEntry("dir", "a.py", "file") === "dir/a.py" &&
+    await fails(() => reopened.restoreFile(entry.id)) && (await reopened.readFile("dir/a.py")) === "" &&
+    (await reopened.listTrash()).some((item) => item.id === entry.id), "Ripristina lascia intatto un file nuovo con lo stesso percorso");
+  await fs.unlink(path.join(box, "dir", "a.py"));
+  check(await reopened.restoreFile(entry.id) === "dir/a.py" &&
+    (await reopened.readFile("dir/a.py")) === "a\n" && (await reopened.listTrash()).length === 0, "Ripristina recupera il contenuto e toglie la voce dal cestino");
+  check(await p.createEntry("", "vuota", "dir") === "vuota" &&
+    (await p.listTree()).dirs.includes("vuota") && !(await p.listFiles()).includes("vuota"), "l'albero include le cartelle vuote, separate dai file");
+  const creates = await Promise.allSettled([p.createEntry("vuota", "nuovo.py", "file"), p.createEntry("vuota", "nuovo.py", "file")]);
+  check(creates.filter((create) => create.status === "fulfilled").length === 1 &&
+    (await Promise.all(["..", "fuori", ".tour", ".git"].map((dir) => fails(() => p.createEntry(dir, "nuovo.py", "file"))))).every(Boolean),
+    "la creazione è esclusiva e rispetta i confini del progetto");
+  await p.deleteFile("vuota/nuovo.py");
+  const [orphan] = await p.listTrash();
+  await fs.rmdir(path.join(box, "vuota"));
+  check(await p.restoreFile(orphan.id) === "vuota/nuovo.py" && (await p.readFile("vuota/nuovo.py")) === "", "il ripristino ricrea la cartella originale");
+  const linked = path.join(dataDir, "cestino-con-link");
+  await fs.mkdir(linked);
+  await fs.writeFile(path.join(linked, "origine.py"), "intatto\n");
+  await fs.symlink(project, path.join(linked, ".tour"), "junction");
+  check(await fails(() => new Project(linked).deleteFile("origine.py")) &&
+    (await fs.readFile(path.join(linked, "origine.py"), "utf8")) === "intatto\n", "un link esterno sotto .tour non riceve file del cestino");
 }
 const text = (r: any): string => r.content?.map((c: any) => c.text).join("\n") ?? "";
+const png = { mimeType: "image/png", data: (await fs.readFile("src-tauri/icons/32x32.png")).toString("base64") };
+const largerPng = { mimeType: "image/png", data: (await fs.readFile("src-tauri/icons/64x64.png")).toString("base64") };
+let imageRequestId = 0;
+const askWithImages = (socket: WebSocket, submission: object): Promise<any> => new Promise((resolve, reject) => {
+  const reqId = `image-${++imageRequestId}`;
+  const receive = (data: WebSocket.RawData) => {
+    const reply = JSON.parse(String(data));
+    if (reply.reqId !== reqId) return;
+    clearTimeout(timer);
+    socket.off("message", receive);
+    resolve(reply);
+  };
+  const timer = setTimeout(() => {
+    socket.off("message", receive);
+    reject(new Error("Il ponte non ha confermato la domanda con immagini."));
+  }, 5000);
+  socket.on("message", receive);
+  socket.send(JSON.stringify({ type: "request", reqId, op: "ask_with_images", ...submission }));
+});
 
 const transport = new StdioClientTransport({
   command: "npx",
@@ -199,6 +264,17 @@ const loaded = received.find((m) => m.reqId === "c1")?.data;
 check(loaded?.turns?.[1]?.answers?.[0]?.text === "Sarebbe al contrario." && loaded.turns[0].code === undefined, "il gioco rilegge la conversazione");
 check(received.find((m) => m.reqId === "c2")?.ok === false, "id della conversazione fuori dal progetto rifiutato");
 
+game.send(JSON.stringify({ type: "question", text: "Ancora?", context: { level: "medio" }, conversation: convId }));
+await new Promise((res) => setTimeout(res, 150));
+const followUp = pushed.at(-1);
+check(followUp.content.includes("Sarebbe al contrario.") && !followUp.content.includes("lo dice il protocollo"), "il seguito include solo l'ultimo scambio");
+r = await client.callTool({ name: "show_dialog", arguments: { question_id: followUp.meta.question_id, text: "Qui.", highlight: { path: "protocol.py", start: 1, end: 9999 } } });
+check(r.isError, "una risposta con righe non valide può essere ritentata");
+r = await client.callTool({ name: "show_dialog", arguments: { question_id: followUp.meta.question_id, text: "Qui.", highlight: { path: "protocol.py", start: 1, end: 3 } } });
+r = await client.callTool({ name: "get_conversation", arguments: { id: convId } });
+const turns = JSON.parse(text(r).slice(text(r).indexOf("{"))).turns;
+check(turns[2].code.lines.join() === "1,3" && turns[2].answers.length === 1 && turns[0].answers.length === 1, "fumetto e righe registrati insieme nel turno giusto, storico completo");
+
 // domanda su un testo selezionato: la selezione arriva all'agente insieme alla domanda
 const selection = "ptype, payload = read_packet(conn)";
 game.send(
@@ -213,7 +289,9 @@ check(
 await client.callTool({ name: "show_dialog", arguments: { text: "Legge un pacchetto.", question_id: ev3?.meta.question_id } });
 
 // domanda in tutor: codice dell'editor (anche non salvato), righe cambiate e output arrivano all'agente con le regole
+const prefix = "# esempio\n".repeat(2500);
 const code = 'def solve():\n    print("ciao"\n';
+const draft = prefix + code + "#".repeat(5000);
 game.send(
   JSON.stringify({
     type: "question",
@@ -222,8 +300,8 @@ game.send(
       level: "medio",
       file: "solve.py",
       mode: "tutor",
-      buffer: { file: "solve.py", content: code + "#".repeat(30_000), dirty: true },
-      changed: [[2, 2], [0, 3], "x"],
+      buffer: { file: "solve.py", content: draft, dirty: true },
+      changed: [[2502, 2502], [0, 3], "x"],
       output: "SyntaxError: '(' was never closed",
     },
   }),
@@ -231,11 +309,17 @@ game.send(
 await new Promise((res) => setTimeout(res, 150));
 const ev4 = pushed.at(-1);
 check(
-  ev4?.meta.mode === "tutor" && ev4.content.includes(`(solve.py, non salvato, tagliato):\n\`\`\`\n${code}`) &&
-    /Righe cambiate dall'ultima domanda: 2\./.test(ev4.content) && /SyntaxError/.test(ev4.content) && /Non scrivere la soluzione/.test(ev4.content) &&
-    ev4.content.length < 22_000,
-  "in tutor la domanda porta il codice dell'editor, le righe cambiate, l'output e le regole",
+  ev4?.meta.mode === "tutor" && ev4.content.includes("dalla riga 2499 di 2503") && ev4.content.includes(code) &&
+    /Righe cambiate dall'ultima domanda: 2502/.test(ev4.content) && /SyntaxError/.test(ev4.content) &&
+    !ev4.content.includes("Non scrivere la soluzione") && ev4.content.length < 2200,
+  "il canale include le modifiche oltre il vecchio limite con un estratto e un richiamo breve",
 );
+r = await client.callTool({ name: "get_user_questions", arguments: {} });
+check(text(r).length < 3000 && text(r).includes('"startLine": 2499'), "la coda consegna lo stesso estratto");
+r = await client.callTool({ name: "read_tutor_buffer", arguments: { question_id: ev4.meta.question_id, start: 1, end: 1 } });
+check(text(r).endsWith("# esempio"), "il buffer non salvato resta leggibile dopo il consumo della coda");
+r = await client.callTool({ name: "read_tutor_buffer", arguments: { question_id: ev4.meta.question_id, start: 2503, end: 2503, offset: 4000 } });
+check(text(r).endsWith("\n" + "#".repeat(1000)), "si può leggere anche la fine di una riga lunga");
 r = await client.callTool({ name: "get_game_state", arguments: {} });
 check(/"mode": "tutor"/.test(text(r)) && !/print\(/.test(text(r)), "lo stato del gioco non si porta dietro il codice della domanda");
 // mark_lines: ondina e commento sulle righe, con il testo del file a cui si riferiscono; righe fuori dal file rifiutate
@@ -293,6 +377,38 @@ r = await client.callTool({ name: "wait_for_question", arguments: { timeout_seco
 check(/Nessuna domanda nel frattempo/.test(text(r)), "wait_for_question finisce allo scadere del tempo");
 r = await client.callTool({ name: "get_user_questions", arguments: {} });
 check(/E il timeout\?/.test(text(r)), "una domanda consegnata ma senza risposta resta per get_user_questions");
+
+// Il gioco invia mentre il client non è ancora in attesa. La notifica non è una conferma di lettura.
+const queuedText = "Cosa significa len?";
+const nextMessage = (matches: (msg: any) => boolean) => new Promise<void>((resolve, reject) => {
+  const timer = setTimeout(() => {
+    game.off("message", onMessage);
+    reject(new Error("Messaggio del gioco non ricevuto entro 5 s."));
+  }, 5000);
+  const onMessage = (data: Buffer) => {
+    if (!matches(JSON.parse(String(data)))) return;
+    clearTimeout(timer);
+    game.off("message", onMessage);
+    resolve();
+  };
+  game.on("message", onMessage);
+});
+const queuedEvent = nextMessage(msg => msg.type === "conversation" && msg.summary.title === queuedText);
+game.send(JSON.stringify({ type: "question", text: queuedText, context: { mode: "tutor", level: "facile", lang: "it" } }));
+await queuedEvent;
+const waitStarted = performance.now();
+r = await client.callTool({ name: "wait_for_question", arguments: { timeout_seconds: 5 } });
+check(text(r).includes(queuedText), "la prima attesa dopo la notifica recupera la domanda già in coda");
+if (text(r).includes(queuedText)) {
+  const [queued] = JSON.parse(text(r).slice(text(r).indexOf("\n")));
+  const deliveredAt = performance.now();
+  const reply = "len restituisce il numero di elementi.";
+  const shown = nextMessage(msg => msg.type === "dialog" && msg.text === reply);
+  await Promise.all([shown, client.callTool({ name: "show_dialog", arguments: { question_id: queued.id, text: reply } })]);
+  console.log(`Ponte locale, risposta prefissata: attesa → domanda ${(deliveredAt - waitStarted).toFixed(1)} ms, risposta → gioco ${(performance.now() - deliveredAt).toFixed(1)} ms.`);
+  r = await client.callTool({ name: "get_user_questions", arguments: {} });
+  check(/Nessuna domanda/.test(text(r)), "la risposta diretta svuota la coda");
+}
 
 // gioco aperto o ricaricato in ritardo: riceve la scena, non solo l'ultimo comando
 const lateGame = async (): Promise<any[]> => {
@@ -365,6 +481,25 @@ check(/Chi legge ha chiesto: frasi brevi/.test(text(r)) && /"piu_schemi"/.test(t
 check(/Lingua scelta nel gioco: italiano/.test(text(r)) && /"lang": "it"/.test(text(r)), "get_game_state riporta la lingua scelta");
 const ws2 = new WebSocket(`ws://127.0.0.1:${PORT2}/ws`);
 const hello2 = await new Promise<any>((res) => ws2.once("message", (d) => res(JSON.parse(String(d)))));
+const nextTutor = client2.callTool({ name: "wait_for_question", arguments: { timeout_seconds: 10 } });
+await new Promise((res) => setTimeout(res, 150));
+const img26 = await askWithImages(ws2, { text: "Qui?", images: [png], context: {
+  mode: "tutor", level: "medio", file: "protocol.py", lines: [2501, 2501], selection: "def solve():",
+  changed: [[1, 1]], buffer: { file: "protocol.py", content: draft, dirty: true },
+} });
+const nextTutorResult = await nextTutor;
+const answerText = nextTutorResult.content[0].type === "text" ? nextTutorResult.content[0].text : "";
+const [question] = JSON.parse(answerText.slice(answerText.indexOf("\n")));
+check(question.context.buffer.startLine === 2498 && question.context.buffer.content.includes("def solve():"), "wait_for_question privilegia la selezione in MCP 2026");
+check(img26.ok && img26.data === question.id && question.imageCount === 1 &&
+  nextTutorResult.content.some((item) => item.type === "image" && item.data === png.data && item.mimeType === png.mimeType),
+  "wait_for_question in MCP 2026 restituisce anche i byte dell'immagine");
+r = await client2.callTool({ name: "read_question_image", arguments: { question_id: question.id, index: 1 } });
+check(r.content[0]?.type === "image" && r.content[0].data === png.data, "read_question_image è disponibile anche in MCP 2026");
+r = await client2.callTool({ name: "read_tutor_buffer", arguments: { question_id: question.id, start: 1, end: 1 } });
+check(text(r).endsWith("# esempio"), "MCP 2026 recupera le righe del buffer");
+r = await client2.callTool({ name: "show_dialog", arguments: { text: "Guarda qui.", question_id: question.id, highlight: { path: "protocol.py", start: 2501, end: 2501 } } });
+check(!r.isError, "MCP 2026 evidenzia una riga presente solo nel buffer modificato");
 ws2.close();
 check(hello2.prefs?.settings?.level === "facile" && hello2.prefs.reader?.aids.includes("piu_schemi"), "le preferenze valgono anche per un altro server (stesso database)");
 await client2.close();
@@ -421,15 +556,28 @@ check(r.isError && /3 pezzi/.test(text(r)), "set_step_diagram controlla upto");
 r = await client.callTool({ name: "set_step_diagram", arguments: { tour_id: TOUR, step_id: "fine", diagram_id: SCHEMA, upto: 2 } });
 r = await client.callTool({ name: "get_tour", arguments: { tour_id: TOUR } });
 check(/prova-schema/.test(text(r)), "set_step_diagram collega lo schema al passo");
-await fs.rm(path.join(project, ".tour", "schemi", `${SCHEMA}.json`), { force: true });
 
-await fs.rm(path.join(project, ".tour", `${TOUR}.json`), { force: true });
-for (const name of await fs.readdir(convDir).catch(() => [] as string[])) {
-  if (!convsBefore.has(name)) await fs.rm(path.join(convDir, name), { force: true });
-}
-if (convsBefore.size === 0) await fs.rm(convDir, { recursive: true, force: true });
-if (gapsBefore === undefined) await fs.rm(gapsFile, { force: true });
-else await fs.writeFile(gapsFile, gapsBefore);
+const invalidImage = await askWithImages(game, { text: "Immagine non valida", images: [{ ...png, mimeType: "image/jpeg" }], context: { level: "medio" } });
+check(invalidImage.ok === false && /formato/.test(invalidImage.error), "il ponte rifiuta immagini con formato dichiarato diverso dai byte");
+const img25 = await askWithImages(game, { text: "", images: [png, largerPng], context: { level: "medio", lang: "it" } });
+await new Promise((res) => setTimeout(res, 150));
+const imageEvent = pushed.at(-1);
+check(img25.ok && imageEvent?.meta.question_id === img25.data && imageEvent.meta.image_count === "2" &&
+  /read_question_image/.test(imageEvent.content) && !imageEvent.content.includes(png.data),
+  "il canale 2025 indica come recuperare gli allegati di una domanda senza testo");
+r = await client.callTool({ name: "get_user_questions", arguments: {} });
+const queuedImages = r.content.filter((item) => item.type === "image");
+check(queuedImages.length === 2 && queuedImages[0].data === png.data && queuedImages[1].data === largerPng.data &&
+  /"imageCount": 2/.test(text(r)) && !/Immagine non valida/.test(text(r)), "get_user_questions in MCP 2025 consegna solo le immagini accettate, nell'ordine di invio");
+r = await client.callTool({ name: "read_question_image", arguments: { question_id: img25.data, index: 2 } });
+check(r.content[0]?.type === "image" && r.content[0].data === largerPng.data, "l'immagine si rilegge anche dopo aver svuotato la coda");
+r = await client.callTool({ name: "read_question_image", arguments: { question_id: "../../package", index: 1 } });
+check(r.isError, "read_question_image rifiuta percorsi esterni");
+const savedImages = await new Project(project).loadQuestionImages(img25.data);
+const savedQuestion = await new Project(project).loadConversation(img25.data);
+check(savedImages[1]?.data === largerPng.data && savedQuestion.turns[0].question.imageCount === 2 &&
+  !JSON.stringify(savedQuestion).includes(png.data), "gli allegati persistono separati dal JSON della conversazione");
+
 game.close();
 evil.close();
 await client.close();

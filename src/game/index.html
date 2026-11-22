@@ -37,6 +37,10 @@
         <aside class="sidebar" aria-label="Side panel" data-i18n-aria-label="ui.sideLabel">
           <section class="side-panel" data-panel="files">
             <div class="sidebar-title" data-i18n="ui.explorer">Explorer</div>
+            <div class="explorer-actions" id="explorer-actions" hidden>
+              <button type="button" class="chip-btn" id="explorer-new" aria-haspopup="menu" data-i18n="ui.explorerNew">New…</button>
+              <button type="button" class="chip-btn" id="explorer-trash" aria-haspopup="dialog" data-i18n="ui.trash">Trash</button>
+            </div>
             <div class="explorer" id="explorer">
               <canvas class="walker" id="walker" aria-hidden="true"></canvas>
               <ul class="file-list" id="file-list"></ul>
@@ -184,9 +188,11 @@
                 <span class="ask-quote-text" id="ask-output-text"></span>
                 <button type="button" class="link-btn" id="ask-output-clear" aria-label="Remove the output" data-i18n-aria-label="ui.clearOutput">✕</button>
               </p>
+              <ul class="ask-images" id="ask-images" aria-label="Image attachments" data-i18n-aria-label="ui.askImageAttachments" hidden></ul>
+              <p class="ask-image-status" id="ask-image-status" role="status" hidden></p>
               <label class="sr-only" for="ask-input" data-i18n="ui.askLabel">Question for the guide</label>
               <textarea id="ask-input" name="question" rows="1" maxlength="2000" placeholder="Ask something about this code…"></textarea>
-              <button type="submit" class="pix-btn" data-i18n="ui.ask">Ask</button>
+              <button type="submit" class="pix-btn" id="ask-submit" data-i18n="ui.ask">Ask</button>
             </form>
           </section>
         </main>
@@ -349,6 +355,62 @@
       <p class="small muted" id="session-msg"></p>
       <ul class="session-list" id="session-list"></ul>
       <button type="button" class="chip-btn" id="session-close" data-i18n="ui.closeSessions">Close</button>
+    </dialog>
+    <dialog class="project-file-dialog" id="rename-file-dialog" aria-labelledby="rename-file-title">
+      <h2 id="rename-file-title" data-i18n="ui.renameFile">Rename file</h2>
+      <form id="rename-file-form">
+        <label for="rename-file-name" data-i18n="ui.newFileName">New file name</label>
+        <input id="rename-file-name" type="text" maxlength="128" autocomplete="off" spellcheck="false" autofocus>
+        <p class="file-dialog-error" id="rename-file-error" role="alert" hidden></p>
+        <div class="file-dialog-actions">
+          <button type="button" class="chip-btn" id="rename-file-references" data-i18n="ui.findReferences">Find references</button>
+          <button type="button" class="chip-btn" id="rename-file-cancel" data-i18n="ui.cancel">Cancel</button>
+          <button type="submit" class="chip-btn" id="rename-file-confirm" data-i18n="ui.rename">Rename</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="project-file-dialog" id="delete-file-dialog" aria-labelledby="delete-file-title" aria-describedby="delete-file-description">
+      <h2 id="delete-file-title" data-i18n="ui.trashFile">Move to trash</h2>
+      <div id="delete-file-description">
+        <p id="delete-file-text"></p>
+        <p id="delete-file-unsaved" data-i18n="msg.deleteUnsaved" hidden>The trash keeps the saved version. Unsaved changes will be lost.</p>
+      </div>
+      <p class="file-dialog-error" id="delete-file-error" role="alert" hidden></p>
+      <div class="file-dialog-actions">
+        <button type="button" class="chip-btn" id="delete-file-cancel" data-i18n="ui.cancel" autofocus>Cancel</button>
+        <button type="button" class="chip-btn" id="delete-file-confirm" data-i18n="ui.trashFile">Move to trash</button>
+      </div>
+    </dialog>
+    <dialog class="project-file-dialog" id="create-entry-dialog" aria-labelledby="create-entry-title" aria-describedby="create-entry-location">
+      <h2 id="create-entry-title"></h2>
+      <p class="muted" id="create-entry-location"></p>
+      <form id="create-entry-form">
+        <label id="create-entry-label" for="create-entry-name"></label>
+        <input id="create-entry-name" type="text" maxlength="128" autocomplete="off" spellcheck="false" autofocus>
+        <p class="file-dialog-error" id="create-entry-error" role="alert" hidden></p>
+        <div class="file-dialog-actions">
+          <button type="button" class="chip-btn" id="create-entry-cancel" data-i18n="ui.cancel">Cancel</button>
+          <button type="submit" class="chip-btn" id="create-entry-confirm" data-i18n="ui.create">Create</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="project-file-dialog" id="trash-dialog" aria-labelledby="trash-title">
+      <h2 id="trash-title" data-i18n="ui.trash">Trash</h2>
+      <p id="trash-status" role="status"></p>
+      <p class="file-dialog-error" id="trash-error" role="alert" hidden></p>
+      <ul class="file-dialog-list" id="trash-list"></ul>
+      <div class="file-dialog-actions">
+        <button type="button" class="chip-btn" id="trash-close" data-i18n="ui.closeSessions" autofocus>Close</button>
+      </div>
+    </dialog>
+    <dialog class="project-file-dialog" id="references-dialog" aria-labelledby="references-title" aria-describedby="references-file">
+      <h2 id="references-title" data-i18n="ui.findReferences">Find references</h2>
+      <p class="muted" id="references-file"></p>
+      <p id="references-status" role="status"></p>
+      <div class="reference-results" id="references-results"></div>
+      <div class="file-dialog-actions">
+        <button type="button" class="chip-btn" id="references-close" data-i18n="ui.closeSessions" autofocus>Close</button>
+      </div>
     </dialog>
     <script type="module" src="./main.ts"></script>
   </body>

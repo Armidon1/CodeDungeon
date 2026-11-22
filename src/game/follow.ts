@@ -65,6 +65,14 @@ function candidates(line: string, file: string): string[] {
 
 /** Il file del progetto a cui porta la riga, se c'è. */
 export function followTarget(line: string, file: string, files: readonly string[]): string | undefined {
-  const known = new Set(files);
+  return followKnownTarget(line, file, new Set(files));
+}
+
+export function followKnownTarget(line: string, file: string, known: ReadonlySet<string>): string | undefined {
   return candidates(line, file).find((c) => known.has(c));
+}
+
+/** Normalizza un collegamento ai file del progetto nei tour e negli schemi. */
+export function projectLink(file: string): string | undefined {
+  return join("", file);
 }

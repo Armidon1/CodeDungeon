@@ -1,9 +1,10 @@
 // Albero dei file nella barra laterale: cartelle che si aprono e si chiudono (chiuse di partenza),
 // prima le cartelle e poi i file come in VS Code. Le cartelle aperte si ricordano per progetto in localStorage.
 // Quando un tour o l'agente apre un file, le sue cartelle si aprono da sole.
-// In tutor un file si trascina su una cartella (o sullo spazio vuoto, per la radice) per spostarlo.
+// In tutor si può trascinare un file per spostarlo o usare il menu contestuale per rinominarlo o eliminarlo.
 
 import { langOf } from "./highlight";
+import { t } from "./i18n";
 
 const STORE_PREFIX = "code-dungeon:open-dirs:";
 /** Pixel di movimento prima che la pressione diventi un trascinamento. */
@@ -21,20 +22,97 @@ interface Dir {
 export interface FileTreeHooks {
   /** Clic su un file; ev serve a riconoscere Ctrl/Cmd+clic e il clic centrale. */
   open(path: string, ev: MouseEvent): void;
-  /** true se i file si possono spostare adesso (modalità tutor). */
-  canMove(): boolean;
+  /** true se i file si possono modificare adesso (modalità tutor). */
+  canEdit(): boolean;
   /** File lasciato sulla cartella toDir ("" = radice). */
   move(path: string, toDir: string): void;
+  rename(path: string): void;
+  delete(path: string): void;
+  references(path: string): void;
+  newFile(dir: string): void;
+  newFolder(dir: string): void;
 }
+
+type MenuAction = "rename" | "delete" | "references" | "newFile" | "newFolder";
 
 export class FileTree {
   private open = new Set<string>();
   private storeKey: string | undefined;
+  private menu = document.createElement("div");
+  private menuItems: HTMLButtonElement[] = [];
+  private menuTarget: HTMLButtonElement | undefined;
 
   constructor(
     private el: HTMLElement,
     private hooks: FileTreeHooks,
-  ) {}
+  ) {
+    const menu = this.menu;
+    menu.className = "file-menu";
+    menu.setAttribute("role", "menu");
+    menu.hidden = true;
+    document.body.append(menu);
+    menu.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key !== "Escape" && e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      if (e.key === "Escape") this.dismissMenu(true);
+      else {
+        const current = this.menuItems.indexOf(document.activeElement as HTMLButtonElement);
+        const next = current + (e.key === "ArrowDown" ? 1 : -1);
+        this.menuItems.at(next % this.menuItems.length)?.focus();
+      }
+    });
+    menu.addEventListener("focusout", (e) => {
+      if (!menu.contains(e.relatedTarget as Node | null)) this.dismissMenu();
+    });
+    document.addEventListener("pointerdown", (e) => {
+      if (!menu.contains(e.target as Node)) this.dismissMenu();
+    });
+    this.el.addEventListener("scroll", () => this.dismissMenu(), true);
+    window.addEventListener("resize", () => this.dismissMenu());
+  }
+
+  dismissMenu(restoreFocus = false): void {
+    const target = this.menuTarget;
+    this.menuTarget = undefined;
+    this.menu.hidden = true;
+    if (restoreFocus) target?.focus({ preventScroll: true });
+  }
+
+  openFolderMenu(btn: HTMLButtonElement, e: MouseEvent, dir: string): void {
+    this.openMenu(btn, e, dir, ["newFile", "newFolder"], t().ui.folderActions);
+  }
+
+  private openMenu(btn: HTMLButtonElement, e: MouseEvent, path: string, actions: MenuAction[], label: string): void {
+    if (!this.hooks.canEdit()) return;
+    e.preventDefault();
+    this.menuTarget = btn;
+    const menu = this.menu;
+    menu.setAttribute("aria-label", label);
+    const labels = { rename: t().ui.rename, delete: t().ui.trashFile, references: t().ui.findReferences, newFile: t().ui.newFileHere, newFolder: t().ui.newFolder };
+    this.menuItems = actions.map((action) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.dataset.action = action;
+      item.setAttribute("role", "menuitem");
+      item.tabIndex = -1;
+      item.textContent = labels[action];
+      item.addEventListener("click", () => {
+        this.dismissMenu(true);
+        if (this.hooks.canEdit()) this.hooks[action](path);
+      });
+      return item;
+    });
+    menu.replaceChildren(...this.menuItems);
+    menu.hidden = false;
+    const { width, height } = menu.getBoundingClientRect();
+    const anchor = btn.getBoundingClientRect();
+    const x = e.button === 2 ? e.clientX : anchor.left;
+    const y = e.button === 2 ? e.clientY : anchor.bottom;
+    menu.style.left = `${Math.max(4, Math.min(x, document.documentElement.clientWidth - width - 4))}px`;
+    menu.style.top = `${Math.max(4, Math.min(y, document.documentElement.clientHeight - height - 4))}px`;
+    this.menuItems[0].focus({ preventScroll: true });
+  }
 
   /** Riprende le cartelle aperte salvate per questo progetto. */
   restore(project: string): void {
@@ -47,17 +125,21 @@ export class FileTree {
     }
   }
 
-  render(files: readonly string[]): void {
+  render(files: readonly string[], dirs: readonly string[]): void {
+    this.dismissMenu();
     const root: Dir = { name: "", path: "", dirs: new Map(), files: [] };
-    for (const file of files) {
-      const parts = file.split("/");
+    const ensureDir = (parts: string[]) => {
       let at = root;
-      for (const [i, name] of parts.slice(0, -1).entries()) {
+      for (const [i, name] of parts.entries()) {
         let next = at.dirs.get(name);
         if (!next) at.dirs.set(name, (next = { name, path: parts.slice(0, i + 1).join("/"), dirs: new Map(), files: [] }));
         at = next;
       }
-      at.files.push(file);
+      return at;
+    };
+    for (const dir of dirs) ensureDir(dir.split("/"));
+    for (const file of files) {
+      ensureDir(file.split("/").slice(0, -1)).files.push(file);
     }
     const frag = document.createDocumentFragment();
     this.add(frag, root, 0);
@@ -95,6 +177,7 @@ export class FileTree {
       btn.innerHTML = `<span class="dir-caret" aria-hidden="true"></span><span class="file-name"></span>`;
       btn.querySelector(".file-name")!.textContent = sub.name;
       btn.addEventListener("click", () => this.toggle(sub.path));
+      btn.addEventListener("contextmenu", (e) => this.openFolderMenu(btn, e, sub.path));
       li.append(btn);
       into.append(li);
       this.add(into, sub, depth + 1);
@@ -110,6 +193,7 @@ export class FileTree {
       btn.innerHTML = `<span class="file-icon ext-${langOf(file)}" aria-hidden="true"></span><span class="file-name"></span>`;
       btn.querySelector(".file-name")!.textContent = file.split("/").at(-1)!;
       btn.addEventListener("click", (e) => this.hooks.open(file, e));
+      btn.addEventListener("contextmenu", (e) => this.openMenu(btn, e, file, ["rename", "delete", "references"], t().ui.fileActions));
       // clic centrale: come Ctrl+clic (auxclick, perché click non scatta col tasto centrale)
       btn.addEventListener("auxclick", (e) => {
         if (e.button === 1) this.hooks.open(file, e);
@@ -126,10 +210,9 @@ export class FileTree {
   /** Trascinamento di un file: la cartella sotto il puntatore si illumina, al rilascio il file ci finisce dentro. */
   private dragFile(btn: HTMLButtonElement, file: string): void {
     btn.addEventListener("pointerdown", (down) => {
-      if (down.button !== 0 || !this.hooks.canMove()) return;
-      // striscia dei file dello schermo stretto: le cartelle non si vedono, niente dove lasciarlo
-      const firstDir = this.el.querySelector(".dir");
-      if (firstDir && firstDir.getClientRects().length === 0) return;
+      if (down.button !== 0 || !this.hooks.canEdit()) return;
+      // Nella striscia orizzontale si lascia il gesto allo scorrimento.
+      if (matchMedia("(max-width: 760px)").matches) return;
       const from = file.includes("/") ? file.slice(0, file.lastIndexOf("/")) : "";
       let dragging = false;
       let target: string | undefined;

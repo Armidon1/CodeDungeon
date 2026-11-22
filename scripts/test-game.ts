@@ -196,6 +196,16 @@ const typeText = async (text: string) => {
   await sleep(150);
 };
 const click = (selector: string) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+const rightClick = async (selector: string) => {
+  const { x, y } = await evaluate<{ x: number; y: number }>(`(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const rect = el.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "right", buttons: 2, clickCount: 1 });
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "right", buttons: 0, clickCount: 1 });
+};
 // larghezza emulata: con l'emulazione mobile Chromium allarga innerWidth fino al contenuto che sborda
 let screenW = 1400;
 let screenH = 900;
@@ -233,6 +243,10 @@ const overflowing = () =>
     }
     return out.slice(0, 5);
   })()`);
+const fillsWindow = () => evaluate<boolean>(`(() => {
+  const r = document.getElementById("app").getBoundingClientRect();
+  return r.left === 0 && r.top === 0 && r.right === ${screenW} && r.bottom === ${screenH};
+})()`);
 const noOverflow = async () => {
   const out = await overflowing();
   if (out.length) console.log(`     oltre il bordo: ${out.join(", ")}`);
@@ -250,6 +264,13 @@ try {
   await viewport(1400, 900);
   check(await load(), "il gioco si apre sul menu");
   check(await noOverflow(), "menu senza scorrimento orizzontale a 1400 px");
+
+  await viewport(3440, 1440);
+  await click("#opt-frame-classica");
+  check(await evaluate(`document.body.classList.contains("frame-classica") && document.getElementById("app").getBoundingClientRect().left > 0`), "la finestra classica resta centrata su ultrawide");
+  await click("#opt-frame-larga");
+  check(await fillsWindow(), "la finestra larga copre tutti i 3440 × 1440 pixel");
+  await viewport(1400, 900);
 
   await evaluate(`document.querySelector(".menu-tab[aria-selected=true]").focus()`);
   const firstTab = await evaluate<string>(`document.activeElement.id`);
@@ -308,6 +329,7 @@ try {
   // ---------- telefono ----------
   await viewport(390, 844);
   check(await load(), "il gioco si apre a 390 px");
+  check(await fillsWindow(), "la finestra larga occupa anche lo schermo a 390 px");
   check(await noOverflow(), "menu senza scorrimento orizzontale a 390 px");
   await click("#start-btn");
   await waitFor(`document.getElementById("title-screen").hidden`);
@@ -554,7 +576,109 @@ try {
     "lasciato su una cartella, il file si sposta su disco e nell'albero",
   );
   check(await evaluate(`!!document.querySelector('#tabs .tab.is-active[data-file="dentro/sposta.py"]') && !document.querySelector('#tabs .tab[data-file="sposta.py"]')`), "la scheda del file spostato segue il percorso nuovo");
-  await fs.rm(path.join(project, "dentro"), { recursive: true });
+
+  const movedFile = '#file-list .file[data-path="dentro/sposta.py"]';
+  const renamedFile = '#file-list .file[data-path="dentro/con bozza.js"]';
+  const renameAction = '.file-menu [data-action="rename"]';
+  const deleteAction = '.file-menu [data-action="delete"]';
+  const referencesAction = '.file-menu [data-action="references"]';
+  const newFolderAction = '.file-menu [data-action="newFolder"]';
+  const newFileAction = '.file-menu [data-action="newFile"]';
+  const referenceResults = `(() => {
+    const text = document.getElementById("references-results").textContent;
+    return text.includes("dentro/collega.py:1") && text.includes("Tour di verifica") && text.includes("Schema di verifica");
+  })()`;
+  await Promise.all([
+    fs.writeFile(path.join(project, "dentro", "collega.py"), "import sposta\n"),
+    fs.writeFile(path.join(project, ".tour", "verifica-riferimenti.json"), JSON.stringify({
+      version: 1, id: "verifica-riferimenti", title: "Tour di verifica",
+      steps: [{ id: "passo", title: "Passo collegato", file: "./dentro/sposta.py", lines: [1, 1], text: { facile: "Prova." } }],
+    })),
+    fs.writeFile(path.join(project, ".tour", "schemi", "verifica-riferimenti.json"), JSON.stringify({
+      version: 1, id: "verifica-riferimenti", title: "Schema di verifica", kind: "flusso", edges: [],
+      nodes: [{ id: "nodo", label: "Nodo collegato", code: { file: "dentro/sposta.py", lines: [1, 1] } }],
+    })),
+  ]);
+  await waitFor(`document.querySelector('#file-list .file[data-path="dentro/collega.py"]')`, 6000);
+  await evaluate(`document.getElementById("code-input").focus()`);
+  await typeText("#");
+  await rightClick(movedFile);
+  check((await visible(renameAction)) && (await visible(deleteAction)) && (await visible(referencesAction)), "il clic destro mostra Rinomina, Sposta nel cestino e Trova riferimenti");
+  await press("ArrowDown");
+  check(await evaluate(`document.activeElement?.dataset.action === "delete"`), "le frecce cambiano azione nel menu contestuale");
+  await press("Escape");
+  check(!(await visible(".file-menu")) && (await evaluate(`document.getElementById("title-screen").hidden`)), "Esc chiude il menu contestuale");
+  await rightClick(movedFile);
+  await click(referencesAction);
+  check(await waitFor(referenceResults), "Trova riferimenti elenca gli import, i passi dei tour e i nodi degli schemi");
+  await click("#references-close");
+  await rightClick(movedFile);
+  await click(renameAction);
+  check(await evaluate(`(() => {
+    const input = document.getElementById("rename-file-name");
+    return document.activeElement === input && input.value === "sposta.py" && input.selectionStart === 0 && input.selectionEnd === 6;
+  })()`), "Rinomina propone il nome attuale e seleziona la parte prima dell'estensione");
+  await click("#rename-file-references");
+  check(await waitFor(referenceResults), "la finestra Rinomina può mostrare i riferimenti al nome originale");
+  await press("Escape");
+  check(await evaluate(`!document.getElementById("references-dialog").open && document.getElementById("rename-file-dialog").open &&
+    document.getElementById("rename-file-name").value === "sposta.py"`), "Esc torna dalla ricerca a Rinomina");
+  await press("Escape");
+  check(await evaluate(`!document.getElementById("rename-file-dialog").open && document.getElementById("title-screen").hidden`) &&
+    existsSync(path.join(project, "dentro", "sposta.py")), "Esc annulla la rinomina");
+  await rightClick(movedFile);
+  await click(renameAction);
+  await typeText("gia");
+  await press("Enter");
+  check(await waitFor(`document.getElementById("rename-file-dialog").open && !document.getElementById("rename-file-error").hidden`) &&
+    (await fs.readFile(path.join(project, "dentro", "gia.py"), "utf8")) === "y = 2\n", "un nome già occupato resta intatto e il messaggio permette di correggere il nome");
+  await evaluate(`document.getElementById("rename-file-name").select()`);
+  await typeText("con bozza.js");
+  await press("Enter");
+  check(await waitFor(`!document.getElementById("rename-file-dialog").open &&
+      !document.querySelector(${JSON.stringify(movedFile)}) && !!document.querySelector(${JSON.stringify(renamedFile)}) &&
+      !!document.querySelector('#tabs .tab.is-active[data-file="dentro/con bozza.js"]') &&
+      document.getElementById("code-input").value.includes("#") && document.getElementById("status-lang").textContent === "JavaScript"`) &&
+    !existsSync(path.join(project, "dentro", "sposta.py")) &&
+    (await fs.readFile(path.join(project, "dentro", "con bozza.js"), "utf8")) === "z = 3\n",
+    "la rinomina aggiorna nome ed estensione su disco e conserva la bozza nella scheda attiva");
+  await rightClick(renamedFile);
+  await click(deleteAction);
+  check(await evaluate(`document.getElementById("delete-file-dialog").open &&
+    document.getElementById("delete-file-text").textContent.includes("dentro/con bozza.js") &&
+    !document.getElementById("delete-file-unsaved").hidden &&
+    document.activeElement?.id === "delete-file-cancel"`), "la conferma nomina il file, avvisa della bozza e dà il fuoco ad Annulla");
+  await press("Escape");
+  check(await evaluate(`!document.getElementById("delete-file-dialog").open &&
+      document.getElementById("title-screen").hidden && document.getElementById("code-input").value.includes("#")`) &&
+    (await fs.readFile(path.join(project, "dentro", "con bozza.js"), "utf8")) === "z = 3\n", "annullare conserva la bozza e il file su disco");
+  await rightClick(renamedFile);
+  await click(deleteAction);
+  await click("#delete-file-confirm");
+  check(await waitFor(`!document.getElementById("delete-file-dialog").open &&
+      !document.querySelector(${JSON.stringify(renamedFile)}) &&
+      !document.querySelector('#tabs .tab[data-file="dentro/con bozza.js"]') &&
+      !!document.querySelector('#tabs .tab.is-active[data-file="solve.py"]')`) &&
+    !existsSync(path.join(project, "dentro", "con bozza.js")), "la conferma sposta il file nel cestino, aggiorna l'albero e passa alla scheda accanto");
+  await click("#explorer-trash");
+  check(await waitFor(`document.querySelector("#trash-list li")?.textContent.includes("dentro/con bozza.js")`), "il Cestino mostra il percorso del file appena spostato");
+  await click("#trash-list button");
+  check(await waitFor(`!!document.querySelector(${JSON.stringify(renamedFile)}) && !document.querySelector("#trash-list button")`) &&
+    (await fs.readFile(path.join(project, "dentro", "con bozza.js"), "utf8")) === "z = 3\n", "Ripristina recupera la versione salvata al percorso originale");
+  await click("#trash-close");
+
+  await click("#explorer-new");
+  await click(newFolderAction);
+  await typeText("prove");
+  await press("Enter");
+  check(await waitFor(`!document.getElementById("create-entry-dialog").open && !!document.querySelector('#file-list .dir[data-dir="prove"]')`) &&
+    (await fs.readdir(path.join(project, "prove"))).length === 0, "Nuova cartella mostra subito nell'albero una cartella vuota");
+  await rightClick('#file-list .dir[data-dir="prove"] .dir-btn');
+  await click(newFolderAction);
+  await typeText("esercizi");
+  await press("Enter");
+  check(await waitFor(`!document.getElementById("create-entry-dialog").open && !!document.querySelector('#file-list .dir[data-dir="prove/esercizi"]:not(.is-folded)')`) &&
+    (await fs.stat(path.join(project, "prove", "esercizi"))).isDirectory(), "il menu di una cartella crea una sottocartella al suo interno");
 
   await viewport(390, 844);
   check(await load(), "a 390 px il gioco si apre in tutor");
@@ -581,6 +705,56 @@ try {
   check(await evaluate(`document.querySelector('#file-list .file[data-path="lib/deep/inner.py"]').getClientRects().length > 0`), "a 390 px la striscia dei file mostra anche quelli nelle cartelle chiuse");
   check(await evaluate(`document.querySelector('#file-list .dir[data-dir="lib"]').classList.contains("is-open")`), "la cartella aperta resta aperta dopo il ricaricamento");
 
+  const narrowFile = '#file-list .file[data-path="dentro/gia.py"]';
+  const narrowRenamed = '#file-list .file[data-path="dentro/prima.py"]';
+  await rightClick(narrowFile);
+  check(await visible(".file-menu") && (await noOverflow()), "a 390 px il menu contestuale resta nello schermo");
+  await click(renameAction);
+  check(await evaluate(`document.getElementById("rename-file-dialog").open`) && (await noOverflow()), "a 390 px la finestra Rinomina resta nello schermo");
+  await typeText("prima");
+  await press("Enter");
+  check(await waitFor(`!document.getElementById("rename-file-dialog").open &&
+      !document.querySelector(${JSON.stringify(narrowFile)}) && !!document.querySelector(${JSON.stringify(narrowRenamed)}) &&
+      !!document.querySelector('#tabs .tab.is-active[data-file="protocol.py"]')`) &&
+    existsSync(path.join(project, "dentro", "prima.py")), "a 390 px si può rinominare un altro file mentre si lavora nell'editor");
+  await rightClick(narrowRenamed);
+  await click(deleteAction);
+  check(await evaluate(`document.getElementById("delete-file-dialog").open &&
+    document.getElementById("delete-file-unsaved").hidden`) && (await noOverflow()), "a 390 px la conferma di un file senza bozza resta nello schermo");
+  await click("#delete-file-confirm");
+  check(await waitFor(`!document.querySelector(${JSON.stringify(narrowRenamed)}) &&
+      !document.getElementById("delete-file-dialog").open &&
+      !!document.querySelector('#tabs .tab.is-active[data-file="protocol.py"]')`) &&
+    !existsSync(path.join(project, "dentro", "prima.py")), "a 390 px si può spostare nel cestino un altro file");
+  await click("#explorer-trash");
+  check(await waitFor(`document.querySelector("#trash-list li")?.textContent.includes("dentro/prima.py")`) && (await noOverflow()), "a 390 px il Cestino resta nello schermo");
+  await click("#trash-list button");
+  check(await waitFor(`!!document.querySelector(${JSON.stringify(narrowRenamed)})`), "a 390 px il file ripristinato torna nell'albero");
+  await click("#trash-close");
+
+  await rightClick('#file-list .dir[data-dir="prove/esercizi"] .dir-btn');
+  await click(newFileAction);
+  check(await evaluate(`document.getElementById("create-entry-dialog").open &&
+    document.getElementById("create-entry-location").textContent.includes("prove/esercizi")`) && (await noOverflow()),
+    "a 390 px Nuovo file qui mostra la cartella di destinazione");
+  await typeText("appunti.py");
+  await press("Enter");
+  check(await waitFor(`!document.getElementById("create-entry-dialog").open &&
+    !!document.querySelector('#tabs .tab.is-active[data-file="prove/esercizi/appunti.py"]')`) &&
+    (await fs.readFile(path.join(project, "prove", "esercizi", "appunti.py"), "utf8")) === "", "Nuovo file qui crea e apre un file nella sottocartella");
+  await rightClick('#file-list .file[data-path="prove/esercizi/appunti.py"]');
+  await click(referencesAction);
+  const noReferences = await waitFor(`document.getElementById("references-dialog").open &&
+    /Nessun riferimento|No references/.test(document.getElementById("references-status").textContent)`);
+  if (!noReferences) console.log(await evaluate(`({
+    open: document.getElementById("references-dialog").open,
+    file: document.getElementById("references-file").textContent,
+    status: document.getElementById("references-status").textContent,
+    results: document.getElementById("references-results").textContent,
+  })`));
+  check(noReferences && (await noOverflow()), "a 390 px i riferimenti vuoti restano nello schermo");
+  await click("#references-close");
+
   // risposta della guida in tutor (dopo l'ultimo ricaricamento: il ponte rimanderebbe la scena): righe in giallo, che spariscono tornando a scrivere
   const lit = await callTool("highlight_lines", { path: "protocol.py", start: 3, end: 4 });
   check(
@@ -590,7 +764,7 @@ try {
   await evaluate(`(() => { const ta = document.getElementById("code-input"); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); })()`);
   await typeText("x");
   check(await waitFor(`!document.querySelector("#editor .line.hl")`), "tornando a scrivere il giallo sparisce");
-  await press("Backspace");
+  // La modifica resta nella bozza durante la risposta della guida.
 
   await click("#edit-ask-btn");
   check(
@@ -606,7 +780,11 @@ try {
 
   // risposte formattate (dopo l'ultimo ricaricamento: il ponte rimanda l'ultimo fumetto e chiuderebbe il menu): paragrafi, elenchi, codice e link, senza apici inversi visibili
   const RICH = "Due fonti:\n\n- Indice: https://docs.pwntools.com.\n- Classe `ELF(\"./vuln\")`, vedi [la pagina](https://docs.pwntools.com/en/stable/elf/elf.html)\n\n1. Web\n2. **Offline**";
-  await callTool("show_dialog", { text: RICH });
+  const diskPath = path.join(project, "protocol.py");
+  const diskBefore = await fs.readFile(diskPath, "utf8");
+  await fs.writeFile(diskPath, diskBefore + "\n# external edit");
+  await callTool("show_dialog", { text: RICH, highlight: { path: "protocol.py", start: 2, end: 2 } });
+  check(await waitFor(`document.querySelector('#editor .line[data-n="2"].hl')`), "a 390 px il fumetto evidenzia anche il codice");
   check(
     await waitFor(`(() => {
       const d = document.getElementById("dialog-text");
@@ -619,6 +797,13 @@ try {
   );
   check(/• Indice/.test(await evaluate<string>(`document.getElementById("dialog-live").textContent`)), "il lettore di schermo riceve il testo con i punti dell'elenco");
 
+  await evaluate(`document.getElementById("code-input").focus()`);
+  await press("s", 2);
+  check(await waitFor(`!document.getElementById("edit-confirm").hidden`), "anche dopo la risposta con righe evidenziate il salvataggio rileva il conflitto");
+  await click("#edit-confirm-cancel");
+  await fs.writeFile(diskPath, diskBefore);
+  await evaluate(`document.getElementById("code-input").focus()`);
+  await press("Backspace");
   check(await noOverflow(), "a 390 px elenchi e indirizzi lunghi vanno a capo senza scorrimento orizzontale");
 
   // blocchi di codice: cornice col linguaggio, colori dell'editor, rientro conservato, pulsante Copia
@@ -922,8 +1107,39 @@ try {
   await press("Enter");
   check(await waitFor(`document.getElementById("ask-input").value === ""`), "Invio manda la domanda");
   check((await askH()) < h1 + 4, "mandata la domanda il campo torna di una riga");
+  const smallPng = (await fs.readFile("src-tauri/icons/32x32.png")).toString("base64");
+  const largePng = (await fs.readFile("src-tauri/icons/64x64.png")).toString("base64");
+  const pasteImages = (...images: string[]) => evaluate(`(() => {
+    const input = document.getElementById("ask-input");
+    const data = new DataTransfer();
+    ${JSON.stringify(images)}.forEach((b64, i) => {
+      const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+      data.items.add(new File([bytes], "appunti-" + i + ".png", { type: "image/png" }));
+    });
+    input.focus();
+    input.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  })()`);
+  const receivedImages = async (caption: string) => {
+    const result = await callTool("get_user_questions", {});
+    const summary = result?.content?.[0]?.text ?? "";
+    const question = JSON.parse(summary.slice(summary.indexOf("\n"))).find((q) => q.text === caption && q.imageCount === 1);
+    return question ? result.content.filter((item) => item.type === "image") : [];
+  };
+  await pasteImages(smallPng, largePng);
+  check(await waitFor(`[...document.querySelectorAll("#ask-images img")].filter((img) => img.naturalWidth).length === 2`), "incollare più immagini mostra le miniature prima dell'invio");
+  await click("#ask-images li:first-child button");
+  check(await evaluate(`document.querySelectorAll("#ask-images img").length === 1 && document.activeElement.id === "ask-input"`), "un'immagine si può rimuovere lasciando le altre negli allegati");
+  await typeText("Che cosa vedi nello screenshot?");
+  await press("Enter");
+  check(await waitFor(`document.getElementById("ask-images").hidden && document.getElementById("ask-input").value === ""`) &&
+    (await receivedImages("Che cosa vedi nello screenshot?"))[0]?.data === largePng, "il browser invia all'agente il testo e l'immagine rimasta");
   await viewport(390, 844);
   check(await noOverflow(), "a 390 px il campo della domanda non allarga la pagina");
+  await pasteImages(smallPng);
+  check(await waitFor(`document.querySelector("#ask-images img")?.naturalWidth === 32`) && await inView("ask-images") && await noOverflow(), "a 390 px l'anteprima incollata resta nello schermo");
+  await click("#ask-submit");
+  check(await waitFor(`document.getElementById("ask-images").hidden`) &&
+    (await receivedImages(""))[0]?.data === smallPng, "a 390 px si può inviare un'immagine anche senza testo");
   await viewport(1400, 900);
 
   // guida a destra: colonna a tutta altezza accanto al codice, divisore verticale, sul telefono torna sotto

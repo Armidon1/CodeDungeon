@@ -8,6 +8,7 @@ import {
   SELECTION_MAX,
   type ConversationTurn,
   type Diagram,
+  type EntryKind,
   type Expression,
   type GameContext,
   type Gap,
@@ -19,12 +20,15 @@ import {
   type Tour,
   type TourStep,
 } from "../shared/types";
+import { validRenameName } from "../shared/file-name";
+import { AskImages } from "./ask-images";
 import * as sound from "./audio";
 import { TRACK_IDS, type SoundSettings } from "./audio";
 import { ChatLog, type ChatCode } from "./chat";
 import { Board } from "./diagram";
 import { FileTree } from "./filetree";
 import { followTarget } from "./follow";
+import { findFileReferences } from "./references";
 import { EditLayer } from "./editing";
 import { changedLines, remapMarks, tutorBuffer, type QuickAsk } from "./tutor";
 import { highlightLines, langLabel, langOf } from "./highlight";
@@ -92,6 +96,7 @@ interface DialogLine {
   diagram?: { id: string; title: string };
   /** Il fumetto riporta una domanda dell'utente (conversazioni rilette). */
   fromUser?: boolean;
+  imageCount?: number;
   /** Messaggio di passaggio ("ci penso…"): non entra nello storico della chat. */
   transient?: boolean;
 }
@@ -127,6 +132,12 @@ export class App {
   private tabState = new Map<string, { scroll: number; highlight: [number, number] | undefined }>();
   /** Scheda con modifiche non salvate in attesa della conferma di chiusura. */
   private closing: string | undefined;
+  private fileDialogTarget: string | undefined;
+  private fileDialogBusy = false;
+  private createTarget: { dir: string; kind: EntryKind } | undefined;
+  private referenceSearch: AbortController | undefined;
+  private trashRun = 0;
+  private saving = new Map<string, Promise<boolean>>();
   private currentLines: string[] = [];
   private highlight: [number, number] | undefined;
   /** Contenuto dei file come sono su disco (l'ultima versione letta o salvata). */
@@ -137,6 +148,8 @@ export class App {
   private askedText = new Map<string, string>();
   /** Tutor: output del terminale da allegare alla prossima domanda ("Spiegami l'errore"). */
   private output: string | undefined;
+  private askImages = new AskImages($("ask-images"), $("ask-image-status"));
+  private askSending = false;
   /** Segni dell'agente (mark_lines) per file, con il testo a cui si riferiscono i numeri di riga. */
   private marks = new Map<string, { base: string; marks: LineMark[] }>();
   private editLayer = new EditLayer($("editor"), { onInput: (text) => this.onEdit(text) });
@@ -183,8 +196,13 @@ export class App {
   private fileTree = new FileTree($("file-list"), {
     // Ctrl/Cmd+clic o clic centrale: in una scheda nuova
     open: (path, e) => void this.goToFile(path, undefined, undefined, { newTab: e.ctrlKey || e.metaKey || e.button === 1 }),
-    canMove: () => this.tutor,
+    canEdit: () => this.tutor,
     move: (path, toDir) => void this.moveFile(path, toDir),
+    rename: (path) => this.openRenameFile(path),
+    delete: (path) => this.confirmDeleteFile(path),
+    references: (path) => void this.showReferences(path),
+    newFile: (dir) => this.openCreateEntry(dir, "file"),
+    newFolder: (dir) => this.openCreateEntry(dir, "dir"),
   });
   private tabBoard = new Board({ onOpenCode: (file, lines) => this.openFromBoard(file, lines, false) });
   /** Schemi aperti come schede, nell'ordine di apertura. */
@@ -270,6 +288,7 @@ export class App {
   }
 
   private openTitle(): void {
+    this.fileTree.dismissMenu();
     sound.play("menu");
     $("title-screen").hidden = false;
     $("app").inert = true;
@@ -399,6 +418,7 @@ export class App {
     this.guidePicker.relabel();
     this.renderGuide();
     this.setQuote(this.quote);
+    this.askImages.render();
     this.renderStatus();
     this.renderDock();
     this.renderTitleSource();
@@ -747,10 +767,142 @@ export class App {
   // ---------- Esplora file ----------
 
   private renderFileList(): void {
-    this.fileTree.render(this.source.files);
+    this.fileTree.render(this.source.files, this.source.dirs);
     if (this.currentFile) this.fileTree.reveal(this.currentFile);
     this.markActiveFile();
     drawMiniGuide($<HTMLCanvasElement>("walker"), 0);
+  }
+
+  private async showReferences(file: string): Promise<void> {
+    const dialog = $<HTMLDialogElement>("references-dialog");
+    if (dialog.open || this.fileDialogBusy) return;
+    this.referenceSearch?.abort();
+    const search = new AbortController();
+    this.referenceSearch = search;
+    $("references-file").textContent = file;
+    $("references-status").textContent = t().msg.searching;
+    $("references-results").replaceChildren();
+    dialog.showModal();
+    const closeForNavigation = () => {
+      dialog.close();
+      const rename = $<HTMLDialogElement>("rename-file-dialog");
+      if (rename.open) rename.close();
+    };
+    try {
+      const found = await findFileReferences(this.source, this.drafts, file, search.signal);
+      if (search.signal.aborted || !dialog.open) return;
+      const results = $("references-results");
+      const group = (title: string, entries: readonly { label: string; open: () => void }[]) => {
+        if (!entries.length) return;
+        const head = document.createElement("h3");
+        head.textContent = title;
+        const list = document.createElement("ul");
+        list.className = "file-dialog-list";
+        for (const entry of entries) {
+          const li = document.createElement("li");
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "tour-item";
+          btn.textContent = entry.label;
+          btn.addEventListener("click", () => {
+            closeForNavigation();
+            entry.open();
+          });
+          li.append(btn);
+          list.append(li);
+        }
+        results.append(head, list);
+      };
+      group(t().ui.codeReferences, found.code.map(({ file, line, text }) => ({
+        label: `${file}:${line} · ${text}`,
+        open: () => void this.goToFile(file, [line, line], undefined, { newTab: true }),
+      })));
+      group(t().ui.savedTours, found.tours.map(({ id, title, step, label }) => ({
+        label: `${title} · ${label}`,
+        open: () => void this.playTour(id, step),
+      })));
+      group(t().ui.diagrams, found.diagrams.map(({ id, title, node }) => ({
+        label: `${title} · ${node}`,
+        open: () => void this.openDiagramTab(id),
+      })));
+      $("references-status").textContent = found.moreCode ? t().msg.moreReferences : results.childElementCount ? "" : t().msg.noReferences;
+    } catch (e) {
+      if (!search.signal.aborted && dialog.open) $("references-status").textContent = t().msg.referencesFailed(this.errText(e));
+    }
+  }
+
+  private openTrash(): void {
+    const dialog = $<HTMLDialogElement>("trash-dialog");
+    if (!this.tutor || dialog.open) return;
+    this.fileDialogTarget = undefined;
+    $("trash-error").hidden = true;
+    dialog.showModal();
+    void this.renderTrash();
+  }
+
+  private async renderTrash(): Promise<void> {
+    const run = ++this.trashRun;
+    const dialog = $<HTMLDialogElement>("trash-dialog");
+    const list = $("trash-list");
+    const error = $("trash-error");
+    const status = $("trash-status");
+    list.replaceChildren();
+    status.textContent = t().msg.trashLoading;
+    try {
+      const items = await this.source.listTrash();
+      if (run !== this.trashRun || !dialog.open) return;
+      status.textContent = items.length ? "" : t().msg.trashEmpty;
+      const date = new Intl.DateTimeFormat(this.settings.lang, { dateStyle: "short", timeStyle: "short" });
+      for (const item of items) {
+        const li = document.createElement("li");
+        li.className = "trash-item";
+        const label = document.createElement("span");
+        label.textContent = item.path;
+        const when = Date.parse(item.deletedAt);
+        if (Number.isFinite(when)) {
+          const time = document.createElement("small");
+          time.className = "muted";
+          time.textContent = date.format(when);
+          label.append(document.createElement("br"), time);
+        }
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "chip-btn";
+        btn.textContent = t().ui.restoreFile;
+        btn.setAttribute("aria-label", `${t().ui.restoreFile} ${item.path}`);
+        btn.addEventListener("click", () => void this.restoreFile(item.id, btn));
+        li.append(label, btn);
+        list.append(li);
+      }
+    } catch (e) {
+      if (run !== this.trashRun || !dialog.open) return;
+      status.textContent = "";
+      error.textContent = t().msg.trashFailed(this.errText(e));
+      error.hidden = false;
+    }
+  }
+
+  private async restoreFile(id: string, button: HTMLButtonElement): Promise<void> {
+    if (!this.tutor || this.fileDialogBusy) return;
+    const close = $<HTMLButtonElement>("trash-close");
+    this.fileDialogBusy = button.disabled = close.disabled = true;
+    const error = $("trash-error");
+    error.hidden = true;
+    try {
+      const path = await this.source.restoreFile(id);
+      this.renderFileList();
+      this.fileTree.reveal(path);
+      this.setEditMessage(t().msg.restored(path));
+      await this.renderTrash();
+    } catch (e) {
+      error.textContent = t().msg.restoreFailed(this.errText(e));
+      error.hidden = false;
+      sound.play("error");
+    } finally {
+      this.fileDialogBusy = button.disabled = close.disabled = false;
+      if (button.isConnected) button.focus();
+      else close.focus();
+    }
   }
 
   private async renderTourList(): Promise<void> {
@@ -1073,7 +1225,8 @@ export class App {
   }
 
   private async doGoToFile(path: string, lines?: [number, number], content?: string, opts: TabOpen = {}): Promise<void> {
-    if (content !== undefined) this.fileCache.set(path, content);
+    // Una bozza conserva la versione su disco usata per controllare i conflitti al salvataggio.
+    if (content !== undefined && !this.drafts.has(path)) this.fileCache.set(path, content);
     if (this.view !== undefined) this.setView(undefined);
     const text = this.drafts.get(path) ?? (await this.readFile(path));
     const changing = path !== this.currentFile;
@@ -1274,7 +1427,9 @@ export class App {
   }
 
   private applyMode(): void {
+    this.fileTree.dismissMenu();
     $("app").classList.toggle("is-tutor", this.tutor);
+    $("explorer-actions").hidden = !this.tutor;
     this.syncEditable();
     this.renderStatus();
     this.reportState();
@@ -1348,6 +1503,18 @@ export class App {
    */
   private async saveFile(force = false, file = this.currentFile, auto = false): Promise<boolean> {
     if (!this.tutor || !file) return false;
+    if (this.fileDialogBusy && this.fileDialogTarget === file) return false;
+    const previous = this.saving.get(file) ?? Promise.resolve();
+    const saving = previous.then(() => this.doSaveFile(file, force, auto));
+    this.saving.set(file, saving);
+    try {
+      return await saving;
+    } finally {
+      if (this.saving.get(file) === saving) this.saving.delete(file);
+    }
+  }
+
+  private async doSaveFile(file: string, force: boolean, auto: boolean): Promise<boolean> {
     const content = this.bufferOf(file);
     if (content === undefined) return false;
     const name = file.split("/").pop()!;
@@ -1462,20 +1629,76 @@ export class App {
       return;
     }
     try {
-      await this.source.writeFile(name, "");
+      await this.source.createEntry("", name, "file");
     } catch (e) {
       this.setEditMessage(t().msg.saveFailed(this.errText(e)), "error");
       return;
     }
-    this.fileCache.set(name, "");
     this.openNewFile(false);
+    await this.openCreatedFile(name);
+  }
+
+  private async openCreatedFile(name: string): Promise<void> {
+    this.fileCache.set(name, "");
     this.renderFileList();
     this.setEditMessage(t().msg.created(name));
     await this.goToFile(name);
     this.editLayer.area.focus();
   }
 
-  /** Sposta un file in un'altra cartella: schede, bozza, segni e stato della scheda seguono il percorso nuovo. */
+  private openCreateEntry(dir: string, kind: EntryKind): void {
+    const dialog = $<HTMLDialogElement>("create-entry-dialog");
+    if (!this.tutor || dialog.open) return;
+    this.fileDialogTarget = undefined;
+    this.createTarget = { dir, kind };
+    $("create-entry-title").textContent = kind === "file" ? t().ui.newFileHere : t().ui.newFolder;
+    $("create-entry-label").textContent = kind === "file" ? t().ui.newFileName : t().ui.newFolderName;
+    $("create-entry-location").textContent = t().msg.createEntryIn(dir || t().msg.projectRoot);
+    $("create-entry-error").hidden = true;
+    $<HTMLInputElement>("create-entry-name").value = "";
+    dialog.showModal();
+  }
+
+  private async createExplorerEntry(): Promise<void> {
+    const dialog = $<HTMLDialogElement>("create-entry-dialog");
+    const target = this.createTarget;
+    if (!this.tutor || !target || !dialog.open || this.fileDialogBusy) return;
+    const { dir, kind } = target;
+    const input = $<HTMLInputElement>("create-entry-name");
+    const cancel = $<HTMLButtonElement>("create-entry-cancel");
+    const confirm = $<HTMLButtonElement>("create-entry-confirm");
+    const error = $("create-entry-error");
+    if (!validRenameName(input.value)) {
+      error.textContent = t().msg.badRenameName;
+      error.hidden = false;
+      return;
+    }
+    this.fileDialogBusy = input.readOnly = cancel.disabled = confirm.disabled = true;
+    error.hidden = true;
+    let path: string;
+    try {
+      path = await this.source.createEntry(dir, input.value, kind);
+    } catch (e) {
+      error.textContent = t().msg.createEntryFailed(this.errText(e));
+      error.hidden = false;
+      sound.play("error");
+      input.focus();
+      return;
+    } finally {
+      this.fileDialogBusy = input.readOnly = cancel.disabled = confirm.disabled = false;
+    }
+    dialog.close();
+    if (kind === "file") {
+      await this.openCreatedFile(path);
+      return;
+    }
+    this.renderFileList();
+    this.fileTree.reveal(path);
+    this.setEditMessage(t().msg.created(path));
+    document.querySelector<HTMLButtonElement>(`#file-list [data-dir="${CSS.escape(path)}"] .dir-btn`)?.focus();
+  }
+
+  /** Sposta un file in un'altra cartella del progetto. */
   private async moveFile(file: string, toDir: string): Promise<void> {
     let to: string;
     try {
@@ -1485,6 +1708,14 @@ export class App {
       this.setEditMessage(t().msg.moveFailed(this.errText(e)), "error");
       return;
     }
+    this.repathFile(file, to);
+    sound.play("select");
+    this.setEditMessage(t().msg.moved(to.split("/").pop()!, toDir || t().msg.projectRoot));
+  }
+
+  /** Schede, bozze, segni e selezioni seguono il percorso nuovo. */
+  private repathFile(file: string, to: string): void {
+    if (file === to) return;
     const rekey = <V>(map: Map<string, V>) => {
       const v = map.get(file);
       if (v === undefined) return;
@@ -1493,16 +1724,126 @@ export class App {
     };
     for (const map of [this.tabState, this.fileCache, this.drafts, this.askedText, this.marks] as Map<string, unknown>[]) rekey(map);
     this.openFiles = this.openFiles.map((f) => (f === file ? to : f));
+    if (this.closing === file) {
+      this.closing = to;
+      $("edit-close-text").textContent = t().msg.closeUnsaved(to.split("/").pop()!);
+    }
     if (this.currentFile === file) {
       this.currentFile = to;
-      $("status-lang").textContent = langLabel(langOf(to));
+      const lang = langOf(to);
+      $("status-lang").textContent = langLabel(lang);
+      const text = this.bufferOf(to);
+      if (lang !== langOf(file) && text !== undefined) {
+        const editor = $("editor");
+        const { scrollLeft, scrollTop } = editor;
+        this.renderLines(text);
+        editor.scrollTo({ left: scrollLeft, top: scrollTop, behavior: "instant" });
+      }
     }
-    sound.play("select");
+    if (this.quote?.file === file) this.setQuote({ ...this.quote, file: to });
     this.fileTree.reveal(to);
     this.renderFileList();
     this.renderTabs();
-    this.setEditMessage(t().msg.moved(to.split("/").pop()!, toDir || t().msg.projectRoot));
     this.reportState();
+  }
+
+  private openRenameFile(file: string): void {
+    const dialog = $<HTMLDialogElement>("rename-file-dialog");
+    if (!this.tutor || dialog.open || !this.source.files.includes(file)) return;
+    this.fileDialogTarget = file;
+    const input = $<HTMLInputElement>("rename-file-name");
+    const name = file.split("/").pop()!;
+    input.value = name;
+    $("rename-file-error").hidden = true;
+    dialog.showModal();
+    const extension = name.lastIndexOf(".");
+    input.setSelectionRange(0, extension > 0 ? extension : name.length);
+  }
+
+  private async renameFile(): Promise<void> {
+    const file = this.fileDialogTarget;
+    const dialog = $<HTMLDialogElement>("rename-file-dialog");
+    if (!file || !dialog.open || !this.tutor || this.fileDialogBusy) return;
+    const input = $<HTMLInputElement>("rename-file-name");
+    const name = input.value;
+    if (name === file.split("/").pop()) {
+      dialog.close();
+      return;
+    }
+    const error = $("rename-file-error");
+    if (!validRenameName(name)) {
+      error.textContent = t().msg.badRenameName;
+      error.hidden = false;
+      input.focus();
+      return;
+    }
+    const cancel = $<HTMLButtonElement>("rename-file-cancel");
+    const confirm = $<HTMLButtonElement>("rename-file-confirm");
+    this.fileDialogBusy = cancel.disabled = confirm.disabled = input.readOnly = true;
+    error.hidden = true;
+    try {
+      await this.saving.get(file);
+      const to = await this.source.renameFile(file, name);
+      await this.navigating;
+      this.repathFile(file, to);
+      this.setEditMessage(t().msg.renamed(to));
+      sound.play("select");
+      dialog.close();
+      document.querySelector<HTMLButtonElement>(`#file-list .file[data-path="${CSS.escape(to)}"]`)?.focus({ preventScroll: true });
+    } catch (e) {
+      error.textContent = t().msg.renameFailed(this.errText(e));
+      error.hidden = false;
+      sound.play("error");
+    } finally {
+      this.fileDialogBusy = cancel.disabled = confirm.disabled = input.readOnly = false;
+      if (dialog.open) input.focus();
+    }
+  }
+
+  private confirmDeleteFile(file: string): void {
+    const dialog = $<HTMLDialogElement>("delete-file-dialog");
+    if (!this.tutor || dialog.open || !this.source.files.includes(file)) return;
+    this.fileDialogTarget = file;
+    $("delete-file-text").textContent = t().msg.deleteConfirm(file);
+    $("delete-file-unsaved").hidden = !this.isDirty(file);
+    $("delete-file-error").hidden = true;
+    dialog.showModal();
+  }
+
+  private async deleteFile(): Promise<void> {
+    const file = this.fileDialogTarget;
+    const dialog = $<HTMLDialogElement>("delete-file-dialog");
+    if (!file || !dialog.open || !this.tutor || this.fileDialogBusy) return;
+    const cancel = $<HTMLButtonElement>("delete-file-cancel");
+    const confirm = $<HTMLButtonElement>("delete-file-confirm");
+    this.fileDialogBusy = cancel.disabled = confirm.disabled = true;
+    const error = $("delete-file-error");
+    error.hidden = true;
+    try {
+      // Un salvataggio già avviato deve finire prima di cancellare il file.
+      await this.saving.get(file);
+      await this.source.trashFile(file);
+      await this.navigating;
+      this.fileCache.delete(file);
+      this.drafts.delete(file);
+      this.askedText.delete(file);
+      this.marks.delete(file);
+      if (this.closing === file) this.endCloseConfirm();
+      if (this.currentFile === file) this.setLineSel(undefined);
+      if (this.quote?.file === file) this.setQuote(undefined);
+      this.closeFileTab(file, true);
+      this.renderFileList();
+      this.setEditMessage(t().msg.deleted(file));
+      sound.play("select");
+      dialog.close();
+    } catch (e) {
+      error.textContent = t().msg.deleteFailed(this.errText(e));
+      error.hidden = false;
+      sound.play("error");
+    } finally {
+      this.fileDialogBusy = cancel.disabled = confirm.disabled = false;
+      if (dialog.open) cancel.focus();
+    }
   }
 
   private applyHighlight(): void {
@@ -1877,6 +2218,7 @@ export class App {
     this.chat.add({
       who: line.fromUser ? "user" : "guide",
       text: line.text,
+      imageCount: line.imageCount,
       speaker: line.speaker ?? this.settings.guide.name,
       title: line.fromUser ? undefined : line.title,
       expression: line.expression,
@@ -2261,29 +2603,52 @@ export class App {
     }
   }
 
-  private async ask(text: string): Promise<void> {
-    const q = text.trim();
-    if (!q) return;
+  private async ask(): Promise<void> {
+    const input = $<HTMLTextAreaElement>("ask-input");
+    const submit = $<HTMLButtonElement>("ask-submit");
+    const q = input.value.trim();
+    const imageCount = this.askImages.count;
+    if (this.askSending || (!q && !imageCount)) return;
+    this.askSending = submit.disabled = input.readOnly = true;
+    this.askImages.setBusy(true);
+    this.askImages.message("");
     // chi chiede mentre legge una risposta continua quella conversazione
+    const conversation = this.liveAnswer ? this.conversation : undefined;
     const ctx = this.context();
     const quote = this.quote;
     const context: GameContext = quote ? { ...ctx, selection: quote.text, file: quote.file ?? ctx.file, lines: quote.lines ?? ctx.lines } : ctx;
     // le righe cambiate si calcolano prima di salvare: dopo, il disco coincide col buffer
     const tutor = this.tutorContext();
     Object.assign(context, tutor.context);
-    if (this.tutor && this.source.kind !== "demo") {
-      await this.saveAllDirty();
-      if (context.buffer) context.buffer.dirty = this.isDirty(context.buffer.file);
+    let sent: boolean;
+    try {
+      const images = await this.askImages.encode();
+      if (this.tutor && this.source.kind !== "demo") {
+        await this.saveAllDirty();
+        if (context.buffer) context.buffer.dirty = this.isDirty(context.buffer.file);
+      }
+      sent = images.length
+        ? await this.source.askWithImages(q, context, conversation, images)
+        : this.source.ask(q, context, conversation);
+    } catch (e) {
+      this.askImages.message(t().msg.askSendFailed(this.errText(e)));
+      sound.play("error");
+      return;
+    } finally {
+      this.askSending = submit.disabled = input.readOnly = false;
+      this.askImages.setBusy(false);
     }
-    const sent = this.source.ask(q, context, this.liveAnswer ? this.conversation : undefined);
     sound.play(sent ? "ask" : "error");
     if (sent) {
+      input.value = "";
+      this.fitAsk();
+      this.askImages.clear();
       this.setQuote(undefined);
       tutor.commit();
       // la domanda va nello storico dopo il fumetto che l'ha fatta nascere
       this.logLine(this.dialogLine);
       this.dialogLine = undefined;
-      this.chat.add({ who: "user", text: q, quote: quote?.text && clip(quote.text.replace(/\s+/g, " "), QUOTE_NOTE_MAX), code: quote?.file && quote.lines ? { file: quote.file, lines: quote.lines } : undefined });
+      this.chat.add({ who: "user", text: q, imageCount: imageCount || undefined, quote: quote?.text && clip(quote.text.replace(/\s+/g, " "), QUOTE_NOTE_MAX), code: quote?.file && quote.lines ? { file: quote.file, lines: quote.lines } : undefined });
       this.say({ text: t().msg.asked, expression: "pensieroso", transient: true });
       this.portrait.set({ talking: false });
       this.waitHint = window.setTimeout(() => {
@@ -2391,12 +2756,14 @@ export class App {
       const { file, lines, selection } = turn.question.context;
       // il testo selezionato su cui era la domanda, sotto il fumetto
       const quote = selection && `${t().msg.quoteFrom(file, lines)} ${t().msg.quoted(clip(selection.replace(/\s+/g, " "), QUOTE_NOTE_MAX))}`;
+      const { imageCount } = turn.question;
       const question: DialogLine = {
         text: turn.question.text,
         expression: "pensieroso",
         speaker: t().msg.you,
         title: t().msg.question,
-        note: quote || undefined,
+        note: [quote, imageCount && t().msg.askImagesAttached(imageCount)].filter(Boolean).join(" ") || undefined,
+        imageCount,
         before: file ? () => void this.goToFile(file, lines) : undefined,
         code: file ? { file, lines } : undefined,
         fromUser: true,
@@ -2806,6 +3173,40 @@ export class App {
       if (d) this.setView(d.id);
     });
     $("edit-save").addEventListener("click", () => void this.saveFile());
+    const renameDialog = $<HTMLDialogElement>("rename-file-dialog");
+    const deleteDialog = $<HTMLDialogElement>("delete-file-dialog");
+    const createDialog = $<HTMLDialogElement>("create-entry-dialog");
+    const trashDialog = $<HTMLDialogElement>("trash-dialog");
+    const referencesDialog = $<HTMLDialogElement>("references-dialog");
+    const explorerNew = $<HTMLButtonElement>("explorer-new");
+    explorerNew.addEventListener("click", (e) => this.fileTree.openFolderMenu(explorerNew, e, ""));
+    $("explorer-trash").addEventListener("click", () => this.openTrash());
+    $("trash-close").addEventListener("click", () => trashDialog.close());
+    $("references-close").addEventListener("click", () => referencesDialog.close());
+    referencesDialog.addEventListener("close", () => {
+      if (!referencesDialog.open) this.referenceSearch?.abort();
+    });
+    $("create-entry-cancel").addEventListener("click", () => createDialog.close());
+    $("create-entry-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      void this.createExplorerEntry();
+    });
+    $("rename-file-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      void this.renameFile();
+    });
+    $("rename-file-cancel").addEventListener("click", () => renameDialog.close());
+    $("rename-file-references").addEventListener("click", () => {
+      if (this.fileDialogTarget) void this.showReferences(this.fileDialogTarget);
+    });
+    $("delete-file-confirm").addEventListener("click", () => void this.deleteFile());
+    $("delete-file-cancel").addEventListener("click", () => deleteDialog.close());
+    for (const dialog of [renameDialog, deleteDialog, createDialog, trashDialog, referencesDialog]) {
+      dialog.addEventListener("cancel", (e) => {
+        if (this.fileDialogBusy) e.preventDefault();
+      });
+      dialog.addEventListener("keydown", (e) => e.stopPropagation());
+    }
     $("edit-overwrite").addEventListener("click", () => void this.saveFile(true));
     $("edit-confirm-cancel").addEventListener("click", () => {
       this.showConfirm(false);
@@ -2913,12 +3314,9 @@ export class App {
     void document.fonts?.ready.then(() => this.editLayer.fit());
     $("ask-form").addEventListener("submit", (e) => {
       e.preventDefault();
-      const input = $<HTMLTextAreaElement>("ask-input");
-      const text = input.value;
-      input.value = "";
-      this.fitAsk();
-      void this.ask(text);
+      void this.ask();
     });
+    $("ask-input").addEventListener("paste", (e) => this.askImages.paste(e));
     // Invio manda la domanda, Maiusc+Invio va a capo (come nella chat degli agenti)
     $("ask-input").addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
@@ -2927,6 +3325,7 @@ export class App {
     });
     $("ask-input").addEventListener("input", () => this.fitAsk());
     document.addEventListener("keydown", (e) => {
+      if (renameDialog.open || deleteDialog.open || createDialog.open || trashDialog.open || referencesDialog.open) return;
       const inField = (e.target as HTMLElement).closest("input, textarea");
       // Ctrl+` come in VS Code: apre e chiude i terminali, anche dall'editor o da dentro un terminale
       if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === "Backquote" && $("title-screen").hidden && !this.isChat) {

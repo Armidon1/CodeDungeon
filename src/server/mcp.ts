@@ -15,10 +15,14 @@ import {
   MARK_KINDS,
   MARK_MESSAGE_MAX,
   MARKS_MAX,
+  QUESTION_IMAGE_WIRE,
+  QUESTION_IMAGES_MAX,
   diagramPieces,
   type Diagram,
   type GameContext,
   type LineMark,
+  type QuestionImage,
+  type ServerMessage,
   type StepDiagram,
   type Tour,
   type TourStep,
@@ -49,7 +53,7 @@ const stepDiagram = z
 const MAX_NODES = 30;
 const MAX_EDGES = 60;
 
-type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
+type ToolResult = { content: ({ type: "text"; text: string } | ({ type: "image" } & QuestionImage))[]; isError?: boolean };
 
 const ok = (text: string, data?: unknown): ToolResult => ({
   content: [{ type: "text", text: data === undefined ? text : `${text}\n${JSON.stringify(data, null, 2)}` }],
@@ -66,20 +70,14 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       // canale di Claude Code: le domande scritte nel gioco arrivano nella sessione senza che l'utente torni al terminale
       capabilities: { experimental: { "claude/channel": {} } },
       instructions:
-        "Code Dungeon è un gioco in pixel art: una guida spiega il codice e fa da tutor mentre l'utente scrive. " +
-        "Quando l'utente chiede solo di aprire Code Dungeon, non costruire un tour: dagli l'indirizzo del gioco e mettiti in ascolto delle sue domande " +
-        "(di solito lo usa come tutor). Costruisci un tour solo se lo chiede (un tour, un giro, la spiegazione del flusso di un programma): " +
-        "create_tour e add_step (un passo per ogni punto del flusso, nell'ordine di esecuzione), poi play_tour. Il prompt crea_tour contiene la guida completa. " +
-        (bridge.listening ? `Il gioco è su ${bridge.url}: dai questo indirizzo all'utente. ` : "") +
-        'Le domande che l\'utente scrive nel gioco possono arrivare da sole come <channel source="code-dungeon" question_id="..." ...>: ' +
-        "rispondi subito nel gioco con show_dialog passando question_id; prima evidenzia con highlight_lines le righe di cui parla la risposta. " +
-        "L'utente legge la risposta nel gioco, non nel terminale. " +
-        "Se le domande non arrivano da sole, chiama wait_for_question appena hai dato l'indirizzo (o dopo play_tour) e dopo ogni risposta, e resta in ascolto: " +
-        "l'utente non deve tornare al terminale per chiedertelo. Smetti solo se l'utente ti scrive nel terminale. " +
-        "L'utente può indicare nel gioco cosa lo aiuta a capire (frasi brevi, più schemi...): lo trovi in get_game_state (reader) " +
-        "e insieme alle domande. Rispettalo in ogni testo. " +
-        "Appena inizi, chiama name_session con il titolo breve di questa chat (l'argomento della conversazione), " +
-        "e di nuovo se l'argomento cambia: l'utente lo legge nell'elenco delle sessioni aperte. " +
+        "Code Dungeon mostra le risposte nel gioco. Se l'utente chiede di aprirlo, non costruire un tour: dai l'indirizzo e resta in ascolto. " +
+        (bridge.listening ? `Gioco: ${bridge.url}. ` : "") +
+        "Costruisci un tour solo se lo chiede: create_tour, add_step in ordine di esecuzione, play_tour. Guida nel prompt crea_tour. " +
+        "Dai un titolo alla sessione con name_session all'avvio e quando cambia argomento. " +
+        "Rispondi alle domande del canale code-dungeon con show_dialog(question_id, text). " +
+        "Quando il canale segnala image_count, guarda gli allegati con read_question_image(question_id, index) prima di rispondere. " +
+        "Se usi il gioco senza canale, chiama wait_for_question dopo l'apertura, play_tour e ogni risposta. Aspetta finché l'utente torna al terminale. " +
+        "Usa level, lang e preferenze di lettura della domanda. " +
         TUTOR_RULES,
     },
   );
@@ -97,8 +95,9 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
   /** Lingua dei testi: quella scelta nel menu del gioco. */
   const langNote = (): string => ` Lingua scelta nel gioco: ${bridge.lang === "it" ? "italiano (it)" : "inglese (en)"}. Scrivi i testi in questa lingua.`;
 
+  const tutorReminder = "Tutor: se il contesto basta, rispondi subito con show_dialog. Un aiuto per volta.";
   /** Nota per le domande in modalità tutor (vuota se nessuna lo è). */
-  const tutorNote = (qs: UserQuestion[]): string => (qs.some((q) => q.context.mode === "tutor") ? ` ${TUTOR_RULES}` : "");
+  const tutorNote = (qs: UserQuestion[]): string => (qs.some((q) => q.context.mode === "tutor") ? ` ${tutorReminder}` : "");
 
   bridge.onQuestion = (q) => {
     const meta: Record<string, string> = { question_id: q.id, level: q.context.level };
@@ -112,7 +111,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     const asks = readerAsks();
     if (asks.length) meta.aiuti = asks.join("; ");
     // se il client non ha attivato il canale la notifica viene ignorata e la domanda resta per get_user_questions
-    // un seguito porta con sé le domande e risposte precedenti della conversazione
+    // un seguito porta con sé l’ultimo scambio della conversazione
     // il testo selezionato fa parte della domanda: senza, "cosa fa questo?" non si capisce
     const selected = q.context.selection
       ? `${q.text}\n\nTesto selezionato dall'utente${q.context.file && q.context.lines ? ` (${q.context.file}, righe ${q.context.lines[0]}-${q.context.lines[1]})` : ""}:\n«${q.context.selection}»`
@@ -120,7 +119,11 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     const followUp = q.previous?.length
       ? `${selected}\n\n(Seguito di una conversazione. Prima:\n${q.previous.map((p) => `D: ${p.question}\nR: ${p.answers.join(" ") || "(nessuna risposta)"}`).join("\n")})`
       : selected;
-    const content = q.context.mode === "tutor" ? `${followUp}${tutorAttachments(q.context)}\n\n${TUTOR_RULES}` : followUp;
+    let content = q.context.mode === "tutor" ? `${followUp}${tutorAttachments(q.context)}\n\n${tutorReminder}` : followUp;
+    if (q.imageCount) {
+      meta.image_count = String(q.imageCount);
+      content += `\n\nAllegati dell'utente: ${q.imageCount} immagini. Prima di rispondere, usa read_question_image con question_id "${q.id}" e index da 1 a ${q.imageCount}.`;
+    }
     server.server
       .notification({ method: "notifications/claude/channel", params: { content, meta } })
       .catch((e: unknown) => log(`notifica della domanda non inviata: ${String(e)}`));
@@ -210,24 +213,60 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     },
   );
 
+  const rangeSchema = {
+    path: z.string(),
+    start: z.number().int().min(1),
+    end: z.number().int().min(1),
+  };
+  async function makeHighlight(path: string, start: number, end: number, questionId?: string): Promise<Extract<ServerMessage, { type: "highlight" }>> {
+    const content = await project.readFile(path);
+    const buffer = questionId ? bridge.tutorSnapshot(questionId) : undefined;
+    const displayed = buffer?.dirty && buffer.file === path ? buffer.content : content;
+    const count = displayed.split("\n").length;
+    if (end < start || end > count) throw new Error(`Righe ${start}-${end} non valide per ${path} (il file ha ${count} righe).`);
+    return { type: "highlight", path, content, start, end };
+  }
+
+  server.registerTool(
+    "read_tutor_buffer",
+    {
+      title: "Leggi le righe dell’editor",
+      description: "Legge righe numerate da 1 dal buffer al momento della domanda, anche non salvato. Disponibile per le ultime 16 domande con buffer.",
+      inputSchema: {
+        question_id: z.string().max(64),
+        start: z.number().int().min(1),
+        end: z.number().int().min(1),
+        offset: z.number().int().min(0).optional().describe("Per continuare lo stesso intervallo dopo una pagina."),
+      },
+    },
+    async ({ question_id, start, end, offset = 0 }) => {
+      const snapshot = bridge.tutorSnapshot(question_id);
+      if (!snapshot) return fail("Buffer della domanda non disponibile.");
+      const lines = snapshot.content.split("\n");
+      if (end < start || start > lines.length) return fail(`Intervallo non valido. Righe disponibili: ${lines.length}.`);
+      const last = Math.min(end, lines.length);
+      const range = lines.slice(start - 1, last).join("\n");
+      if (offset > range.length) return fail("Offset oltre il testo disponibile.");
+      const page = range.slice(offset, offset + 4000);
+      const next = offset + page.length;
+      return ok(`${snapshot.file}, righe ${start}-${last}${snapshot.truncated ? " (buffer ricevuto parziale)" : ""}.` +
+        (next < range.length ? ` Continua con offset ${next}.` : "") + `\n${page}`);
+    },
+  );
+
   server.registerTool(
     "highlight_lines",
     {
       title: "Evidenzia righe",
       description:
-        "Apre il file se serve ed evidenzia in giallo un intervallo di righe (incluso, da 1). Usalo prima di show_dialog per mostrare le righe di cui parla la risposta. " +
+        "Apre il file se serve ed evidenzia in giallo un intervallo di righe (incluso, da 1). Per evidenziare mentre rispondi usa show_dialog con highlight. " +
         "In tutor il giallo sparisce quando l'utente torna a scrivere; i numeri di riga sono quelli di context.buffer.",
-      inputSchema: {
-        path: z.string(),
-        start: z.number().int().min(1),
-        end: z.number().int().min(1),
-      },
+      inputSchema: rangeSchema,
     },
     async ({ path, start, end }) => {
       try {
-        await checkLines(path, start, end);
-        const content = await project.readFile(path);
-        return ok(`Righe ${start}-${end} di ${path} evidenziate. ${delivered(bridge.send({ type: "highlight", path, content, start, end }))}`);
+        const highlight = await makeHighlight(path, start, end);
+        return ok(`Righe ${start}-${end} di ${path} evidenziate. ${delivered(bridge.send(highlight))}`);
       } catch (e) {
         return fail(e);
       }
@@ -325,7 +364,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       title: "Fai parlare la guida",
       description:
         "Mostra un fumetto della guida. Usalo per rispondere alle domande dell'utente o commentare ciò che è evidenziato. " +
-        "Scrivi al livello attuale dell'utente (vedi get_game_state) e nella sua lingua (campo lang: en inglese, it italiano).",
+        "Usa livello e lingua della domanda (level, lang).",
       inputSchema: {
         text: z
           .string()
@@ -333,13 +372,20 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
           .max(4000)
           .describe("Riga vuota tra i paragrafi, un punto per riga negli elenchi (- o 1.), `codice`, blocchi di più righe tra ```linguaggio e ``` (es. ```c), **evidenza**, link come indirizzo o [etichetta](https://...)."),
         expression: expression.optional(),
+        highlight: z.object(rangeSchema).optional().describe("Righe da evidenziare insieme alla risposta."),
         speaker: z.string().max(40).optional().describe("Nome mostrato sopra il fumetto. Predefinito: il nome della guida."),
         question_id: z.string().max(64).optional().describe("Id della domanda a cui rispondi: la toglie dalla coda di get_user_questions."),
       },
     },
-    async ({ text, expression, speaker, question_id }) => {
-      if (question_id) bridge.answer(question_id);
-      return ok(`Fumetto mostrato. ${delivered(bridge.send({ type: "dialog", text, expression, speaker }))}${LISTEN}`);
+    async ({ text, expression, speaker, question_id, highlight }) => {
+      try {
+        const command = highlight && await makeHighlight(highlight.path, highlight.start, highlight.end, question_id);
+        if (question_id) bridge.answer(question_id);
+        if (command) bridge.send(command);
+        return ok(`Fumetto mostrato. ${delivered(bridge.send({ type: "dialog", text, expression, speaker }))}${bridge.connected ? " Attendi sul canale o con wait_for_question." : LISTEN}`);
+      } catch (e) {
+        return fail(e);
+      }
     },
   );
 
@@ -363,18 +409,57 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
   );
 
   server.registerTool(
+    "read_question_image",
+    {
+      title: "Guarda un'immagine della domanda",
+      description: "Restituisce un'immagine incollata dall'utente come allegato MCP. Usa l'id della domanda e l'indice da 1 a image_count (canale) o imageCount (coda e cronologia).",
+      inputSchema: {
+        question_id: z.string().max(64),
+        index: z.number().int().min(1).max(QUESTION_IMAGES_MAX),
+      },
+    },
+    async ({ question_id, index }): Promise<ToolResult> => {
+      try {
+        const image = (await project.loadQuestionImages(question_id))[index - 1];
+        if (!image) return fail(`La domanda non contiene l'immagine ${index}.`);
+        return { content: [{ type: "image", ...image }] };
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  /** Le immagini della coda arrivano in blocchi MCP, entro il peso di una domanda. */
+  const withQuestionImages = async (text: string, questions: UserQuestion[]): Promise<ToolResult> => {
+    const hasImages = questions.some((q) => q.imageCount);
+    const prompt = hasImages ? `${text} Se manca un allegato indicato da imageCount, usa read_question_image con l'id della domanda e l'indice.` : text;
+    const result = ok(prompt, questions);
+    let remaining = QUESTION_IMAGE_WIRE;
+    for (const q of questions) {
+      if (!q.imageCount) continue;
+      const images = await project.loadQuestionImages(q.id).catch(() => []);
+      for (const [i, image] of images.entries()) {
+        if (image.data.length > remaining) return result;
+        remaining -= image.data.length;
+        result.content.push({ type: "text", text: `Domanda ${q.id}, immagine ${i + 1}.` }, { type: "image", ...image });
+      }
+    }
+    return result;
+  };
+
+  server.registerTool(
     "get_user_questions",
     {
       title: "Leggi le domande dell'utente",
       description:
         "Restituisce (e svuota) le domande senza risposta che l'utente ha scritto nel gioco, ognuna con il contesto: livello, file, righe e passo; selection è il testo che l'utente ha selezionato e su cui chiede. " +
-        "Rispondi a ciascuna con show_dialog, eventualmente usando highlight_lines.",
+        "Le immagini allegate arrivano come blocchi MCP. Rispondi a ciascuna con show_dialog, indicando le righe in highlight.",
       inputSchema: {},
     },
     async () => {
       const q = bridge.takeQuestions();
       if (q.length === 0) return ok("Nessuna domanda in attesa.");
-      return ok(`${q.length === 1 ? "1 domanda in attesa." : `${q.length} domande in attesa.`}${readerNote()}${tutorNote(q)}`, q);
+      return withQuestionImages(`${q.length === 1 ? "1 domanda in attesa." : `${q.length} domande in attesa.`}${readerNote()}${tutorNote(q)}`, q);
     },
   );
 
@@ -384,7 +469,8 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       title: "Leggi una conversazione",
       description:
         "Restituisce una conversazione salvata in .tour/conversazioni/: le domande dell'utente, le tue risposte e il codice e gli schemi mostrati. " +
-        "Le domande che continuano una conversazione hanno il campo conversation e già le domande precedenti (previous); usalo se ti serve tutto. " +
+        "Per le domande con imageCount recupera le immagini con read_question_image. " +
+        "Le domande che continuano una conversazione hanno il campo conversation e l’ultimo scambio (previous); usalo se ti serve tutto. " +
         "Senza id elenca le conversazioni, dalla più recente.",
       inputSchema: { id: z.string().max(64).optional() },
     },
@@ -404,6 +490,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       title: "Resta in ascolto delle domande",
       description:
         "Aspetta che l'utente scriva una domanda nel gioco e la restituisce con il contesto (anche quelle già in coda). " +
+        "Le immagini allegate arrivano come blocchi MCP. " +
         "Aspetta il risultato senza chiudere il turno: l'utente sta usando il gioco e legge le risposte lì. " +
         "Rispondi con show_dialog passando question_id, poi richiamalo per restare in ascolto. " +
         "Utile quando le domande non arrivano da sole nella sessione.",
@@ -414,7 +501,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     async ({ timeout_seconds }, ctx) => {
       const q = await bridge.waitQuestions((timeout_seconds ?? 300) * 1000, ctx.mcpReq.signal);
       if (q.length === 0) return ok("Nessuna domanda nel frattempo. Richiama subito wait_for_question: l'utente è ancora nel gioco.");
-      return ok(
+      return withQuestionImages(
         `${q.length === 1 ? "1 domanda" : `${q.length} domande`}. Rispondi ora nel gioco con show_dialog passando question_id, poi richiama wait_for_question.${readerNote()}${tutorNote(q)}`,
         q,
       );
@@ -713,7 +800,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     },
   );
 
-  // In Claude Code: /mcp__code-dungeon__tutor. Le regole brevi sono anche nelle istruzioni del server e in ogni domanda in tutor.
+  // In Claude Code: /mcp__code-dungeon__tutor. Le regole brevi sono anche nelle istruzioni del server con un richiamo nelle domande.
   server.registerPrompt(
     "tutor",
     {
@@ -736,9 +823,10 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
 export const TUTOR_RULES =
   'Domande con context.mode "tutor": l\'utente scrive codice da solo e tu fai da insegnante. ' +
   "Non scrivere la soluzione: un aiuto per richiesta, a livelli (domanda guida, poi concetto, poi frammento minimo; soluzione completa solo se la chiede esplicitamente). " +
-  "Leggi context.buffer (codice attuale, anche non salvato) e parti dalle righe in context.changed; context.output è l'errore del terminale. " +
-  "Prima di ogni risposta evidenzia con highlight_lines le righe di cui parli (il giallo sparisce quando l'utente torna a scrivere). " +
-  "Correggi con highlight_lines o mark_lines (ondina e commento sulla riga, senza la correzione) e spiega il perché; se il codice è giusto dillo in breve. Non modificare mai i file dell'utente. " +
+  "Per una definizione o una domanda semplice basta una risposta breve con show_dialog. " +
+  "Usa il codice e le preferenze allegati. Leggi altre righe con read_tutor_buffer solo se servono. " +
+  "In show_dialog indica in highlight le righe di cui parli (il giallo sparisce quando l'utente torna a scrivere). " +
+  "Correggi con highlight o mark_lines (ondina e commento sulla riga, senza la correzione) e spiega il perché; se il codice è giusto dillo in breve. Non modificare mai i file dell'utente. " +
   "Errore di concetto (non refuso): annotalo con record_gap; get_gaps dice cosa ripassare. " +
   "Regole complete nel prompt tutor.";
 
@@ -748,7 +836,8 @@ function tutorAttachments(ctx: GameContext): string {
   const b = ctx.buffer;
   if (b) {
     const state = [b.dirty ? "non salvato" : "salvato", b.truncated ? "tagliato" : ""].filter(Boolean).join(", ");
-    parts.push(`Codice nell'editor (${b.file}, ${state}):\n\`\`\`\n${b.content}\n\`\`\``);
+    const range = b.startLine ? `, dalla riga ${b.startLine} di ${b.lineCount}` : "";
+    parts.push(`Codice nell'editor (${b.file}, ${state}${range}):\n\`\`\`\n${b.content}\n\`\`\``);
   }
   if (ctx.changed?.length) parts.push(`Righe cambiate dall'ultima domanda: ${ctx.changed.map(([a, z]) => (a === z ? `${a}` : `${a}-${z}`)).join(", ")}.`);
   if (ctx.output) parts.push(`Output del terminale:\n\`\`\`\n${ctx.output}\n\`\`\``);

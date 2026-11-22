@@ -21,6 +21,7 @@ export interface ChatEntry {
   expression?: Expression;
   /** Testo selezionato che accompagnava la domanda. */
   quote?: string;
+  imageCount?: number;
   code?: ChatCode;
   diagram?: { id: string; title: string };
 }
@@ -111,6 +112,12 @@ export class ChatLog {
       if (entry.who === "guide") renderRich(p, entry.text);
       else p.textContent = entry.text;
       bubble.append(p);
+    }
+    if (entry.imageCount) {
+      const images = document.createElement("p");
+      images.className = "chat-images";
+      images.textContent = t().msg.askImagesAttached(entry.imageCount);
+      bubble.append(images);
     }
     if (entry.code) bubble.append(this.codeCard(entry.code));
     if (entry.diagram) {
@@ -238,6 +245,7 @@ function isEntry(x: unknown): x is ChatEntry {
     str(e.speaker) &&
     str(e.title) &&
     str(e.quote) &&
+    (e.imageCount === undefined || (Number.isSafeInteger(e.imageCount) && e.imageCount > 0)) &&
     (e.code === undefined || typeof e.code?.file === "string") &&
     (e.diagram === undefined || (typeof e.diagram?.id === "string" && typeof e.diagram.title === "string"))
   );

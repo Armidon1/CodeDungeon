@@ -3,7 +3,7 @@
 // - DemoSource (demo-source.ts): il progetto d'esempio incorporato, senza agente.
 
 import { t } from "./i18n";
-import type { Conversation, ConversationSummary, Diagram, DiagramSummary, GameContext, Gap, MovedFile, ServerMessage, StoredPrefs, Tour, TourSummary } from "../shared/types";
+import type { Conversation, ConversationSummary, Diagram, DiagramSummary, EntryKind, GameContext, Gap, MovedFile, QuestionImage, ServerMessage, StoredPrefs, Tour, TourSummary, TrashEntry } from "../shared/types";
 
 export type AgentCommand = Extract<ServerMessage, { type: "open_file" | "highlight" | "marks" | "gaps" | "dialog" | "play_tour" | "diagram" | "conversation" }>;
 
@@ -15,6 +15,7 @@ export interface GameSource {
   /** Porta del ponte collegato; undefined nella demo o prima di collegarsi. */
   port?: number;
   files: string[];
+  dirs: string[];
   /** true se dall'altra parte c'è un agente che può rispondere alle domande. */
   agent: boolean;
   /** Impostazioni salvate dal ponte (arrivano con hello); undefined nella demo. */
@@ -26,6 +27,12 @@ export interface GameSource {
   writeFile(path: string, content: string): Promise<string[]>;
   /** Modalità tutor: sposta un file nella cartella toDir ("" = radice); risolve col percorso nuovo. */
   moveFile(path: string, toDir: string): Promise<string>;
+  /** Modalità tutor: rinomina un file nella sua cartella e risolve col nuovo percorso. */
+  renameFile(path: string, name: string): Promise<string>;
+  trashFile(path: string): Promise<void>;
+  listTrash(): Promise<TrashEntry[]>;
+  restoreFile(id: string): Promise<string>;
+  createEntry(dir: string, name: string, kind: EntryKind): Promise<string>;
   listTours(): Promise<TourSummary[]>;
   loadTour(id: string): Promise<Tour>;
   listDiagrams(): Promise<DiagramSummary[]>;
@@ -37,6 +44,7 @@ export interface GameSource {
   resolveGap(id: string, resolved: boolean): Promise<Gap[]>;
   /** conversation: id della conversazione che la domanda continua. */
   ask(text: string, context: GameContext, conversation?: string): boolean;
+  askWithImages(text: string, context: GameContext, conversation: string | undefined, images: QuestionImage[]): Promise<boolean>;
   sendState(context: GameContext): void;
   savePrefs(prefs: StoredPrefs): void;
   /** Impostazioni cambiate da un'altra finestra del gioco. */
@@ -61,6 +69,7 @@ export class BridgeSource implements GameSource {
   projectName = "";
   port: number | undefined;
   files: string[] = [];
+  dirs: string[] = [];
   agent = false;
   prefs: StoredPrefs | undefined;
   private terminal = false;
@@ -123,6 +132,7 @@ export class BridgeSource implements GameSource {
       if (msg.type === "hello") {
         this.projectName = msg.project;
         this.files = msg.files;
+        this.dirs = msg.dirs ?? [];
         this.agent = msg.agent;
         this.prefs = msg.prefs;
         this.terminal = msg.terminal === true;
@@ -139,6 +149,7 @@ export class BridgeSource implements GameSource {
         for (const cb of this.prefsCbs) cb(msg.prefs);
       } else if (msg.type === "files") {
         this.files = msg.files;
+        this.dirs = msg.dirs ?? [];
         for (const cb of this.filesCbs) cb(msg.files);
       } else {
         for (const cb of this.commandCbs) cb(msg);
@@ -176,6 +187,29 @@ export class BridgeSource implements GameSource {
     this.files = moved.files;
     return moved.path;
   }
+  async renameFile(path: string, name: string): Promise<string> {
+    const to = await this.request<string>({ op: "rename_file", path, name });
+    this.files = this.files.map((file) => file === path ? to : file);
+    return to;
+  }
+  async trashFile(path: string): Promise<void> {
+    await this.request<void>({ op: "trash_file", path });
+    this.files = this.files.filter((file) => file !== path);
+  }
+  listTrash(): Promise<TrashEntry[]> {
+    return this.request<TrashEntry[]>({ op: "list_trash" });
+  }
+  async restoreFile(id: string): Promise<string> {
+    const path = await this.request<string>({ op: "restore_file", id });
+    if (!this.files.includes(path)) this.files.push(path);
+    return path;
+  }
+  async createEntry(dir: string, name: string, kind: EntryKind): Promise<string> {
+    const path = await this.request<string>({ op: "create_entry", dir, name, kind });
+    const list = kind === "dir" ? this.dirs : this.files;
+    if (!list.includes(path)) list.push(path);
+    return path;
+  }
   listTours(): Promise<TourSummary[]> {
     return this.request<TourSummary[]>({ op: "list_tours" });
   }
@@ -203,6 +237,11 @@ export class BridgeSource implements GameSource {
   ask(text: string, context: GameContext, conversation?: string): boolean {
     if (!this.agent || !this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
     this.ws.send(JSON.stringify({ type: "question", text, context, conversation }));
+    return true;
+  }
+  async askWithImages(text: string, context: GameContext, conversation: string | undefined, images: QuestionImage[]): Promise<boolean> {
+    if (!this.agent || !this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    await this.request<string>({ op: "ask_with_images", text, context, conversation, images });
     return true;
   }
   sendState(context: GameContext): void {
