@@ -434,6 +434,8 @@ export type ClientMessage =
   | { type: "request"; reqId: string; op: "move_file"; path: string; to: string }
   /** Modalità tutor: sposta una cartella con il suo contenuto ("" = radice). */
   | { type: "request"; reqId: string; op: "move_dir"; path: string; to: string }
+  /** Modalità tutor: rinomina una cartella lasciandola dov'è. Risponde con MovedDirectory. */
+  | { type: "request"; reqId: string; op: "rename_dir"; path: string; name: string }
   /** Modalità tutor: rinomina un file nella sua cartella. Risponde con il nuovo percorso. */
   | { type: "request"; reqId: string; op: "rename_file"; path: string; name: string }
   /** Modalità tutor: sposta un file nel cestino del progetto. */

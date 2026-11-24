@@ -31,6 +31,7 @@ export interface GameSource {
   moveDirectory(path: string, toDir: string): Promise<MovedDirectory>;
   /** Modalità tutor: rinomina un file nella sua cartella e risolve col nuovo percorso. */
   renameFile(path: string, name: string): Promise<string>;
+  renameDirectory(path: string, name: string): Promise<MovedDirectory>;
   trashFile(path: string): Promise<void>;
   listTrash(): Promise<TrashEntry[]>;
   restoreFile(id: string): Promise<string>;
@@ -196,6 +197,11 @@ export class BridgeSource implements GameSource {
   }
   async moveDirectory(path: string, toDir: string): Promise<MovedDirectory> {
     const moved = await this.request<MovedDirectory>({ op: "move_dir", path, to: toDir });
+    this.applyDirectoryMove(moved);
+    return moved;
+  }
+  async renameDirectory(path: string, name: string): Promise<MovedDirectory> {
+    const moved = await this.request<MovedDirectory>({ op: "rename_dir", path, name });
     this.applyDirectoryMove(moved);
     return moved;
   }

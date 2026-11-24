@@ -585,8 +585,8 @@ export class Bridge {
           data = { path: moved, files: await p.listFiles() } satisfies MovedFile;
           void this.checkFiles();
         }
-        else if (msg.op === "move_dir") {
-          const moved = await p.moveDirectory(msg.path, msg.to);
+        else if (msg.op === "move_dir" || msg.op === "rename_dir") {
+          const moved = msg.op === "move_dir" ? await p.moveDirectory(msg.path, msg.to) : await p.renameDirectory(msg.path, msg.name);
           data = moved;
           if (moved.from !== moved.to) {
             const repath = (path: string) => repathDirectory(path, moved.from, moved.to);
@@ -595,7 +595,7 @@ export class Bridge {
             if (this.lastContext?.file) this.lastContext.file = repath(this.lastContext.file);
             const event = JSON.stringify({ type: "directory_moved", ...moved } satisfies ServerMessage);
             for (const other of this.clients) if (other !== ws) other.send(event);
-            log(`cartella spostata dal gioco: ${moved.from} → ${moved.to}`);
+            log(`cartella ${msg.op === "move_dir" ? "spostata" : "rinominata"} dal gioco: ${moved.from} → ${moved.to}`);
             void this.checkFiles();
           }
         }

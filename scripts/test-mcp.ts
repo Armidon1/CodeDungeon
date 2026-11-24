@@ -78,6 +78,15 @@ check(numberSpan("a\nb", [9, 11]) === undefined && numberSpan("a", [9, 9]) === u
   check((await p.moveDirectory("dir", "meta")).to === "meta/dir" &&
     (await p.listTree()).dirs.includes("meta/dir/vuota") && (await p.readFile("meta/dir/a.py")) === "a\n" &&
     (await p.moveDirectory("meta/dir", "")).to === "dir", "moveDirectory porta con sé file e sottocartelle vuote e può tornare alla radice");
+  await fs.mkdir(path.join(box, "occupata"));
+  check((await Promise.all(
+    ["", ".", "..", "a/b", ".git", ".tour", "node_modules", "occupata", "meta"].map((name) => fails(() => p.renameDirectory("dir", name))),
+  )).every(Boolean) && await fails(() => p.renameDirectory("", "x")) && await fails(() => p.renameDirectory(".tour", "x")) &&
+    await fails(() => p.renameDirectory("alias-dir", "x")) && (await p.readFile("dir/a.py")) === "a\n",
+  "renameDirectory rifiuta nomi non validi, nomi occupati, la radice, link e percorsi protetti");
+  check((await p.renameDirectory("dir", "rinominata")).to === "rinominata" && (await p.readFile("rinominata/a.py")) === "a\n" &&
+    (await p.listTree()).dirs.includes("rinominata/vuota") && (await p.renameDirectory("rinominata", "dir")).to === "dir",
+  "renameDirectory rinomina la cartella sul posto con file e sottocartelle");
   for (const folder of ["primo", "secondo"]) await fs.mkdir(path.join(box, folder, "condivisa"), { recursive: true });
   const moves = await Promise.allSettled([p.moveDirectory("primo/condivisa", "meta"), p.moveDirectory("secondo/condivisa", "meta")]);
   check(moves.filter((move) => move.status === "fulfilled").length === 1 &&

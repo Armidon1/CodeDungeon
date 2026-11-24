@@ -164,6 +164,8 @@ export class App {
   /** Scheda con modifiche non salvate in attesa della conferma di chiusura. */
   private closing: string | undefined;
   private fileDialogTarget: string | undefined;
+  /** La finestra Rinomina serve per un file o per una cartella. */
+  private renameKind: EntryKind = "file";
   private fileDialogBusy = false;
   private createTarget: { dir: string; kind: EntryKind } | undefined;
   private referenceSearch: AbortController | undefined;
@@ -237,7 +239,8 @@ export class App {
     canEdit: () => this.tutor && !this.moving,
     move: (path, toDir, kind) => void this.moveEntry(path, toDir, kind).catch((e) => this.showMoveError(e)),
     moveFolder: (dir) => this.openMoveFolder(dir),
-    rename: (path) => this.openRenameFile(path),
+    rename: (path) => this.openRenameEntry(path, "file"),
+    renameFolder: (dir) => this.openRenameEntry(dir, "dir"),
     delete: (path) => this.confirmDeleteFile(path),
     references: (path) => void this.showReferences(path),
     newFile: (dir) => this.openCreateEntry(dir, "file"),
@@ -1924,17 +1927,44 @@ export class App {
     this.reportState();
   }
 
-  private openRenameFile(file: string): void {
+  private openRenameEntry(path: string, kind: EntryKind): void {
     const dialog = $<HTMLDialogElement>("rename-file-dialog");
-    if (!this.tutor || dialog.open || !this.source.files.includes(file)) return;
-    this.fileDialogTarget = file;
+    if (!this.tutor || this.moving || dialog.open || !(kind === "dir" ? this.source.dirs : this.source.files).includes(path)) return;
+    this.fileDialogTarget = path;
+    this.renameKind = kind;
+    const ui = t().ui;
+    $("rename-file-title").textContent = kind === "dir" ? ui.renameFolder : ui.renameFile;
+    $("rename-file-label").textContent = kind === "dir" ? ui.newName : ui.newFileName;
+    // i riferimenti si cercano per file
+    $("rename-file-references").hidden = kind === "dir";
     const input = $<HTMLInputElement>("rename-file-name");
-    const name = file.split("/").pop()!;
+    const name = path.split("/").pop()!;
     input.value = name;
     $("rename-file-error").hidden = true;
     dialog.showModal();
-    const extension = name.lastIndexOf(".");
+    const extension = kind === "dir" ? -1 : name.lastIndexOf(".");
     input.setSelectionRange(0, extension > 0 ? extension : name.length);
+  }
+
+  /** Rinomina la cartella dir: come uno spostamento, schede, bozze e segni seguono il percorso nuovo. */
+  private async renameFolder(dir: string, name: string): Promise<string | undefined> {
+    if (!this.tutor || this.moving) return;
+    this.moving = { path: dir, kind: "dir" };
+    this.renderUndoMove();
+    try {
+      await Promise.all([...this.saving].filter(([file]) => directoryContains(dir, file)).map(([, saving]) => saving));
+      await this.navigating;
+      const move = await this.source.renameDirectory(dir, name);
+      await this.navigating;
+      if (move.from === move.to) return move.to;
+      if (this.lastMove && [this.lastMove.from, this.lastMove.to].some((path) => directoryContains(move.from, path))) this.clearUndoMove();
+      this.applyDirectoryMove(move);
+      this.fileTree.showArrival(move.to);
+      return move.to;
+    } finally {
+      this.moving = undefined;
+      this.renderUndoMove();
+    }
   }
 
   private async renameFile(): Promise<void> {
@@ -1943,13 +1973,14 @@ export class App {
     if (!file || !dialog.open || !this.tutor || this.fileDialogBusy) return;
     const input = $<HTMLInputElement>("rename-file-name");
     const name = input.value;
+    const folder = this.renameKind === "dir";
     if (name === file.split("/").pop()) {
       dialog.close();
       return;
     }
     const error = $("rename-file-error");
     if (!validRenameName(name)) {
-      error.textContent = t().msg.badRenameName;
+      error.textContent = folder ? t().msg.badFolderName : t().msg.badRenameName;
       error.hidden = false;
       input.focus();
       return;
@@ -1959,6 +1990,15 @@ export class App {
     this.fileDialogBusy = cancel.disabled = confirm.disabled = input.readOnly = true;
     error.hidden = true;
     try {
+      if (folder) {
+        const to = await this.renameFolder(file, name);
+        if (to === undefined) return;
+        this.setEditMessage(t().msg.renamed(to));
+        sound.play("select");
+        dialog.close();
+        this.fileTree.focusEntry(to, "dir");
+        return;
+      }
       await this.saving.get(file);
       const to = await this.source.renameFile(file, name);
       await this.navigating;
@@ -1969,7 +2009,7 @@ export class App {
       dialog.close();
       document.querySelector<HTMLButtonElement>(`#file-list .file[data-path="${CSS.escape(to)}"]`)?.focus({ preventScroll: true });
     } catch (e) {
-      error.textContent = t().msg.renameFailed(this.errText(e));
+      error.textContent = (folder ? t().msg.renameFolderFailed : t().msg.renameFailed)(this.errText(e));
       error.hidden = false;
       sound.play("error");
     } finally {

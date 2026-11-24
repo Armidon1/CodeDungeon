@@ -71,6 +71,18 @@ export class DemoSource implements GameSource {
     this.dirs = this.dirs.map(repath);
     return { from, to };
   }
+  async renameDirectory(from: string, name: string): Promise<{ from: string; to: string }> {
+    if (!this.dirs.includes(from)) throw new Error(t().msg.notFound(from));
+    const to = from.slice(0, from.lastIndexOf("/") + 1) + name;
+    if (from === to) return { from, to };
+    if (!validRenameName(name)) throw new Error(t().msg.badRenameName);
+    if (this.contents.has(to) || this.dirs.includes(to)) throw new Error(t().msg.fileExists(to));
+    const repath = (path: string) => repathDirectory(path, from, to);
+    this.contents = new Map([...this.contents].map(([path, text]) => [repath(path), text]));
+    this.files = [...this.contents.keys()].sort();
+    this.dirs = this.dirs.map(repath);
+    return { from, to };
+  }
   async renameFile(path: string, name: string): Promise<string> {
     const dirEnd = path.lastIndexOf("/") + 1;
     if (name !== path.slice(dirEnd) && !validRenameName(name)) throw new Error(t().msg.badRenameName);

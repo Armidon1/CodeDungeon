@@ -844,6 +844,24 @@ try {
     !!document.querySelector('#file-list [data-dir="prove/schedario/interno/vuota"]')`) &&
     !existsSync(path.join(project, "schedario")) && existsSync(path.join(project, "prove", "schedario", "primo.py")) &&
     await noOverflow(), "a 390 px Annulla riporta la cartella e il suo contenuto nel percorso originale");
+  await rightClick(folderButton("prove/schedario"));
+  await click('.file-menu [data-action="renameFolder"]');
+  check(await inView("rename-file-dialog") && await noOverflow() && await evaluate(`(() => {
+    const input = document.getElementById("rename-file-name");
+    return /cartella|folder/i.test(document.getElementById("rename-file-title").textContent) && document.getElementById("rename-file-references").hidden &&
+      input.value === "schedario" && input.selectionStart === 0 && input.selectionEnd === input.value.length;
+  })()`), "a 390 px Rinomina cartella apre la finestra con il nome selezionato");
+  await typeText("archivio");
+  await press("Enter");
+  check(await waitFor(`!document.getElementById("rename-file-dialog").open && !!document.querySelector('#file-list [data-dir="prove/archivio/interno/vuota"]') &&
+    !document.querySelector('#file-list [data-dir="prove/schedario"]')`) &&
+    existsSync(path.join(project, "prove", "archivio", "primo.py")) && !existsSync(path.join(project, "prove", "schedario")),
+  "clic destro e Rinomina cambiano il nome della cartella con il suo contenuto");
+  await rightClick(folderButton("prove/archivio"));
+  await click('.file-menu [data-action="renameFolder"]');
+  await typeText("schedario");
+  await press("Enter");
+  await waitFor(`!!document.querySelector('#file-list [data-dir="prove/schedario"]')`);
 
   const narrowFile = '#file-list .file[data-path="dentro/gia.py"]';
   const narrowRenamed = '#file-list .file[data-path="dentro/prima.py"]';
@@ -1308,6 +1326,13 @@ try {
   check(await evaluate(`document.querySelector(".editor-wrap").clientHeight === ${editorHeight} &&
     Math.abs(document.getElementById("term-panel").getBoundingClientRect().bottom - document.querySelector(".editor-wrap").getBoundingClientRect().bottom) < 2`),
     "il terminale si sovrappone al fondo dell’editor senza ridimensionarlo");
+  check(await evaluate(`(() => {
+    const editor = document.getElementById("editor");
+    editor.scrollTop = editor.scrollHeight;
+    const lines = editor.querySelectorAll(".line");
+    const last = lines[lines.length - 1].getBoundingClientRect();
+    return last.bottom <= document.getElementById("term-dock").getBoundingClientRect().top + 1;
+  })()`), "in fondo al file l’editor scorre ancora: l’ultima riga resta sopra il terminale");
   const desktopGrip = await evaluate<{ x: number; y: number; height: number }>(`(() => {
     const r = document.getElementById("split-term").getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2, height: document.getElementById("term-panel").clientHeight };

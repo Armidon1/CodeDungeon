@@ -125,7 +125,22 @@ export class Project {
     if (from === root) throw new Error("La radice del progetto non si può spostare.");
     const dir = await this.editableDirectory(root, toDir);
     if (isWithin(from, dir)) throw new Error("Destinazione dentro la cartella da spostare.");
-    const to = path.join(dir, path.basename(from));
+    return this.relocateDirectory(root, from, path.join(dir, path.basename(from)));
+  }
+
+  /** Rinomina una cartella dell'utente lasciandola dov'è, con tutto il contenuto. */
+  async renameDirectory(relPath: string, name: string): Promise<MovedDirectory> {
+    if (typeof relPath !== "string" || typeof name !== "string") throw new Error("Percorso non valido.");
+    const root = await this.getRealRoot();
+    const from = await this.editableDirectory(root, relPath);
+    if (from === root) throw new Error("La radice del progetto non si rinomina da qui.");
+    if (name !== path.basename(from) && (!validRenameName(name) || IGNORED_DIRS.has(name))) throw new Error("Nome della cartella non valido.");
+    return this.relocateDirectory(root, from, path.join(path.dirname(from), name));
+  }
+
+  /** Sposta la cartella from in to senza mai sostituire una voce che c'è già. */
+  private relocateDirectory(root: string, from: string, to: string): MovedDirectory {
+    this.checkEditable(root, from);
     this.checkEditable(root, to);
     const moved = { from: relativePath(root, from), to: relativePath(root, to) };
     if (from === to) return moved;

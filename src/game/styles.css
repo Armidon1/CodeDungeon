@@ -529,10 +529,13 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 .term-zoom { display: inline-flex; }
 .term-zoom .chip-btn { margin: 0; }
 .app.is-chat .term-dock { grid-area: log; }
+/* Con il cassetto aperto il codice scorre oltre il fondo: le ultime righe possono salire sopra i terminali. */
+.main:has(.term-dock:not([hidden])) .editor { padding-bottom: calc(24px + 10px + var(--term-h, 220px)); }
 
 @media (max-width: 760px) {
   .term-head { gap: 4px; }
   .term-dock { --term-grip: 14px; height: min(100%, calc(var(--term-h, 160px) + var(--term-grip))); }
+  .main:has(.term-dock:not([hidden])) .editor { padding-bottom: calc(24px + 14px + var(--term-h, 160px)); }
   .term-head .term-label { display: none; }
 }
 

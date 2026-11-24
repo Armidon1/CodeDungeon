@@ -31,13 +31,14 @@ export interface FileTreeHooks {
   move(path: string, toDir: string, kind: EntryKind): void;
   moveFolder(path: string): void;
   rename(path: string): void;
+  renameFolder(path: string): void;
   delete(path: string): void;
   references(path: string): void;
   newFile(dir: string): void;
   newFolder(dir: string): void;
 }
 
-type MenuAction = "rename" | "delete" | "references" | "newFile" | "newFolder" | "moveFolder";
+type MenuAction = "rename" | "renameFolder" | "delete" | "references" | "newFile" | "newFolder" | "moveFolder";
 
 export class FileTree {
   private open = new Set<string>();
@@ -87,7 +88,7 @@ export class FileTree {
 
   openFolderMenu(btn: HTMLButtonElement, e: MouseEvent, dir: string): void {
     const actions: MenuAction[] = ["newFile", "newFolder"];
-    if (dir) actions.push("moveFolder");
+    if (dir) actions.push("renameFolder", "moveFolder");
     this.openMenu(btn, e, dir, actions, t().ui.folderActions);
   }
 
@@ -98,7 +99,7 @@ export class FileTree {
     const menu = this.menu;
     menu.setAttribute("aria-label", label);
     const ui = t().ui;
-    const labels = { rename: ui.rename, delete: ui.trashFile, references: ui.findReferences, newFile: ui.newFileHere, newFolder: ui.newFolder, moveFolder: ui.moveFolder };
+    const labels = { rename: ui.rename, renameFolder: ui.rename, delete: ui.trashFile, references: ui.findReferences, newFile: ui.newFileHere, newFolder: ui.newFolder, moveFolder: ui.moveFolder };
     this.menuItems = actions.map((action) => {
       const item = document.createElement("button");
       item.type = "button";
