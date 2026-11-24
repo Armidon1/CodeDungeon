@@ -91,8 +91,9 @@ const en = {
     terminalZoomIn: "Increase terminal text size",
     newTerminal: "New terminal",
     closeTerminal: "Close the terminal",
-    hideTerminal: "Hide the terminals (Ctrl+`)",
-    toggleTerminal: "Show or hide the bottom terminal panel (Ctrl+`)",
+    hideTerminal: "Hide the terminals (Ctrl+` or Ctrl+Shift+T)",
+    toggleTerminal: "Show or hide the bottom terminal panel (Ctrl+` or Ctrl+Shift+T)",
+    switchWorkspace: "Switch between Agent and Terminals (Ctrl+T or Ctrl+Shift+`)",
     resizeTerminal: "Resize the terminals (arrows, Enter resets)",
     sessions: "Open sessions",
     switchSession: "Switch session",
@@ -394,6 +395,50 @@ const en = {
     bridgeNotConnected: "The bridge isn't connected.",
     notFound: (what: string) => `Not found: ${what}`,
   },
+  shortcuts: {
+    button: "Shortcuts",
+    title: "Keyboard shortcuts (? key)",
+    note: "In the browser, Ctrl+T and Ctrl+Shift+T often belong to the browser: use Ctrl+Shift+` and Ctrl+` instead. In the app all of them work.",
+    groups: [
+      { title: "General", items: [
+        [["?"], "This list"],
+        [["Esc"], "Menu; closes the board"],
+        [["F"], "Full screen (F11 in the app)"],
+        [["C"], "Chat with the guide"],
+        [["M"], "Audio on or off"],
+        [["+", "−"], "Bigger or smaller text"],
+      ] },
+      { title: "Tour", items: [
+        [["Enter", "Space", "→"], "Next step"],
+        [["←"], "Previous step"],
+        [["1–4"], "Pick an answer or a level"],
+      ] },
+      { title: "Code", items: [
+        [["Ctrl+F"], "Search the project"],
+        [["Ctrl+G"], "Go to line"],
+        [["Ctrl+←", "Ctrl+→", "Ctrl+PgUp", "Ctrl+PgDn"], "Previous or next tab"],
+        [["Ctrl+click"], "Open an import, or a file in a new tab"],
+        [["Ctrl+S"], "Save the file (tutor)"],
+        [["Tab", "Shift+Tab"], "Indent or outdent (tutor)"],
+        [["Esc"], "Leave the editor"],
+      ] },
+      { title: "Questions", items: [
+        [["Enter"], "Send"],
+        [["Shift+Enter"], "New line"],
+      ] },
+      { title: "Terminals", items: [
+        [["Ctrl+T", "Ctrl+Shift+`"], "Switch between Agent and Terminals"],
+        [["Ctrl+Shift+T", "Ctrl+`"], "Show or hide the bottom terminals (Agent)"],
+        [["Ctrl+Shift+C"], "Copy the selection"],
+        [["Ctrl+Shift+V"], "Paste"],
+        [["↑", "↓"], "Other terminal, on the terminal list"],
+      ] },
+      { title: "Panels", items: [
+        [["←", "→", "↑", "↓"], "Resize, on a divider"],
+        [["Enter"], "Default size, on a divider"],
+      ] },
+    ] as { title: string; items: [string[], string][] }[],
+  },
 };
 
 type Dict = typeof en;
@@ -471,8 +516,9 @@ const it: Dict = {
     terminalZoomIn: "Ingrandisci il testo dei terminali",
     newTerminal: "Nuovo terminale",
     closeTerminal: "Chiudi il terminale",
-    hideTerminal: "Nascondi i terminali (Ctrl+`)",
-    toggleTerminal: "Apri o chiudi i terminali in basso (Ctrl+`)",
+    hideTerminal: "Nascondi i terminali (Ctrl+` o Ctrl+Maiusc+T)",
+    toggleTerminal: "Apri o chiudi i terminali in basso (Ctrl+` o Ctrl+Maiusc+T)",
+    switchWorkspace: "Passa tra Agente e Terminali (Ctrl+T o Ctrl+Maiusc+`)",
     resizeTerminal: "Ridimensiona i terminali (frecce, Invio ripristina)",
     sessions: "Sessioni aperte",
     switchSession: "Cambia sessione",
@@ -770,6 +816,50 @@ const it: Dict = {
     bridgeClosed: "Connessione al ponte chiusa.",
     bridgeNotConnected: "Il ponte non è collegato.",
     notFound: (what) => `Non trovato: ${what}`,
+  },
+  shortcuts: {
+    button: "Scorciatoie",
+    title: "Scorciatoie da tastiera (tasto ?)",
+    note: "Nel browser Ctrl+T e Ctrl+Maiusc+T sono spesso del browser: usa Ctrl+Maiusc+` e Ctrl+`. Nell'app funzionano tutte.",
+    groups: [
+      { title: "Generali", items: [
+        [["?"], "Questo elenco"],
+        [["Esc"], "Menu; chiude la lavagna"],
+        [["F"], "Schermo intero (F11 nell'app)"],
+        [["C"], "Chat con la guida"],
+        [["M"], "Audio sì o no"],
+        [["+", "−"], "Testo più grande o più piccolo"],
+      ] },
+      { title: "Tour", items: [
+        [["Invio", "Spazio", "→"], "Passo successivo"],
+        [["←"], "Passo precedente"],
+        [["1–4"], "Scegli una risposta o un livello"],
+      ] },
+      { title: "Codice", items: [
+        [["Ctrl+F"], "Cerca nel progetto"],
+        [["Ctrl+G"], "Vai alla riga"],
+        [["Ctrl+←", "Ctrl+→", "Ctrl+PagSu", "Ctrl+PagGiù"], "Scheda precedente o successiva"],
+        [["Ctrl+clic"], "Apri un import, o un file in una scheda nuova"],
+        [["Ctrl+S"], "Salva il file (tutor)"],
+        [["Tab", "Maiusc+Tab"], "Indenta o togli rientro (tutor)"],
+        [["Esc"], "Esci dall'editor"],
+      ] },
+      { title: "Domande", items: [
+        [["Invio"], "Invia"],
+        [["Maiusc+Invio"], "A capo"],
+      ] },
+      { title: "Terminali", items: [
+        [["Ctrl+T", "Ctrl+Maiusc+`"], "Passa tra Agente e Terminali"],
+        [["Ctrl+Maiusc+T", "Ctrl+`"], "Apri o chiudi i terminali in basso (Agente)"],
+        [["Ctrl+Maiusc+C"], "Copia la selezione"],
+        [["Ctrl+Maiusc+V"], "Incolla"],
+        [["↑", "↓"], "Altro terminale, sull'elenco dei terminali"],
+      ] },
+      { title: "Pannelli", items: [
+        [["←", "→", "↑", "↓"], "Ridimensiona, su un divisore"],
+        [["Invio"], "Misura iniziale, su un divisore"],
+      ] },
+    ],
   },
 };
 

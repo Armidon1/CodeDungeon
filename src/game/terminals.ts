@@ -257,6 +257,8 @@ export class TerminalPanel {
     term.attachCustomKeyEventHandler((e) => {
       // Ctrl+` resta del gioco (apre e chiude il pannello), non va alla shell
       if (e.ctrlKey && e.code === "Backquote") return false;
+      // Ctrl+T e Ctrl+Maiusc+T cambiano vista o pannello (gestiti dal gioco), anche se la shell userebbe Ctrl+T
+      if (e.ctrlKey && !e.altKey && e.code === "KeyT") return false;
       // Ctrl+Maiusc+C copia la selezione come nei terminali di Linux; senza, il browser apre i suoi strumenti
       if (e.ctrlKey && e.shiftKey && !e.altKey && e.code === "KeyC") {
         e.preventDefault();

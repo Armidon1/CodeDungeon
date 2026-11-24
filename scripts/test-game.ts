@@ -376,6 +376,23 @@ try {
   await press("c");
   check(await evaluate(`!document.getElementById("app").classList.contains("is-chat")`), "il tasto C torna alla vista classica");
   check(await noOverflow(), "vista classica senza scorrimento orizzontale a 390 px");
+  // pulsante Scorciatoie: a 390 px solo "?", il popup elenca tutto e sta nello schermo
+  check(await inView("shortcuts-btn") && (await evaluate<string>(`document.getElementById("shortcuts-btn").innerText.trim()`)) === "?",
+    "a 390 px il pulsante delle scorciatoie è un ? visibile");
+  await click("#shortcuts-btn");
+  check(
+    (await waitFor(`document.getElementById("shortcuts-dialog").open`)) &&
+      (await evaluate<boolean>(`document.getElementById("shortcuts-list").textContent.includes("Ctrl+T") && document.querySelectorAll("#shortcuts-list kbd").length > 20`)) &&
+      (await evaluate<boolean>(`(() => { const r = document.getElementById("shortcuts-dialog").getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })()`)),
+    "il popup delle scorciatoie elenca le scorciatoie e sta in 390 px",
+  );
+  check(await noOverflow(), "scorciatoie senza scorrimento orizzontale a 390 px");
+  await press("Escape");
+  check(await waitFor(`!document.getElementById("shortcuts-dialog").open && document.getElementById("title-screen").hidden`), "Esc chiude le scorciatoie senza aprire il menu");
+  await press("?", 8);
+  check(await waitFor(`document.getElementById("shortcuts-dialog").open`), "il tasto ? apre le scorciatoie");
+  await click("#shortcuts-close");
+  await waitFor(`!document.getElementById("shortcuts-dialog").open`);
 
   // ---------- modalità tutor ----------
   await viewport(1400, 900);
@@ -1254,6 +1271,28 @@ try {
     for (const type of ["rawKeyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: "C", code: "KeyC", windowsVirtualKeyCode: 67, modifiers: 10 });
   }
   check(!!wordAt && await waitFor(`window.__copied === "cd-42"`, 3000), "Ctrl+Maiusc+C copia la selezione del terminale");
+  // Ctrl+T (anche da dentro la shell) passa tra Agente e Terminali; Ctrl+Maiusc+T apre e chiude il pannello in basso
+  const ctrlT = async (shift = false) => {
+    for (const type of ["rawKeyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: shift ? "T" : "t", code: "KeyT", windowsVirtualKeyCode: 84, modifiers: shift ? 10 : 2 });
+  };
+  await ctrlT();
+  check(await waitFor(`document.getElementById("agent-workspace").hidden && !document.getElementById("terminal-workspace").hidden`),
+    "Ctrl+T dentro il terminale porta alla scheda Terminali");
+  await ctrlT();
+  check(await waitFor(`!document.getElementById("agent-workspace").hidden && document.getElementById("terminal-workspace").hidden && !document.getElementById("term-dock").hidden`),
+    "Ctrl+T riporta alla scheda Agente con il pannello in basso com'era");
+  await ctrlT(true);
+  check(await waitFor(`document.getElementById("term-dock").hidden && !document.getElementById("agent-workspace").hidden`), "Ctrl+Maiusc+T nasconde i terminali in basso");
+  await ctrlT(true);
+  check(await waitFor(`!document.getElementById("term-dock").hidden && document.getElementById("terminal-workspace").hidden`), "Ctrl+Maiusc+T li fa ricomparire");
+  // l'alternativa che il browser lascia passare: Ctrl+Maiusc+`
+  const ctrlShiftBackquote = async () => {
+    for (const type of ["rawKeyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: "~", code: "Backquote", windowsVirtualKeyCode: 192, modifiers: 10 });
+  };
+  await ctrlShiftBackquote();
+  check(await waitFor(`!document.getElementById("terminal-workspace").hidden`), "Ctrl+Maiusc+` porta alla scheda Terminali");
+  await ctrlShiftBackquote();
+  check(await waitFor(`!document.getElementById("agent-workspace").hidden && !document.getElementById("term-dock").hidden`), "Ctrl+Maiusc+` riporta alla scheda Agente");
   await click("#terminals-tab");
   check(await waitFor(`document.getElementById("agent-workspace").hidden && document.querySelector("#terminal-workspace #term-panel").clientHeight > innerHeight / 2 && /cd-42/.test(${termRows})`),
     "la scheda Terminali occupa l’area di lavoro e riprende la stessa shell");

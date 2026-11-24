@@ -1377,6 +1377,15 @@ button.board-node:hover { color: var(--lantern); }
 .file-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 #delete-file-confirm, #delete-file-unsaved, .file-dialog-error { color: var(--ember); }
 .file-dialog-list { display: grid; gap: 6px; list-style: none; margin: 0 0 12px; padding: 0; }
+.shortcuts-dialog { width: min(620px, calc(100vw - 32px)); }
+.shortcuts-list { display: grid; gap: 12px; margin-bottom: 12px; }
+.shortcuts-list h3 { margin: 0 0 4px; font-family: var(--font-display); font-size: calc(10px * var(--fs)); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sky); }
+.shortcuts-list dl { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 4px 12px; margin: 0; }
+.shortcuts-list dt { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.shortcuts-list dd { margin: 0; align-self: center; color: var(--ink-dim); }
+.shortcuts-list kbd { padding: 0 5px; font-family: var(--font-mono, monospace); font-size: calc(13px * var(--fs)); color: var(--lantern); background: var(--code-bg); border: 2px solid var(--line); white-space: nowrap; }
+.shortcuts-note { font-size: calc(13px * var(--fs)); }
+.shortcuts-short { display: none; }
 .trash-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
 .trash-item span { min-width: 0; flex: 1 1 180px; }
 .reference-results h3 { margin: 8px 0 4px; font-size: 1em; color: var(--lantern); }
@@ -1400,6 +1409,10 @@ button.board-node:hover { color: var(--lantern); }
   .titlebar-name, .win-dots { display: none; }
   .titlebar { gap: 6px; padding-inline: 8px; }
   .titlebar .chip-btn { white-space: nowrap; padding-inline: 7px; }
+  .shortcuts-long { display: none; }
+  .shortcuts-short { display: inline; }
+  .shortcuts-list dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .shortcuts-list dd { margin-bottom: 6px; }
   .sidebar { border-right: 0; border-bottom: 2px solid var(--line); overflow: visible; }
   .splitter { display: none; }
   .workbench.is-side-closed { grid-template-columns: minmax(0, 1fr); }

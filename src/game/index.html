@@ -21,12 +21,13 @@
         <button type="button" class="chip-btn" id="fullscreen-btn" aria-pressed="false" aria-label="Full screen" title="Full screen (F key)" data-i18n-aria-label="ui.fullscreen" data-i18n-title="ui.fullscreenTitle" hidden><span class="fs-icon" aria-hidden="true"></span></button>
         <button type="button" class="chip-btn" id="chat-btn" aria-pressed="false" aria-label="Chat with the guide: hides the code (C key)" title="Chat with the guide: hides the code (C key)" data-i18n-aria-label="ui.chat" data-i18n-title="ui.chat"><span class="act act-chat" aria-hidden="true"></span></button>
         <button type="button" class="chip-btn" id="sound-btn" aria-pressed="false" title="Audio (M key)" data-i18n="ui.audio" data-i18n-title="ui.audioTitle">♪ Audio</button>
+        <button type="button" class="chip-btn" id="shortcuts-btn" aria-haspopup="dialog" aria-label="Keyboard shortcuts (? key)" title="Keyboard shortcuts (? key)" data-i18n-aria-label="shortcuts.title" data-i18n-title="shortcuts.title"><span class="shortcuts-long" data-i18n="shortcuts.button">Shortcuts</span><span class="shortcuts-short" aria-hidden="true">?</span></button>
         <button type="button" class="chip-btn" id="menu-btn" aria-label="Open the menu" data-i18n="ui.menu" data-i18n-aria-label="ui.openMenu">Menu</button>
       </header>
 
       <div class="workspace-tabs" id="workspace-tabs" role="tablist" aria-label="Workspace" data-i18n-aria-label="ui.workspace" hidden>
-        <button type="button" id="agent-tab" role="tab" aria-controls="agent-workspace" aria-selected="true" data-i18n="ui.agent">Agent</button>
-        <button type="button" id="terminals-tab" role="tab" aria-controls="terminal-workspace" aria-selected="false" tabindex="-1" data-i18n="ui.terminals">Terminals</button>
+        <button type="button" id="agent-tab" role="tab" aria-controls="agent-workspace" aria-selected="true" title="Switch between Agent and Terminals (Ctrl+T or Ctrl+Shift+`)" data-i18n="ui.agent" data-i18n-title="ui.switchWorkspace">Agent</button>
+        <button type="button" id="terminals-tab" role="tab" aria-controls="terminal-workspace" aria-selected="false" tabindex="-1" title="Switch between Agent and Terminals (Ctrl+T or Ctrl+Shift+`)" data-i18n="ui.terminals" data-i18n-title="ui.switchWorkspace">Terminals</button>
       </div>
       <div class="workbench" id="agent-workspace" role="tabpanel" aria-labelledby="agent-tab">
         <nav class="activitybar" aria-label="Side panels" data-i18n-aria-label="ui.panels">
@@ -162,7 +163,7 @@
                   <button type="button" class="chip-btn" id="term-zoom-in" data-i18n="ui.zoomIn" data-i18n-aria-label="ui.terminalZoomIn" data-i18n-title="ui.terminalZoomIn">Zoom +</button>
                 </span>
                 <button type="button" class="chip-btn" id="term-new" aria-label="New terminal" title="New terminal" data-i18n-aria-label="ui.newTerminal" data-i18n-title="ui.newTerminal">+</button>
-                <button type="button" class="chip-btn" id="term-hide" aria-label="Hide the terminals (Ctrl+`)" title="Hide the terminals (Ctrl+`)" data-i18n-aria-label="ui.hideTerminal" data-i18n-title="ui.hideTerminal">✕</button>
+                <button type="button" class="chip-btn" id="term-hide" aria-label="Hide the terminals (Ctrl+` or Ctrl+Shift+T)" title="Hide the terminals (Ctrl+` or Ctrl+Shift+T)" data-i18n-aria-label="ui.hideTerminal" data-i18n-title="ui.hideTerminal">✕</button>
               </div>
               <div class="term-body" id="term-body"></div>
               <div class="term-tabs" id="term-tabs" role="tablist" aria-orientation="vertical" aria-label="Terminals" data-i18n-aria-label="ui.terminals"></div>
@@ -425,6 +426,14 @@
       <ul class="file-dialog-list" id="trash-list"></ul>
       <div class="file-dialog-actions">
         <button type="button" class="chip-btn" id="trash-close" data-i18n="ui.closeSessions" autofocus>Close</button>
+      </div>
+    </dialog>
+    <dialog class="project-file-dialog shortcuts-dialog" id="shortcuts-dialog" aria-labelledby="shortcuts-title">
+      <h2 id="shortcuts-title" data-i18n="shortcuts.title">Keyboard shortcuts (? key)</h2>
+      <div class="shortcuts-list" id="shortcuts-list"></div>
+      <p class="muted shortcuts-note" data-i18n="shortcuts.note"></p>
+      <div class="file-dialog-actions">
+        <button type="button" class="chip-btn" id="shortcuts-close" data-i18n="ui.closeSessions" autofocus>Close</button>
       </div>
     </dialog>
     <dialog class="project-file-dialog" id="references-dialog" aria-labelledby="references-title" aria-describedby="references-file">

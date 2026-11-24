@@ -1175,6 +1175,27 @@ export class App {
   }
 
   /** Ctrl+F: cerca il testo selezionato (se è breve); Ctrl+G: prepara ":" per saltare a una riga. */
+  /** Elenco delle scorciatoie, rifatto a ogni apertura nella lingua corrente. */
+  private openShortcuts(): void {
+    const list = $("shortcuts-list");
+    list.replaceChildren(
+      ...t().shortcuts.groups.map((group) => {
+        const section = document.createElement("section");
+        const title = document.createElement("h3");
+        title.textContent = group.title;
+        const dl = document.createElement("dl");
+        for (const [keys, what] of group.items) {
+          const dt = document.createElement("dt");
+          dt.append(...keys.map((key) => Object.assign(document.createElement("kbd"), { textContent: key })));
+          dl.append(dt, Object.assign(document.createElement("dd"), { textContent: what }));
+        }
+        section.append(title, dl);
+        return section;
+      }),
+    );
+    $<HTMLDialogElement>("shortcuts-dialog").showModal();
+  }
+
   private openSearch(goToLine: boolean): void {
     const input = $<HTMLInputElement>("search-input");
     const sel = getSelection()?.toString().trim();
@@ -3469,6 +3490,10 @@ export class App {
     const moveDialog = $<HTMLDialogElement>("move-folder-dialog");
     const trashDialog = $<HTMLDialogElement>("trash-dialog");
     const referencesDialog = $<HTMLDialogElement>("references-dialog");
+    const shortcutsDialog = $<HTMLDialogElement>("shortcuts-dialog");
+    $("shortcuts-btn").addEventListener("click", () => this.openShortcuts());
+    $("shortcuts-close").addEventListener("click", () => shortcutsDialog.close());
+    shortcutsDialog.addEventListener("keydown", (e) => e.stopPropagation());
     const explorerNew = $<HTMLButtonElement>("explorer-new");
     explorerNew.addEventListener("click", (e) => this.fileTree.openFolderMenu(explorerNew, e, ""));
     $("explorer-trash").addEventListener("click", () => this.openTrash());
@@ -3661,12 +3686,21 @@ export class App {
       this.fitAsk();
     });
     document.addEventListener("keydown", (e) => {
-      if (renameDialog.open || deleteDialog.open || createDialog.open || trashDialog.open || referencesDialog.open) return;
+      if (renameDialog.open || deleteDialog.open || createDialog.open || trashDialog.open || referencesDialog.open || shortcutsDialog.open) return;
       const inField = (e.target as HTMLElement).closest("input, textarea");
-      // Ctrl+` come in VS Code: apre e chiude i terminali, anche dall'editor o da dentro un terminale
+      // Ctrl+` come in VS Code: apre e chiude i terminali, anche dall'editor o da dentro un terminale.
+      // Ctrl+Maiusc+` passa tra Agente e Terminali: è il Ctrl+T che il browser non si tiene
       if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === "Backquote" && $("title-screen").hidden) {
         e.preventDefault();
-        this.terminals.toggle();
+        if (!e.shiftKey) this.terminals.toggle();
+        else if (this.terminals.available) this.terminals.setWorkspace(!this.terminals.inWorkspace);
+        return;
+      }
+      // Ctrl+T passa tra Agente e Terminali; Ctrl+Maiusc+T, nella scheda Agente, apre e chiude i terminali in basso
+      if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === "KeyT" && $("title-screen").hidden && this.terminals.available) {
+        e.preventDefault();
+        if (!e.shiftKey) this.terminals.setWorkspace(!this.terminals.inWorkspace);
+        else if (!this.terminals.inWorkspace) this.terminals.toggle();
         return;
       }
       // dentro un terminale i tasti sono della shell (Esc compreso)
@@ -3706,6 +3740,10 @@ export class App {
       }
       if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey && !e.altKey && $("title-screen").hidden) {
         this.setChat(!this.isChat);
+        return;
+      }
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        this.openShortcuts();
         return;
       }
       if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey && !e.altKey) {
