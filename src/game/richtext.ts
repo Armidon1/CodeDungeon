@@ -268,7 +268,7 @@ function codeBlock(b: Extract<Block, { kind: "code" }>): HTMLElement {
 }
 
 /** Copia negli appunti; se l'API non c'è o è negata (alcune webview), ripiega su execCommand. */
-async function copyText(text: string): Promise<boolean> {
+export async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
     return true;

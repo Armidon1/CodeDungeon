@@ -8,6 +8,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { TermClientMessage, TermServerMessage } from "../shared/types";
 import { t } from "./i18n";
 import { reducedMotion } from "./reader";
+import { copyText } from "./richtext";
 
 interface Term {
   id: number;
@@ -253,8 +254,20 @@ export class TerminalPanel {
     });
     this.terms.push(x);
     this.activate(x);
-    // Ctrl+` resta del gioco (apre e chiude il pannello), non va alla shell
-    term.attachCustomKeyEventHandler((e) => !(e.ctrlKey && e.code === "Backquote"));
+    term.attachCustomKeyEventHandler((e) => {
+      // Ctrl+` resta del gioco (apre e chiude il pannello), non va alla shell
+      if (e.ctrlKey && e.code === "Backquote") return false;
+      // Ctrl+Maiusc+C copia la selezione come nei terminali di Linux; senza, il browser apre i suoi strumenti
+      if (e.ctrlKey && e.shiftKey && !e.altKey && e.code === "KeyC") {
+        e.preventDefault();
+        const text = term.getSelection();
+        if (e.type === "keydown" && text) void copyText(text).then(() => term.focus());
+        return false;
+      }
+      // Ctrl+Maiusc+V: niente ^V alla shell, l'incolla del browser arriva a xterm
+      if (e.ctrlKey && e.shiftKey && !e.altKey && e.code === "KeyV") return false;
+      return true;
+    });
     const url = this.hooks.url(term.cols, term.rows);
     if (!url) {
       term.writeln(t().msg.termUnavailable);
