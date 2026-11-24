@@ -18,6 +18,8 @@ import {
   QUESTION_IMAGE_WIRE,
   QUESTION_IMAGES_MAX,
   diagramPieces,
+  numberLines,
+  numberSpan,
   type Diagram,
   type GameContext,
   type LineMark,
@@ -113,8 +115,12 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     // se il client non ha attivato il canale la notifica viene ignorata e la domanda resta per get_user_questions
     // un seguito porta con sé l’ultimo scambio della conversazione
     // il testo selezionato fa parte della domanda: senza, "cosa fa questo?" non si capisce
-    const selected = q.context.selection
-      ? `${q.text}\n\nTesto selezionato dall'utente${q.context.file && q.context.lines ? ` (${q.context.file}, righe ${q.context.lines[0]}-${q.context.lines[1]})` : ""}:\n«${q.context.selection}»`
+    const sel = q.context.selection;
+    const span = q.context.file && q.context.lines ? q.context.lines : undefined;
+    const numbered = sel && span ? numberSpan(sel, span) : undefined;
+    const selected = sel
+      ? `${q.text}\n\nTesto selezionato dall'utente${span ? ` (${q.context.file}, righe ${span[0]}-${span[1]})` : ""}:\n` +
+        (numbered ? `${NUMBERED_NOTE}\n${numbered}` : `«${sel}»`)
       : q.text;
     const followUp = q.previous?.length
       ? `${selected}\n\n(Seguito di una conversazione. Prima:\n${q.previous.map((p) => `D: ${p.question}\nR: ${p.answers.join(" ") || "(nessuna risposta)"}`).join("\n")})`
@@ -235,7 +241,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
     "read_tutor_buffer",
     {
       title: "Leggi le righe dell’editor",
-      description: "Legge righe numerate da 1 dal buffer al momento della domanda, anche non salvato. Disponibile per le ultime 16 domande con buffer.",
+      description: "Legge righe, con il numero davanti, dal buffer al momento della domanda, anche non salvato. Disponibile per le ultime 16 domande con buffer.",
       inputSchema: {
         question_id: z.string().max(64),
         start: z.number().int().min(1),
@@ -249,11 +255,11 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       const lines = snapshot.content.split("\n");
       if (end < start || start > lines.length) return fail(`Intervallo non valido. Righe disponibili: ${lines.length}.`);
       const last = Math.min(end, lines.length);
-      const range = lines.slice(start - 1, last).join("\n");
+      const range = numberLines(lines.slice(start - 1, last).join("\n"), start);
       if (offset > range.length) return fail("Offset oltre il testo disponibile.");
       const page = range.slice(offset, offset + 4000);
       const next = offset + page.length;
-      return ok(`${snapshot.file}, righe ${start}-${last}${snapshot.truncated ? " (buffer ricevuto parziale)" : ""}.` +
+      return ok(`${snapshot.file}, righe ${start}-${last}${snapshot.truncated ? " (buffer ricevuto parziale)" : ""}. ${NUMBERED_NOTE}` +
         (next < range.length ? ` Continua con offset ${next}.` : "") + `\n${page}`);
     },
   );
@@ -454,7 +460,12 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
   const withQuestionImages = async (text: string, questions: UserQuestion[]): Promise<ToolResult> => {
     const hasImages = questions.some((q) => q.imageCount);
     const prompt = hasImages ? `${text} Se manca un allegato indicato da imageCount, usa read_question_image con l'id della domanda e l'indice.` : text;
-    const result = ok(questions.some((q) => q.textBytes) ? `${prompt} Leggi il testo allegato con read_question_text usando l’id della domanda.` : prompt, questions);
+    const withText = questions.some((q) => q.textBytes) ? `${prompt} Leggi il testo allegato con read_question_text usando l’id della domanda.` : prompt;
+    const numbered = questions.map((q) => {
+      const b = q.context.buffer;
+      return b ? { ...q, context: { ...q.context, buffer: { ...b, content: numberLines(b.content, b.startLine ?? 1) } } } : q;
+    });
+    const result = ok(questions.some((q) => q.context.buffer) ? `${withText} Nel buffer: ${NUMBERED_NOTE}` : withText, numbered);
     let remaining = QUESTION_IMAGE_WIRE;
     for (const q of questions) {
       if (!q.imageCount) continue;
@@ -851,6 +862,8 @@ export const TUTOR_RULES =
   "Errore di concetto (non refuso): annotalo con record_gap; get_gaps dice cosa ripassare. " +
   "Regole complete nel prompt tutor.";
 
+const NUMBERED_NOTE = "Ogni riga inizia con il suo numero e │, che non fanno parte del codice.";
+
 /** Buffer, righe cambiate e output di una domanda in tutor, come testo per il canale. */
 function tutorAttachments(ctx: GameContext): string {
   const parts: string[] = [];
@@ -858,7 +871,7 @@ function tutorAttachments(ctx: GameContext): string {
   if (b) {
     const state = [b.dirty ? "non salvato" : "salvato", b.truncated ? "tagliato" : ""].filter(Boolean).join(", ");
     const range = b.startLine ? `, dalla riga ${b.startLine} di ${b.lineCount}` : "";
-    parts.push(`Codice nell'editor (${b.file}, ${state}${range}):\n\`\`\`\n${b.content}\n\`\`\``);
+    parts.push(`Codice nell'editor (${b.file}, ${state}${range}). ${NUMBERED_NOTE}\n\`\`\`\n${numberLines(b.content, b.startLine ?? 1)}\n\`\`\``);
   }
   if (ctx.changed?.length) parts.push(`Righe cambiate dall'ultima domanda: ${ctx.changed.map(([a, z]) => (a === z ? `${a}` : `${a}-${z}`)).join(", ")}.`);
   if (ctx.output) parts.push(`Output del terminale:\n\`\`\`\n${ctx.output}\n\`\`\``);

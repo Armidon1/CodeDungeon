@@ -221,6 +221,19 @@ export function cleanTutorContext(ctx: GameContext): GameContext {
   return out;
 }
 
+/** Righe con il numero davanti: l'agente non deve contarle (e sbagliarle) partendo dalla prima. */
+export function numberLines(content: string, start = 1): string {
+  const lines = content.split("\n");
+  const width = String(start + lines.length - 1).length;
+  return lines.map((line, i) => `${String(start + i).padStart(width)}│ ${line}`).join("\n");
+}
+
+/** Numera un estratto di più righe solo se le sue righe sono proprio quelle dell'intervallo. */
+export function numberSpan(text: string, lines: [number, number]): string | undefined {
+  const count = text.replace(/\n$/, "").split("\n").length;
+  return count > 1 && count === lines[1] - lines[0] + 1 ? numberLines(text.replace(/\n$/, ""), lines[0]) : undefined;
+}
+
 export const QUESTION_INLINE_MAX = 2000;
 export const QUESTION_TEXT_BYTES = 5 * 1024 * 1024;
 

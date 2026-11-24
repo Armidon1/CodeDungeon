@@ -11,6 +11,7 @@ import {
   type ConversationTurn,
   type Diagram,
   type EntryKind,
+  numberSpan,
   type Expression,
   type GameContext,
   type Gap,
@@ -84,7 +85,12 @@ function sectionLabel(section: AskSection): string {
 /** Un solo output mantiene il formato originale. Più sezioni portano anche numero e provenienza. */
 function sectionText(sections: AskSection[]): string {
   if (sections.length === 1 && sections[0].kind === "output") return sections[0].text;
-  return sections.map((section, index) => `${index + 1}. ${sectionLabel(section)}\n${section.text}`).join("\n\n");
+  return sections
+    .map((section, index) => {
+      const numbered = section.kind === "quote" && section.lines ? numberSpan(section.text, section.lines) : undefined;
+      return `${index + 1}. ${sectionLabel(section)}\n${numbered ?? section.text}`;
+    })
+    .join("\n\n");
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;

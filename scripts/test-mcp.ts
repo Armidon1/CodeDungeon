@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { WebSocket } from "ws";
 import { Project, conversationSummary } from "../src/server/project";
-import type { Conversation } from "../src/shared/types";
+import { numberSpan, type Conversation } from "../src/shared/types";
 
 const PORT = 7400 + Math.floor(Math.random() * 500); // porta casuale: evita conflitti con esecuzioni precedenti
 const TOUR = "prova-automatica";
@@ -39,6 +39,9 @@ const check = (cond: unknown, label: string) => {
   console.log(`${cond ? "ok  " : "FAIL"} ${label}`);
   if (!cond) failures++;
 };
+// righe numerate per l'agente: un estratto di più righe solo se coincide con l'intervallo
+check(numberSpan("a\nb\n", [9, 10]) === " 9│ a\n10│ b", "un estratto di righe 9-10 arriva numerato");
+check(numberSpan("a\nb", [9, 11]) === undefined && numberSpan("a", [9, 9]) === undefined, "estratti di una riga o con righe diverse dall'intervallo restano come sono");
 // spostare un file (gioco in tutor): resta nel progetto e non sovrascrive
 {
   const box = path.join(dataDir, "sposta");
@@ -329,17 +332,20 @@ game.send(
 await new Promise((res) => setTimeout(res, 150));
 const ev4 = pushed.at(-1);
 check(
-  ev4?.meta.mode === "tutor" && ev4.content.includes("dalla riga 2499 di 2503") && ev4.content.includes(code) &&
+  ev4?.meta.mode === "tutor" && ev4.content.includes("dalla riga 2499 di 2503") && ev4.content.includes('2501│ def solve():\n2502│     print("ciao"\n2503│ #') &&
     /Righe cambiate dall'ultima domanda: 2502/.test(ev4.content) && /SyntaxError/.test(ev4.content) &&
     !ev4.content.includes("Non scrivere la soluzione") && ev4.content.length < 2200,
   "il canale include le modifiche oltre il vecchio limite con un estratto e un richiamo breve",
 );
 r = await client.callTool({ name: "get_user_questions", arguments: {} });
-check(text(r).length < 3000 && text(r).includes('"startLine": 2499'), "la coda consegna lo stesso estratto");
+check(text(r).length < 3000 && text(r).includes('"startLine": 2499') && text(r).includes('2502│     print('), "la coda consegna lo stesso estratto con i numeri di riga");
 r = await client.callTool({ name: "read_tutor_buffer", arguments: { question_id: ev4.meta.question_id, start: 1, end: 1 } });
 check(text(r).endsWith("# esempio"), "il buffer non salvato resta leggibile dopo il consumo della coda");
 r = await client.callTool({ name: "read_tutor_buffer", arguments: { question_id: ev4.meta.question_id, start: 2503, end: 2503, offset: 4000 } });
-check(text(r).endsWith("\n" + "#".repeat(1000)), "si può leggere anche la fine di una riga lunga");
+// la riga numerata è "2503│ " seguito da 5000 #: dall'offset 4000 restano 1006 caratteri
+check(text(r).endsWith("\n" + "#".repeat(1006)), "si può leggere anche la fine di una riga lunga");
+r = await client.callTool({ name: "read_tutor_buffer", arguments: { question_id: ev4.meta.question_id, start: 2501, end: 2502 } });
+check(text(r).endsWith('\n2501│ def solve():\n2502│     print("ciao"'), "read_tutor_buffer dà le righe con il loro numero");
 r = await client.callTool({ name: "get_game_state", arguments: {} });
 check(/"mode": "tutor"/.test(text(r)) && !/print\(/.test(text(r)), "lo stato del gioco non si porta dietro il codice della domanda");
 // mark_lines: ondina e commento sulle righe, con il testo del file a cui si riferiscono; righe fuori dal file rifiutate

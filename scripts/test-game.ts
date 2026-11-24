@@ -1211,6 +1211,31 @@ try {
   check(termOk, "il terminale esegue i comandi nella cartella del progetto");
   await press("Escape");
   check(await evaluate<boolean>(`document.getElementById("title-screen").hidden`), "Esc dentro il terminale resta alla shell");
+  // doppio clic sull'output "cd-42" (non sul comando) e Ctrl+Maiusc+C: la selezione va negli appunti
+  const wordAt = await evaluate<{ x: number; y: number } | null>(`(() => {
+    const rows = [...document.querySelectorAll("#term-body .term-view:not([hidden]) .xterm-rows > div")];
+    const row = rows.find((d) => /^\\s*cd-42 /.test(d.textContent));
+    if (!row) return null;
+    const walk = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      const i = n.textContent.indexOf("cd-42");
+      if (i < 0) continue;
+      const r = document.createRange();
+      r.setStart(n, i + 1);
+      r.setEnd(n, i + 3);
+      const b = r.getBoundingClientRect();
+      return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+    }
+    return null;
+  })()`);
+  await evaluate(`navigator.clipboard.writeText = async (t) => { window.__copied = t; }`);
+  if (wordAt) {
+    for (const clickCount of [1, 2]) for (const type of ["mousePressed", "mouseReleased"]) {
+      await send("Input.dispatchMouseEvent", { type, x: wordAt.x, y: wordAt.y, button: "left", clickCount });
+    }
+    for (const type of ["rawKeyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: "C", code: "KeyC", windowsVirtualKeyCode: 67, modifiers: 10 });
+  }
+  check(!!wordAt && await waitFor(`window.__copied === "cd-42"`, 3000), "Ctrl+Maiusc+C copia la selezione del terminale");
   await click("#terminals-tab");
   check(await waitFor(`document.getElementById("agent-workspace").hidden && document.querySelector("#terminal-workspace #term-panel").clientHeight > innerHeight / 2 && /cd-42/.test(${termRows})`),
     "la scheda Terminali occupa l’area di lavoro e riprende la stessa shell");

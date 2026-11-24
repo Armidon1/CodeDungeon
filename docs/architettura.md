@@ -41,7 +41,7 @@ Tutti i messaggi possibili sono scritti in un solo posto: `src/shared/types.ts` 
 ## Il percorso inverso: una domanda dell'utente
 
 1. L'utente scrive nel gioco. Il gioco manda `{ type: "question", text, context }`. `context` dice cosa sta guardando: file aperto, righe, modalità, e in tutor il codice non salvato (`buffer`) e le righe cambiate.
-2. Il ponte salva la domanda in `.tour/conversazioni/` con i metadati del buffer. Nella coda per il tutor include l’ultimo scambio e fino a 1600 caratteri di codice. Per altre righe, `read_tutor_buffer` legge una delle ultime 16 copie dell’editor conservate in memoria.
+2. Il ponte salva la domanda in `.tour/conversazioni/` con i metadati del buffer. Nella coda per il tutor include l’ultimo scambio e fino a 1600 caratteri di codice. Per altre righe, `read_tutor_buffer` legge una delle ultime 16 copie dell’editor conservate in memoria. Il codice arriva all’agente con il numero davanti a ogni riga (`numberLines` in `types.ts`), anche nelle selezioni di più righe: l’agente non deve contarle partendo da `startLine`.
 3. La domanda arriva all'agente in due modi:
    - **canale** (Claude Code): il server manda una notifica `notifications/claude/channel` e la domanda compare da sola nella chat dell'agente;
    - **attesa**: l'agente chiama `wait_for_question`, che restituisce subito le domande già in coda e altrimenti resta aperto. Una notifica senza risposta resta disponibile anche ai client che iniziano ad ascoltare dopo l’invio.
