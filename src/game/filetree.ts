@@ -1,8 +1,10 @@
 // Albero dei file nella barra laterale: cartelle che si aprono e si chiudono (chiuse di partenza),
 // prima le cartelle e poi i file come in VS Code. Le cartelle aperte si ricordano per progetto in localStorage.
 // Quando un tour o l'agente apre un file, le sue cartelle si aprono da sole.
-// In tutor si può trascinare un file per spostarlo o usare il menu contestuale per rinominarlo o eliminarlo.
+// In tutor si possono trascinare file e cartelle per spostarli.
 
+import { directoryContains } from "../shared/project-path";
+import type { EntryKind } from "../shared/types";
 import { langOf } from "./highlight";
 import { t } from "./i18n";
 
@@ -11,6 +13,7 @@ const STORE_PREFIX = "code-dungeon:open-dirs:";
 const DRAG_PX = 6;
 /** Fermi su una cartella chiusa per tanto così, durante il trascinamento: si apre. */
 const OPEN_DELAY_MS = 700;
+const ARRIVAL_MS = 850;
 
 interface Dir {
   name: string;
@@ -24,8 +27,9 @@ export interface FileTreeHooks {
   open(path: string, ev: MouseEvent): void;
   /** true se i file si possono modificare adesso (modalità tutor). */
   canEdit(): boolean;
-  /** File lasciato sulla cartella toDir ("" = radice). */
-  move(path: string, toDir: string): void;
+  /** Elemento lasciato sulla cartella toDir ("" = radice). */
+  move(path: string, toDir: string, kind: EntryKind): void;
+  moveFolder(path: string): void;
   rename(path: string): void;
   delete(path: string): void;
   references(path: string): void;
@@ -33,11 +37,13 @@ export interface FileTreeHooks {
   newFolder(dir: string): void;
 }
 
-type MenuAction = "rename" | "delete" | "references" | "newFile" | "newFolder";
+type MenuAction = "rename" | "delete" | "references" | "newFile" | "newFolder" | "moveFolder";
 
 export class FileTree {
   private open = new Set<string>();
   private storeKey: string | undefined;
+  private arrivedDirectory: string | undefined;
+  private arrivalTimer: number | undefined;
   private menu = document.createElement("div");
   private menuItems: HTMLButtonElement[] = [];
   private menuTarget: HTMLButtonElement | undefined;
@@ -80,7 +86,9 @@ export class FileTree {
   }
 
   openFolderMenu(btn: HTMLButtonElement, e: MouseEvent, dir: string): void {
-    this.openMenu(btn, e, dir, ["newFile", "newFolder"], t().ui.folderActions);
+    const actions: MenuAction[] = ["newFile", "newFolder"];
+    if (dir) actions.push("moveFolder");
+    this.openMenu(btn, e, dir, actions, t().ui.folderActions);
   }
 
   private openMenu(btn: HTMLButtonElement, e: MouseEvent, path: string, actions: MenuAction[], label: string): void {
@@ -89,7 +97,8 @@ export class FileTree {
     this.menuTarget = btn;
     const menu = this.menu;
     menu.setAttribute("aria-label", label);
-    const labels = { rename: t().ui.rename, delete: t().ui.trashFile, references: t().ui.findReferences, newFile: t().ui.newFileHere, newFolder: t().ui.newFolder };
+    const ui = t().ui;
+    const labels = { rename: ui.rename, delete: ui.trashFile, references: ui.findReferences, newFile: ui.newFileHere, newFolder: ui.newFolder, moveFolder: ui.moveFolder };
     this.menuItems = actions.map((action) => {
       const item = document.createElement("button");
       item.type = "button";
@@ -126,6 +135,9 @@ export class FileTree {
   }
 
   render(files: readonly string[], dirs: readonly string[]): void {
+    const focused = this.el.contains(document.activeElement)
+      ? document.activeElement?.closest<HTMLElement>("[data-dir], .file[data-path]")
+      : undefined;
     this.dismissMenu();
     const root: Dir = { name: "", path: "", dirs: new Map(), files: [] };
     const ensureDir = (parts: string[]) => {
@@ -145,6 +157,8 @@ export class FileTree {
     this.add(frag, root, 0);
     this.el.replaceChildren(frag);
     this.applyFolds();
+    const focusedPath = focused?.dataset.dir ?? focused?.dataset.path;
+    if (focusedPath) this.entryButton(focusedPath, focused?.dataset.dir ? "dir" : "file")?.focus({ preventScroll: true });
   }
 
   /** Apre le cartelle che contengono path, così la sua voce si vede. */
@@ -163,21 +177,57 @@ export class FileTree {
     this.save();
   }
 
+  repathFolders(repath: (path: string) => string): void {
+    this.open = new Set([...this.open].map(repath));
+    this.save();
+  }
+
+  /** Fa risaltare la cartella spostata anche se il ponte aggiorna l'albero. */
+  showArrival(path: string): void {
+    const clear = () => this.el.querySelector(".dir-arrived")?.classList.remove("dir-arrived");
+    clear();
+    this.arrivedDirectory = path;
+    this.folderRow(path)?.classList.add("dir-arrived");
+    clearTimeout(this.arrivalTimer);
+    this.arrivalTimer = window.setTimeout(() => {
+      this.arrivedDirectory = undefined;
+      clear();
+    }, ARRIVAL_MS);
+  }
+
+  focusEntry(path: string, kind: EntryKind): void {
+    const button = this.entryButton(path, kind);
+    button?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+    button?.focus({ preventScroll: true });
+  }
+
+  private entryButton(path: string, kind: EntryKind): HTMLButtonElement | null | undefined {
+    return kind === "dir"
+      ? this.folderRow(path)?.querySelector<HTMLButtonElement>(".dir-btn")
+      : this.el.querySelector<HTMLButtonElement>(`.file[data-path="${CSS.escape(path)}"]`);
+  }
+
+  private folderRow(path: string): HTMLElement | null {
+    return this.el.querySelector<HTMLElement>(`:scope > li[data-dir="${CSS.escape(path)}"]`);
+  }
+
   private add(into: DocumentFragment, dir: Dir, depth: number): void {
     const byName = (a: string, b: string) => a.localeCompare(b);
     for (const sub of [...dir.dirs.values()].sort((a, b) => byName(a.name, b.name))) {
       const li = document.createElement("li");
       li.className = "dir";
+      li.classList.toggle("dir-arrived", sub.path === this.arrivedDirectory);
       li.dataset.dir = sub.path;
       if (dir.path) li.dataset.parent = dir.path;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "dir-btn";
       btn.style.setProperty("--depth", String(depth));
-      btn.innerHTML = `<span class="dir-caret" aria-hidden="true"></span><span class="file-name"></span>`;
+      btn.innerHTML = `<span class="dir-caret" aria-hidden="true"></span><span class="dir-icon" aria-hidden="true"><span class="dir-sparkle"></span></span><span class="file-name"></span>`;
       btn.querySelector(".file-name")!.textContent = sub.name;
       btn.addEventListener("click", () => this.toggle(sub.path));
       btn.addEventListener("contextmenu", (e) => this.openFolderMenu(btn, e, sub.path));
+      this.dragEntry(btn, sub.path, dir.path, "dir");
       li.append(btn);
       into.append(li);
       this.add(into, sub, depth + 1);
@@ -201,19 +251,18 @@ export class FileTree {
       btn.addEventListener("mousedown", (e) => {
         if (e.button === 1) e.preventDefault(); // niente scorrimento automatico
       });
-      this.dragFile(btn, file);
+      this.dragEntry(btn, file, dir.path, "file");
       li.append(btn);
       into.append(li);
     }
   }
 
-  /** Trascinamento di un file: la cartella sotto il puntatore si illumina, al rilascio il file ci finisce dentro. */
-  private dragFile(btn: HTMLButtonElement, file: string): void {
+  /** La cartella sotto il puntatore si illumina se può ricevere l'elemento trascinato. */
+  private dragEntry(btn: HTMLButtonElement, path: string, from: string, kind: EntryKind): void {
     btn.addEventListener("pointerdown", (down) => {
       if (down.button !== 0 || !this.hooks.canEdit()) return;
       // Nella striscia orizzontale si lascia il gesto allo scorrimento.
       if (matchMedia("(max-width: 760px)").matches) return;
-      const from = file.includes("/") ? file.slice(0, file.lastIndexOf("/")) : "";
       let dragging = false;
       let target: string | undefined;
       let lit: HTMLElement | undefined;
@@ -228,6 +277,7 @@ export class FileTree {
         if (dir && !this.open.has(dir)) opener = window.setTimeout(() => this.toggle(dir), OPEN_DELAY_MS);
       };
       const move = (e: PointerEvent) => {
+        if (e.pointerId !== down.pointerId) return;
         if (!dragging) {
           if (Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < DRAG_PX) return;
           dragging = true;
@@ -241,23 +291,22 @@ export class FileTree {
         else if (e.clientY > r.bottom - 24) this.el.scrollTop += 10;
         const under = document.elementFromPoint(e.clientX, e.clientY);
         const li = under?.closest<HTMLElement>("#" + this.el.id + " > li");
-        if (li?.dataset.dir !== undefined) {
-          target = li.dataset.dir;
+        target = li ? li.dataset.dir ?? li.dataset.parent ?? "" : under && this.el.contains(under) ? "" : undefined;
+        if (target === undefined || (kind === "dir" && (target === from || directoryContains(path, target)))) {
+          target = undefined;
+          light(undefined, undefined);
+        } else if (li?.dataset.dir !== undefined) {
           light(li, target);
         } else if (li) {
           // sopra un file: va nella sua cartella
-          target = li.dataset.parent ?? "";
           const parent = target ? this.el.querySelector<HTMLElement>(`:scope > li[data-dir="${CSS.escape(target)}"]`) ?? undefined : this.el;
           light(parent, undefined);
-        } else if (under && this.el.contains(under)) {
-          target = "";
-          light(this.el, undefined);
         } else {
-          target = undefined;
-          light(undefined, undefined);
+          light(this.el, undefined);
         }
       };
       const end = (e: PointerEvent) => {
+        if (e.pointerId !== down.pointerId) return;
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", end);
         window.removeEventListener("pointercancel", end);
@@ -265,14 +314,14 @@ export class FileTree {
         light(undefined, undefined);
         btn.classList.remove("is-dragging");
         this.el.classList.remove("is-moving");
-        // il clic che segue il rilascio non deve aprire il file
+        // Ignora il clic che segue il rilascio.
         const eat = (c: Event) => {
           c.stopImmediatePropagation();
           c.preventDefault();
         };
         btn.addEventListener("click", eat, { capture: true, once: true });
         setTimeout(() => btn.removeEventListener("click", eat, { capture: true }), 0);
-        if (e.type !== "pointercancel" && target !== undefined && target !== from) this.hooks.move(file, target);
+        if (e.type !== "pointercancel" && target !== undefined && target !== from) this.hooks.move(path, target, kind);
       };
       // sulla finestra: un movimento veloce può lasciare il pulsante prima che il trascinamento inizi
       window.addEventListener("pointermove", move);

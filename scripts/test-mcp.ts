@@ -60,6 +60,26 @@ const check = (cond: unknown, label: string) => {
   await fs.writeFile(path.join(box, ".git", "config"), "");
   await fs.symlink("b.py", path.join(box, "alias.py"), "file");
   await fs.symlink(project, path.join(box, "fuori"), "junction");
+  await fs.mkdir(path.join(box, "dir", "vuota"));
+  await fs.mkdir(path.join(box, "meta", "dir"), { recursive: true });
+  await fs.symlink(path.join(box, "dir"), path.join(box, "alias-dir"), "junction");
+  check(await fails(() => p.moveFile("alias.py", "meta")) && await fails(() => p.moveFile("dir/a.py", "alias-dir")) &&
+    (await p.readFile("b.py")) === "altro\n", "moveFile protegge lo spostamento di ritorno se un percorso è diventato un link");
+  check((await Promise.all([
+    ["", "meta"], ["dir", "dir"], ["dir", "dir/vuota"], ["dir", "meta"], ["b.py", "meta"],
+    ["dir", ".."], ["dir", "fuori"], ["dir", ".git"], [".tour", "meta"], ["alias-dir", "meta"],
+  ].map(([from, to]) => fails(() => p.moveDirectory(from, to))))).every(Boolean) &&
+    (await fs.readdir(path.join(box, "meta", "dir"))).length === 0 && (await p.readFile("dir/a.py")) === "a\n",
+  "moveDirectory rifiuta cicli, collisioni con cartelle vuote, link e percorsi protetti");
+  await fs.rmdir(path.join(box, "meta", "dir"));
+  check((await p.moveDirectory("dir", "meta")).to === "meta/dir" &&
+    (await p.listTree()).dirs.includes("meta/dir/vuota") && (await p.readFile("meta/dir/a.py")) === "a\n" &&
+    (await p.moveDirectory("meta/dir", "")).to === "dir", "moveDirectory porta con sé file e sottocartelle vuote e può tornare alla radice");
+  for (const folder of ["primo", "secondo"]) await fs.mkdir(path.join(box, folder, "condivisa"), { recursive: true });
+  const moves = await Promise.allSettled([p.moveDirectory("primo/condivisa", "meta"), p.moveDirectory("secondo/condivisa", "meta")]);
+  check(moves.filter((move) => move.status === "fulfilled").length === 1 &&
+    (await p.listTree()).dirs.filter((dir) => dir.endsWith("/condivisa")).length === 2,
+  "due spostamenti concorrenti verso lo stesso nome conservano entrambe le cartelle");
   const protectedFiles = ["dir", "../packet-server/server.py", ".tour/tour.json", ".git/config", "alias.py", "fuori/server.py"];
   const invalidNames = ["", ".", "..", "../lib.py", "sub/file.py", ".git", ".tour", "file."];
   check((await Promise.all([
@@ -380,18 +400,18 @@ check(/E il timeout\?/.test(text(r)), "una domanda consegnata ma senza risposta 
 
 // Il gioco invia mentre il client non è ancora in attesa. La notifica non è una conferma di lettura.
 const queuedText = "Cosa significa len?";
-const nextMessage = (matches: (msg: any) => boolean) => new Promise<void>((resolve, reject) => {
+const nextMessage = (matches: (msg: any) => boolean, socket = game) => new Promise<void>((resolve, reject) => {
   const timer = setTimeout(() => {
-    game.off("message", onMessage);
+    socket.off("message", onMessage);
     reject(new Error("Messaggio del gioco non ricevuto entro 5 s."));
   }, 5000);
   const onMessage = (data: Buffer) => {
     if (!matches(JSON.parse(String(data)))) return;
     clearTimeout(timer);
-    game.off("message", onMessage);
+    socket.off("message", onMessage);
     resolve();
   };
-  game.on("message", onMessage);
+  socket.on("message", onMessage);
 });
 const queuedEvent = nextMessage(msg => msg.type === "conversation" && msg.summary.title === queuedText);
 game.send(JSON.stringify({ type: "question", text: queuedText, context: { mode: "tutor", level: "facile", lang: "it" } }));
@@ -475,6 +495,16 @@ await new Promise((res) => setTimeout(res, 200));
 const synced = otherGot.find((m) => m.type === "prefs");
 check(synced?.prefs.reader.aids.join() === "frasi_brevi,piu_schemi" && synced.prefs.reader.note.length === 300, "save_prefs pulisce le risposte e allinea le altre finestre");
 check(!received.some((m) => m.type === "prefs"), "chi salva non riceve l'eco");
+await fs.mkdir(path.join(project, "trasloco", "vuota"), { recursive: true });
+await fs.mkdir(path.join(project, "destinazione"));
+const moveReply = nextMessage((m) => m.reqId === "trasloco");
+const moveEvent = nextMessage((m) => m.type === "directory_moved", other);
+game.send(JSON.stringify({ type: "request", reqId: "trasloco", op: "move_dir", path: "trasloco", to: "destinazione" }));
+await Promise.all([moveReply, moveEvent]);
+check(received.find((m) => m.reqId === "trasloco")?.data?.to === "destinazione/trasloco" &&
+  otherGot.some((m) => m.type === "directory_moved" && m.from === "trasloco" && m.to === "destinazione/trasloco") &&
+  (await fs.stat(path.join(project, "destinazione", "trasloco", "vuota"))).isDirectory(),
+"il ponte conferma lo spostamento di una cartella e avvisa le altre finestre");
 other.close();
 r = await client.callTool({ name: "get_game_state", arguments: {} });
 check(/Chi legge ha chiesto: frasi brevi/.test(text(r)) && /"piu_schemi"/.test(text(r)), "get_game_state riporta le preferenze di chi legge");
@@ -483,7 +513,8 @@ const ws2 = new WebSocket(`ws://127.0.0.1:${PORT2}/ws`);
 const hello2 = await new Promise<any>((res) => ws2.once("message", (d) => res(JSON.parse(String(d)))));
 const nextTutor = client2.callTool({ name: "wait_for_question", arguments: { timeout_seconds: 10 } });
 await new Promise((res) => setTimeout(res, 150));
-const img26 = await askWithImages(ws2, { text: "Qui?", images: [png], context: {
+const longLog = "a".repeat(8191) + "🪲\r\nUltima riga\n";
+const img26 = await askWithImages(ws2, { op: "ask_with_text", attachment: longLog, text: "Qui?", images: [png], context: {
   mode: "tutor", level: "medio", file: "protocol.py", lines: [2501, 2501], selection: "def solve():",
   changed: [[1, 1]], buffer: { file: "protocol.py", content: draft, dirty: true },
 } });
@@ -496,6 +527,15 @@ check(img26.ok && img26.data === question.id && question.imageCount === 1 &&
   "wait_for_question in MCP 2026 restituisce anche i byte dell'immagine");
 r = await client2.callTool({ name: "read_question_image", arguments: { question_id: question.id, index: 1 } });
 check(r.content[0]?.type === "image" && r.content[0].data === png.data, "read_question_image è disponibile anche in MCP 2026");
+check(question.textBytes === Buffer.byteLength(longLog) && !answerText.includes("Ultima riga"), "la coda segnala il log senza duplicarlo");
+const readPage = async (offset: number) => {
+  const page = await client2.callTool({ name: "read_question_text", arguments: { question_id: question.id, offset } });
+  const body = text(page);
+  return JSON.parse(body.slice(body.indexOf("\n")));
+};
+const firstPage = await readPage(0);
+const lastPage = await readPage(firstPage.nextOffset);
+check(firstPage.text + lastPage.text === longLog && lastPage.nextOffset === question.textBytes, "MCP 2026 rilegge il log completo anche se una pagina termina dentro un carattere UTF-8");
 r = await client2.callTool({ name: "read_tutor_buffer", arguments: { question_id: question.id, start: 1, end: 1 } });
 check(text(r).endsWith("# esempio"), "MCP 2026 recupera le righe del buffer");
 r = await client2.callTool({ name: "show_dialog", arguments: { text: "Guarda qui.", question_id: question.id, highlight: { path: "protocol.py", start: 2501, end: 2501 } } });
@@ -578,6 +618,19 @@ const savedQuestion = await new Project(project).loadConversation(img25.data);
 check(savedImages[1]?.data === largerPng.data && savedQuestion.turns[0].question.imageCount === 2 &&
   !JSON.stringify(savedQuestion).includes(png.data), "gli allegati persistono separati dal JSON della conversazione");
 
+const logOnly = await askWithImages(game, { op: "ask_with_text", attachment: longLog, text: "", context: { level: "medio" } });
+await new Promise((resolve) => setTimeout(resolve, 150));
+const logEvent = pushed.at(-1);
+check(logOnly.ok && logEvent?.meta.text_bytes === String(Buffer.byteLength(longLog)) &&
+  logEvent.content.includes("read_question_text") && !logEvent.content.includes("Ultima riga"), "il canale indica come leggere un log senza didascalia");
+r = await client.callTool({ name: "read_question_text", arguments: { question_id: logOnly.data, offset: 8191 } });
+check(!r.isError && text(r).includes("Ultima riga"), "il canale MCP 2025 può leggere direttamente la fine del log");
+r = await client.callTool({ name: "read_question_text", arguments: { question_id: "../../package" } });
+check(r.isError, "il lettore dei log verifica l’id della domanda");
+const logTurn = (await new Project(project).loadConversation(logOnly.data)).turns[0];
+check(logTurn.question.textBytes === Buffer.byteLength(longLog) && !JSON.stringify(logTurn).includes("Ultima riga"), "la cronologia conserva il riferimento al testo completo");
+const tooLarge = await askWithImages(game, { op: "ask_with_text", attachment: "x".repeat(5 * 1024 * 1024 + 1), context: { level: "medio" } });
+check(!tooLarge.ok && /5 MiB/.test(tooLarge.error), "il ponte rifiuta esplicitamente un log oltre il limite");
 game.close();
 evil.close();
 await client.close();

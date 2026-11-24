@@ -3,7 +3,7 @@
 // Ogni guida ha cinque espressioni, fluttua e parla; i ritratti predefiniti sbattono anche le palpebre.
 
 import type { Expression } from "../shared/types";
-import { reducedMotion } from "./reader";
+import { motionChanges, reducedMotion } from "./reader";
 
 export const BUILTIN_GUIDES = ["lumen", "aria", "patrizio", "nilo"] as const;
 export type BuiltinGuide = (typeof BUILTIN_GUIDES)[number];
@@ -27,10 +27,12 @@ export interface CustomImage {
 export type GuideLook = { kind: "builtin"; id: BuiltinGuide } | { kind: "custom"; image: CustomImage };
 
 type Px = (x: number, y: number, color: string) => void;
+/** Indice del fotogramma per un dettaglio che cambia ogni periodMs millisecondi. */
+type Phase = (periodMs: number) => number;
 interface Frame {
   blink: boolean;
   mouthOpen: boolean;
-  t: number;
+  phase: Phase;
 }
 
 /** Colori del viso, comuni a tutti i ritratti disegnati. */
@@ -125,7 +127,7 @@ function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal, style: Fac
         px(18, 23, c.blush);
       } else if (mouth) for (const x of [17, 18, 19]) px(x, 22, c.eye);
       // nuvoletta del pensiero
-      const pulse = Math.floor(frame.t / 400) % 3;
+      const pulse = frame.phase(400) % 3;
       px(25, 9, c.think);
       if (pulse > 0) for (const [x, y] of [[27, 6], [28, 6], [27, 7], [28, 7]]) px(x, y, c.think);
       if (pulse > 1) for (let x = 28; x < 32; x++) for (let y = 1; y < 4; y++) px(x, y, c.think);
@@ -142,7 +144,7 @@ function drawFace(px: Px, expr: Expression, frame: Frame, c: FacePal, style: Fac
         for (const x of [15, 16, 17]) px(x, 23, c.blush);
       } else if (mouth) for (const [x, y] of [[13, 23], [14, 22], [15, 23], [16, 22], [17, 23], [18, 22], [19, 23]]) px(x, y, c.eye);
       // goccia di sudore
-      const drip = Math.floor(frame.t / 500) % 2;
+      const drip = frame.phase(500) % 2;
       for (const [x, y] of [[25, 12], [24, 13], [25, 13], [26, 13], [24, 14], [25, 14], [26, 14], [25, 15]]) px(x, y + drip, c.sweat);
       px(24, 13 + drip, c.shine);
       break;
@@ -192,7 +194,7 @@ function drawLumen(px: Px, expr: Expression, frame: Frame): void {
   for (const [x, y] of [[10, 11], [11, 11], [9, 12], [10, 12], [9, 13]]) px(x, y, C.light);
 
   // germoglio in testa (oscilla leggermente)
-  const sway = Math.sin(frame.t / 600) > 0.3 ? 1 : 0;
+  const sway = frame.phase(1885) % 2;
   px(16, 8, C.stem);
   px(16, 7, C.stem);
   for (const [x, y] of [[13, 5], [14, 5], [14, 6], [15, 6]]) px(x + sway, y, C.leaf);
@@ -443,7 +445,7 @@ function tinted(base: HTMLCanvasElement, expr: Expression): HTMLCanvasElement {
   return out;
 }
 
-function drawCustom(ctx: CanvasRenderingContext2D, image: CustomImage, expr: Expression, t: number, lift: number): void {
+function drawCustom(ctx: CanvasRenderingContext2D, image: CustomImage, expr: Expression, phase: Phase, lift: number): void {
   const n = image.base.width;
   const u = Math.max(1, Math.round(n / 24));
   const own = image.faces[expr];
@@ -452,8 +454,8 @@ function drawCustom(ctx: CanvasRenderingContext2D, image: CustomImage, expr: Exp
   ctx.drawImage(src, 0, 0, src.width, src.height, 0, lift * u, n, n);
   if (own || expr === "neutro") return;
   const emote = EMOTES[expr];
-  const rows = emote.frames[Math.floor(t / 420) % emote.frames.length];
-  const hop = expr === "sorpreso" || expr === "preoccupato" ? Math.floor(t / 300) % 2 : 0;
+  const rows = emote.frames[emote.frames.length === 1 ? 0 : phase(420) % emote.frames.length];
+  const hop = expr === "sorpreso" || expr === "preoccupato" ? phase(300) % 2 : 0;
   const ox = n - rows[0].length * u - u;
   const oy = u + hop * u;
   rows.forEach((row, y) =>
@@ -470,12 +472,8 @@ function drawCustom(ctx: CanvasRenderingContext2D, image: CustomImage, expr: Exp
 /** Lato in pixel di gioco del ritratto. */
 export const lookSize = (look: GuideLook): number => (look.kind === "custom" ? look.image.base.width : 32);
 
-interface DrawState {
+interface DrawState extends Frame {
   expression: Expression;
-  blink: boolean;
-  mouthOpen: boolean;
-  /** Tempo per le animazioni; 0 con movimento ridotto. */
-  t: number;
   /** Spostamento verticale (fluttuare, parlare) in pixel di gioco. */
   lift: number;
 }
@@ -484,7 +482,7 @@ function drawLook(ctx: CanvasRenderingContext2D, look: GuideLook, s: DrawState):
   const n = lookSize(look);
   ctx.clearRect(0, 0, n, n);
   if (look.kind === "custom") {
-    drawCustom(ctx, look.image, s.expression, s.t, look.image.cutout ? s.lift : 0);
+    drawCustom(ctx, look.image, s.expression, s.phase, look.image.cutout ? s.lift : 0);
     return;
   }
   const px: Px = (x, y, color) => {
@@ -493,9 +491,8 @@ function drawLook(ctx: CanvasRenderingContext2D, look: GuideLook, s: DrawState):
     ctx.fillStyle = color;
     ctx.fillRect(x, yy, 1, 1);
   };
-  const frame = { blink: s.blink, mouthOpen: s.mouthOpen, t: s.t };
-  if (look.id === "lumen") drawLumen(px, s.expression, frame);
-  else drawHuman(px, HUMANS[look.id], s.expression, frame);
+  if (look.id === "lumen") drawLumen(px, s.expression, s);
+  else drawHuman(px, HUMANS[look.id], s.expression, s);
 }
 
 function fit(canvas: HTMLCanvasElement, n: number): CanvasRenderingContext2D {
@@ -510,7 +507,7 @@ function fit(canvas: HTMLCanvasElement, n: number): CanvasRenderingContext2D {
 
 /** Un fotogramma fermo, per le anteprime. */
 export function drawStill(canvas: HTMLCanvasElement, look: GuideLook, expression: Expression = "neutro"): void {
-  drawLook(fit(canvas, lookSize(look)), look, { expression, blink: false, mouthOpen: false, t: 0, lift: 0 });
+  drawLook(fit(canvas, lookSize(look)), look, { expression, blink: false, mouthOpen: false, phase: () => 0, lift: 0 });
 }
 
 // ---------- Guida scelta dall'utente ----------
@@ -536,22 +533,28 @@ export class Portrait {
   private state: PortraitState = { expression: "neutro", talking: false };
   private nextBlink = 0;
   private blinkUntil = 0;
-  private raf = 0;
-  private reduced = reducedMotion();
+  private timer = 0;
+  private visible = false;
+  private observer: IntersectionObserver;
 
   constructor(
     private canvas: HTMLCanvasElement,
     private look?: GuideLook,
   ) {
-    const loop = (t: number) => {
-      this.render(t);
-      this.raf = requestAnimationFrame(loop);
-    };
-    this.raf = requestAnimationFrame(loop);
+    this.observer = new IntersectionObserver(([entry]) => {
+      this.visible = entry.isIntersecting;
+      this.refresh();
+    });
+    this.observer.observe(canvas);
+    document.addEventListener("visibilitychange", this.refresh);
+    motionChanges.addEventListener("change", this.refresh);
   }
 
   set(partial: Partial<PortraitState>): void {
-    this.state = { ...this.state, ...partial };
+    const next = { ...this.state, ...partial };
+    if (next.expression === this.state.expression && next.talking === this.state.talking) return;
+    this.state = next;
+    this.refresh();
   }
 
   get expression(): Expression {
@@ -559,30 +562,47 @@ export class Portrait {
   }
 
   destroy(): void {
-    cancelAnimationFrame(this.raf);
+    this.visible = false;
+    clearTimeout(this.timer);
+    this.observer.disconnect();
+    document.removeEventListener("visibilitychange", this.refresh);
+    motionChanges.removeEventListener("change", this.refresh);
   }
 
-  private render(t: number): void {
+  refresh = (): void => {
+    clearTimeout(this.timer);
+    if (!this.visible || document.hidden || this.canvas.closest("[inert], [hidden]")) return;
+
     const look = this.look ?? current;
-    // si rilegge a ogni fotogramma: "meno animazioni" si può attivare con il gioco aperto
-    this.reduced = reducedMotion();
-    if (!this.reduced && t > this.nextBlink) {
-      this.blinkUntil = t + 130;
-      this.nextBlink = t + 2500 + Math.random() * 3000;
+    if (reducedMotion()) {
+      drawStill(this.canvas, look, this.state.expression);
+      return;
     }
-    const talking = this.state.talking && !this.reduced;
-    const bob = this.reduced ? 0 : Math.sin(t / 520) > 0 ? 0 : 1;
-    const mouthOpen = talking && Math.floor(t / 110) % 2 === 0;
-    // le immagini dell'utente non hanno una bocca da muovere: mentre parla la figura saltella
-    const lift = look.kind === "custom" && talking ? bob + (mouthOpen ? 0 : 1) : bob;
+
+    const now = performance.now();
+    let next = Infinity;
+    // Ogni dettaglio disegnato indica quando cambierà il suo prossimo pixel.
+    const phase: Phase = (period) => {
+      const index = Math.floor(now / period);
+      next = Math.min(next, (index + 1) * period);
+      return index;
+    };
+    if (look.kind === "builtin") {
+      if (now >= this.nextBlink) {
+        this.blinkUntil = now + 130;
+        this.nextBlink = now + 2500 + Math.random() * 3000;
+      }
+      next = now < this.blinkUntil ? this.blinkUntil : this.nextBlink;
+    }
+    const movable = look.kind === "builtin" || look.image.cutout;
+    const bob = movable ? phase(1634) % 2 : 0;
+    const mouthOpen = movable && this.state.talking && phase(110) % 2 === 0;
+    const lift = look.kind === "custom" && this.state.talking && !mouthOpen ? bob + 1 : bob;
     drawLook(fit(this.canvas, lookSize(look)), look, {
-      expression: this.state.expression,
-      blink: !this.reduced && t < this.blinkUntil,
-      mouthOpen,
-      t: this.reduced ? 0 : t,
-      lift,
+      expression: this.state.expression, blink: now < this.blinkUntil, mouthOpen, phase, lift,
     });
-  }
+    if (Number.isFinite(next)) this.timer = window.setTimeout(this.refresh, Math.ceil(next - performance.now()));
+  };
 }
 
 /** La mini-guida 16×16 che cammina nell'esplora file e sulla lavagna. */

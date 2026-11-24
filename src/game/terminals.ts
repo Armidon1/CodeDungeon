@@ -27,6 +27,8 @@ export interface TerminalHooks {
   url(cols: number, rows: number): string | undefined;
   /** Il pannello si è aperto o chiuso, o ha cambiato misura: le righe dell'editor si rimisurano. */
   changed(): void;
+  canAttach(): boolean;
+  attach(text: string, terminal: string): void;
 }
 
 type XtermLib = { Terminal: typeof Terminal; FitAddon: typeof FitAddon };
@@ -66,12 +68,33 @@ function theme() {
   };
 }
 
-const fontSize = () => Math.round(16 * (Number(css("--fs")) || 1));
+const ZOOM_KEY = "code-dungeon:terminal-zoom";
+const ZOOM_MIN = 70;
+const ZOOM_MAX = 200;
+
+function loadZoom(): number {
+  try {
+    const percent = Number(localStorage.getItem(ZOOM_KEY));
+    if (Number.isInteger(percent) && percent >= ZOOM_MIN && percent <= ZOOM_MAX) return percent;
+  } catch { /* Lo zoom può restare in memoria. */ }
+  return 100;
+}
 
 export class TerminalPanel {
   private terms: Term[] = [];
   private active: Term | undefined;
   private seq = 0;
+  private zoom = loadZoom();
+  private zoomOut = document.getElementById("term-zoom-out") as HTMLButtonElement;
+  private zoomIn = document.getElementById("term-zoom-in") as HTMLButtonElement;
+  private dock = document.getElementById("term-dock")!;
+  private dockWasOpen = false;
+  private opening: Promise<void> | undefined;
+  private workspace = document.getElementById("terminal-workspace")!;
+  private agent = document.getElementById("agent-workspace")!;
+  private agentTab = document.getElementById("agent-tab")!;
+  private terminalTab = document.getElementById("terminals-tab")!;
+  private share = document.getElementById("term-share") as HTMLButtonElement;
   private panel = document.getElementById("term-panel")!;
   private split = document.getElementById("split-term")!;
   private tabs = document.getElementById("term-tabs")!;
@@ -79,8 +102,36 @@ export class TerminalPanel {
   private observer = new ResizeObserver(() => this.fitActive());
 
   constructor(private hooks: TerminalHooks) {
+    this.zoomOut.addEventListener("click", () => this.changeZoom(-10));
+    this.zoomIn.addEventListener("click", () => this.changeZoom(10));
     document.getElementById("term-new")!.addEventListener("click", () => void this.create());
     document.getElementById("term-hide")!.addEventListener("click", () => this.show(false));
+    this.agentTab.addEventListener("click", () => this.setWorkspace(false));
+    this.terminalTab.addEventListener("click", () => this.setWorkspace(true));
+    document.getElementById("workspace-tabs")!.addEventListener("keydown", (e) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const open = e.key === "End" || (e.key !== "Home" && !this.inWorkspace);
+      this.setWorkspace(open);
+      (open ? this.terminalTab : this.agentTab).focus();
+    });
+    this.tabs.addEventListener("keydown", (e) => {
+      if (!this.active || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+      e.preventDefault();
+      const index = this.terms.indexOf(this.active);
+      const step = e.key === "ArrowUp" ? -1 : 1;
+      this.activate(this.terms[(index + step + this.terms.length) % this.terms.length]);
+      this.tabs.querySelector<HTMLElement>(".is-active")?.focus();
+    });
+    this.share.addEventListener("mousedown", (e) => e.preventDefault());
+    this.share.addEventListener("click", () => {
+      if (!this.active) return;
+      const text = this.outputOf(this.active.term);
+      this.setWorkspace(false);
+      this.hooks.attach(text, this.active.name);
+    });
+    this.refreshShare();
     this.observer.observe(this.body);
   }
 
@@ -93,16 +144,57 @@ export class TerminalPanel {
     return this.hooks.url(80, 24) !== undefined;
   }
 
+  get inWorkspace(): boolean {
+    return !this.workspace.hidden;
+  }
+
+  setWorkspace(open: boolean): void {
+    if (open === this.inWorkspace || (open && !this.available)) return;
+    if (open) this.dockWasOpen = this.isOpen;
+    this.agent.hidden = open;
+    this.workspace.hidden = !open;
+    this.agentTab.setAttribute("aria-selected", String(!open));
+    this.terminalTab.setAttribute("aria-selected", String(open));
+    this.agentTab.tabIndex = open ? -1 : 0;
+    this.terminalTab.tabIndex = open ? 0 : -1;
+    if (open) this.workspace.append(this.panel);
+    else this.split.after(this.panel);
+    this.show(open || (this.dockWasOpen && this.terms.length > 0));
+    if (!open) this.agentTab.focus();
+  }
+
+  /** Legge il buffer visualizzato soltanto quando l’utente prepara un allegato. */
+  private outputOf(term: Terminal): string {
+    if (term.hasSelection()) return term.getSelection();
+    const buffer = term.buffer.active;
+    const pieces: string[] = [];
+    for (let i = 0; i < buffer.length; i++) {
+      const wrapped = buffer.getLine(i + 1)?.isWrapped;
+      pieces.push(buffer.getLine(i)!.translateToString(!wrapped));
+      if (!wrapped) pieces.push("\n");
+    }
+    return pieces.join("").replace(/\n+$/, "");
+  }
+
+  refreshShare(): void {
+    this.share.disabled = !this.active || !this.hooks.canAttach();
+    this.share.textContent = this.active?.term.hasSelection() ? t().ui.attachTerminalSelection : t().ui.attachTerminalHistory;
+  }
+
   /** Apre o chiude il pannello; aprendolo senza terminali se ne avvia uno. */
   show(open: boolean): void {
-    if (open && !this.available) return;
+    if (!open && this.inWorkspace) {
+      this.setWorkspace(false);
+      return;
+    }
+    if (open && !this.available && !this.terms.length) return;
     this.panel.hidden = !open;
-    this.split.hidden = !open;
-    document.querySelector(".main")?.classList.toggle("has-term", open);
+    this.dock.hidden = !open || this.inWorkspace;
     this.hooks.changed();
     if (!open) return;
-    if (!this.terms.length) void this.create();
-    else {
+    if (!this.terms.length) {
+      this.opening ??= this.create().finally(() => { this.opening = undefined; });
+    } else {
       this.fitActive();
       this.active?.term.focus();
     }
@@ -112,12 +204,26 @@ export class TerminalPanel {
     this.show(!this.isOpen);
   }
 
+  private get fontSize(): number {
+    return Math.round(16 * (Number(css("--fs")) || 1) * this.zoom / 100);
+  }
+
+  private changeZoom(delta: number): void {
+    this.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, this.zoom + delta));
+    try { localStorage.setItem(ZOOM_KEY, String(this.zoom)); } catch { /* Solo per questa finestra. */ }
+    this.refresh();
+    this.active?.term.focus();
+  }
+
   /** Colori e dimensione del testo cambiati (aiuti alla lettura, A− / A+). */
   refresh(): void {
+    this.zoomOut.disabled = this.zoom <= ZOOM_MIN;
+    this.zoomIn.disabled = this.zoom >= ZOOM_MAX;
+    this.refreshShare();
     for (const x of this.terms) {
       x.term.options.theme = theme();
       x.term.options.fontFamily = css("--font-code");
-      x.term.options.fontSize = fontSize();
+      x.term.options.fontSize = this.fontSize;
       x.term.options.cursorBlink = !reducedMotion();
     }
     this.fitActive();
@@ -132,7 +238,7 @@ export class TerminalPanel {
     this.body.append(view);
     const term = new Terminal({
       fontFamily: css("--font-code"),
-      fontSize: fontSize(),
+      fontSize: this.fontSize,
       theme: theme(),
       cursorBlink: !reducedMotion(),
       scrollback: 5000,
@@ -142,6 +248,9 @@ export class TerminalPanel {
     term.loadAddon(fit);
     term.open(view);
     const x: Term = { id, name: `${t().ui.terminal} ${id}`, view, term, fit, ws: undefined, exited: false, pipe: false, line: "" };
+    term.onSelectionChange(() => {
+      if (this.active === x) this.refreshShare();
+    });
     this.terms.push(x);
     this.activate(x);
     // Ctrl+` resta del gioco (apre e chiude il pannello), non va alla shell
@@ -169,6 +278,7 @@ export class TerminalPanel {
       else if (m.t === "ready") {
         x.name = `${m.shell} ${id}`;
         x.pipe = m.pipe;
+        send({ t: "r", cols: term.cols, rows: term.rows });
         if (m.pipe) term.writeln(`\x1b[2m${t().msg.termPipe}\x1b[0m`);
         this.renderTabs();
       } else if (m.t === "x") {
@@ -233,7 +343,10 @@ export class TerminalPanel {
     for (const o of this.terms) o.view.hidden = o !== x;
     this.renderTabs();
     this.fitActive();
-    x.term.focus();
+    if (this.isOpen && this.body.clientHeight) {
+      if (this.tabs.scrollHeight > this.tabs.clientHeight) this.tabs.querySelector(".is-active")?.scrollIntoView({ block: "nearest" });
+      x.term.focus();
+    }
   }
 
   private fitActive(): void {
@@ -247,6 +360,7 @@ export class TerminalPanel {
   }
 
   private renderTabs(): void {
+    this.refreshShare();
     this.tabs.replaceChildren(
       ...this.terms.map((x) => {
         const b = document.createElement("button");
@@ -257,6 +371,8 @@ export class TerminalPanel {
         b.classList.toggle("is-active", x === this.active);
         b.classList.toggle("is-exited", x.exited);
         b.dataset.term = String(x.id);
+        b.tabIndex = x === this.active ? 0 : -1;
+        b.title = x.name;
         const name = document.createElement("span");
         name.textContent = x.name;
         const close = document.createElement("span");

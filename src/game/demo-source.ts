@@ -3,6 +3,7 @@
 
 import type { Conversation, ConversationSummary, Diagram, DiagramSummary, EntryKind, Gap, Tour, TourSummary, TrashEntry } from "../shared/types";
 import { validRenameName } from "../shared/file-name";
+import { directoryContains, repathDirectory } from "../shared/project-path";
 import { t } from "./i18n";
 import type { ConnectionState, GameSource } from "./source";
 
@@ -53,7 +54,22 @@ export class DemoSource implements GameSource {
     return this.files;
   }
   async moveFile(path: string, toDir: string): Promise<string> {
+    if (toDir && toDir !== "." && !this.dirs.includes(toDir)) throw new Error(t().msg.notFound(toDir));
+    if (toDir === ".") toDir = "";
     return this.moveTo(path, (toDir ? `${toDir}/` : "") + path.split("/").pop()!);
+  }
+  async moveDirectory(from: string, toDir: string): Promise<{ from: string; to: string }> {
+    if (!this.dirs.includes(from)) throw new Error(t().msg.notFound(from));
+    if (toDir && !this.dirs.includes(toDir)) throw new Error(t().msg.notFound(toDir));
+    if (directoryContains(from, toDir)) throw new Error(t().msg.moveIntoItself);
+    const to = (toDir ? `${toDir}/` : "") + from.split("/").pop()!;
+    if (from === to) return { from, to };
+    if (this.contents.has(to) || this.dirs.includes(to)) throw new Error(t().msg.fileExists(to));
+    const repath = (path: string) => repathDirectory(path, from, to);
+    this.contents = new Map([...this.contents].map(([path, text]) => [repath(path), text]));
+    this.files = [...this.contents.keys()].sort();
+    this.dirs = this.dirs.map(repath);
+    return { from, to };
   }
   async renameFile(path: string, name: string): Promise<string> {
     const dirEnd = path.lastIndexOf("/") + 1;
@@ -129,13 +145,14 @@ export class DemoSource implements GameSource {
   ask(): boolean {
     return false;
   }
-  async askWithImages(): Promise<boolean> {
+  async askWithAttachments(): Promise<boolean> {
     return false;
   }
   sendState(): void {}
   savePrefs(): void {}
   onPrefs(): void {}
   onFiles(): void {}
+  onDirectoryMoved(): void {}
   onCommand(): void {}
   onStatus(cb: (s: ConnectionState) => void): void {
     cb("demo");

@@ -10,7 +10,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
-import { BUFFER_MAX, GAPS_MAX, QUESTION_IMAGE_WIRE, SELECTION_MAX, cleanTutorContext, gapKey, sortGaps, type ClientMessage, type Gap, type GapLog, type Conversation, type ConversationTurn, type GameContext, type MovedFile, type QuestionSubmission, type ReaderProfile, type ServerMessage, type SessionInfo, type UserQuestion, type TutorBuffer } from "../shared/types.js";
+import { BUFFER_MAX, GAPS_MAX, OUTPUT_MAX, QUESTION_INLINE_MAX, QUESTION_TEXT_BYTES, QUESTION_IMAGE_WIRE, SELECTION_MAX, cleanTutorContext, gapKey, sortGaps, type ClientMessage, type Gap, type GapLog, type Conversation, type ConversationTurn, type GameContext, type MovedFile, type QuestionSubmission, type ReaderProfile, type ServerMessage, type SessionInfo, type UserQuestion, type TutorBuffer } from "../shared/types.js";
+import { repathDirectory } from "../shared/project-path.js";
 import { conversationSummary, type Project } from "./project.js";
 import type { Store } from "./store.js";
 import { log } from "./log.js";
@@ -167,7 +168,7 @@ export class Bridge {
       );
     });
     // JSON può usare sei byte per un carattere del buffer, oltre alle immagini in Base64 e ai metadati.
-    this.wss = new WebSocketServer({ noServer: true, maxPayload: 6 * BUFFER_MAX + QUESTION_IMAGE_WIRE + 256 * 1024 });
+    this.wss = new WebSocketServer({ noServer: true, maxPayload: 6 * (BUFFER_MAX + QUESTION_TEXT_BYTES) + QUESTION_IMAGE_WIRE + 256 * 1024 });
     this.http.on("upgrade", (req, socket, head) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       const term = url.pathname === "/term" && this.terminals;
@@ -374,7 +375,9 @@ export class Bridge {
       q.previous = c.turns.slice(-1).map((t) => ({ question: t.question.text, answers: t.answers.map((a) => a.text) }));
     } else {
       const now = new Date().toISOString();
-      const title = q.text.slice(0, 80) || (q.context.lang === "it" ? "Domanda con immagini" : "Question with images");
+      const italian = q.context.lang === "it";
+      const fallback = q.textBytes ? (italian ? "Testo allegato" : "Attached text") : (italian ? "Domanda con immagini" : "Question with images");
+      const title = q.text.slice(0, 80) || fallback;
       c = { version: 1, id: q.id, title, startedAt: now, updatedAt: now, turns: [] };
       this.conversations.set(c.id, c);
     }
@@ -382,7 +385,7 @@ export class Bridge {
     const { buffer, ...context } = q.context;
     const saved: GameContext = buffer ? { ...context, buffer: { ...buffer, content: "" } } : context;
     const turn: ConversationTurn = {
-      question: { id: q.id, text: q.text, askedAt: q.askedAt, context: saved, ...(q.imageCount ? { imageCount: q.imageCount } : {}) },
+      question: { id: q.id, text: q.text, askedAt: q.askedAt, context: saved, ...(q.textBytes ? { textBytes: q.textBytes } : {}), ...(q.imageCount ? { imageCount: q.imageCount } : {}) },
       answers: [],
     };
     c.turns.push(turn);
@@ -495,13 +498,27 @@ export class Bridge {
     for (const m of this.replay()) ws.send(JSON.stringify(m));
   }
 
-  private async acceptQuestion(msg: QuestionSubmission, id: string, imageCount?: number): Promise<UserQuestion | undefined> {
-    const text = String(msg.text ?? "").slice(0, 2000).trim();
-    if (!text && !imageCount) return;
-    const context = cleanTutorContext({ ...msg.context });
+  private async acceptQuestion(msg: QuestionSubmission, id: string, attachment?: string, images?: unknown): Promise<UserQuestion | undefined> {
+    const raw = String(msg.text ?? "");
+    const text = raw.length > QUESTION_INLINE_MAX ? "" : raw.trim();
+    const ctx = { ...msg.context };
+    const longOutput = ctx.mode === "tutor" && typeof ctx.output === "string" && ctx.output.length > OUTPUT_MAX;
+    const attached = [raw.length > QUESTION_INLINE_MAX ? raw : "", attachment, longOutput ? ctx.output : ""].filter(Boolean).join("\n\n");
+    if (longOutput) delete ctx.output;
+    const context = cleanTutorContext(ctx);
+    const project = this.opts.project;
+    const textBytes = attached ? await project.saveQuestionText(id, attached) : undefined;
+    let imageCount: number | undefined;
+    try {
+      if (images !== undefined) imageCount = await project.saveQuestionImages(id, images);
+    } catch (e) {
+      if (textBytes) await project.discardQuestionText(id);
+      throw e;
+    }
+    if (!text && !imageCount && !textBytes) return;
     if (typeof context.selection === "string") context.selection = context.selection.slice(0, SELECTION_MAX);
     else delete context.selection;
-    const q: UserQuestion = { id, text, askedAt: new Date().toISOString(), context, ...(imageCount ? { imageCount } : {}) };
+    const q: UserQuestion = { id, text, askedAt: new Date().toISOString(), context, ...(textBytes ? { textBytes } : {}), ...(imageCount ? { imageCount } : {}) };
     await this.addTurn(q, typeof msg.conversation === "string" ? msg.conversation : undefined);
     if (context.buffer) {
       this.snapshots.set(q.id, context.buffer);
@@ -535,7 +552,7 @@ export class Bridge {
       return;
     }
     if (msg.type === "question") {
-      const question = await this.acceptQuestion(msg, randomUUID().slice(0, 8));
+      const question = await this.acceptQuestion(msg, randomUUID());
       if (question) this.notifyQuestion(question);
       return;
     }
@@ -544,11 +561,13 @@ export class Bridge {
       try {
         const p = this.opts.project;
         let data: unknown;
-        if (msg.op === "ask_with_images") {
+        if (msg.op === "ask_with_images" || msg.op === "ask_with_text") {
           if (!this.opts.agent) throw new Error("Nessun agente collegato.");
           const id = randomUUID();
-          const count = await p.saveQuestionImages(id, msg.images);
-          const question = await this.acceptQuestion(msg, id, count);
+          const attachment = msg.op === "ask_with_text" ? msg.attachment : undefined;
+          if (msg.op === "ask_with_text" && (typeof attachment !== "string" || !attachment.length)) throw new Error("Testo allegato mancante.");
+          if (msg.op === "ask_with_images" && !msg.images) throw new Error("Immagini mancanti.");
+          const question = await this.acceptQuestion(msg, id, attachment, msg.images);
           reply({ type: "response", reqId: msg.reqId, ok: true, data: id });
           if (question) this.notifyQuestion(question);
           return;
@@ -565,6 +584,20 @@ export class Bridge {
           log(`file spostato dal gioco: ${msg.path} → ${moved}`);
           data = { path: moved, files: await p.listFiles() } satisfies MovedFile;
           void this.checkFiles();
+        }
+        else if (msg.op === "move_dir") {
+          const moved = await p.moveDirectory(msg.path, msg.to);
+          data = moved;
+          if (moved.from !== moved.to) {
+            const repath = (path: string) => repathDirectory(path, moved.from, moved.to);
+            this.scene = this.scene.map((m) => m.type === "open_file" || m.type === "highlight" || m.type === "marks"
+              ? { ...m, path: repath(m.path) } : m);
+            if (this.lastContext?.file) this.lastContext.file = repath(this.lastContext.file);
+            const event = JSON.stringify({ type: "directory_moved", ...moved } satisfies ServerMessage);
+            for (const other of this.clients) if (other !== ws) other.send(event);
+            log(`cartella spostata dal gioco: ${moved.from} → ${moved.to}`);
+            void this.checkFiles();
+          }
         }
         else if (msg.op === "rename_file") {
           const renamed = await p.renameFile(msg.path, msg.name);

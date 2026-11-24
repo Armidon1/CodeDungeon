@@ -4,6 +4,8 @@ import {
   AIDS,
   LEVELS,
   MODES,
+  QUESTION_INLINE_MAX,
+  QUESTION_TEXT_BYTES,
   READER_NOTE_MAX,
   SELECTION_MAX,
   type ConversationTurn,
@@ -15,12 +17,14 @@ import {
   type Level,
   type LineMark,
   type Mode,
+  type MovedDirectory,
   type StepLink,
   type StoredPrefs,
   type Tour,
   type TourStep,
 } from "../shared/types";
 import { validRenameName } from "../shared/file-name";
+import { directoryContains, parentDirectory, repathDirectory } from "../shared/project-path";
 import { AskImages } from "./ask-images";
 import * as sound from "./audio";
 import { TRACK_IDS, type SoundSettings } from "./audio";
@@ -44,11 +48,16 @@ import { pickSession, switchSession } from "./sessions";
 import { initLayout, type LayoutControls } from "./layout";
 import { fullscreenAvailable, onFullscreenChange, toggleFullscreen } from "./fullscreen";
 
-/** Testo selezionato nel codice o nel fumetto, allegato alla prossima domanda. */
 /** Come aprire un file: in una scheda nuova (Ctrl+clic), senza dissolvenza (cambio di scheda). */
 interface TabOpen {
   newTab?: boolean;
   quick?: boolean;
+}
+
+interface EntryMove {
+  kind: EntryKind;
+  from: string;
+  to: string;
 }
 
 /** L'ultimo rettangolo di una selezione: il pulsante va dove finisce. */
@@ -61,6 +70,21 @@ interface Quote {
   text: string;
   file?: string;
   lines?: [number, number];
+}
+
+type AskSection =
+  | ({ kind: "quote" } & Quote)
+  | { kind: "output"; text: string; terminal?: string; tutorError?: boolean };
+
+function sectionLabel(section: AskSection): string {
+  if (section.kind === "quote") return t().msg.quoteFrom(section.file, section.lines);
+  return section.terminal ?? t().msg.askTextAttached(new Blob([section.text]).size);
+}
+
+/** Un solo output mantiene il formato originale. Più sezioni portano anche numero e provenienza. */
+function sectionText(sections: AskSection[]): string {
+  if (sections.length === 1 && sections[0].kind === "output") return sections[0].text;
+  return sections.map((section, index) => `${index + 1}. ${sectionLabel(section)}\n${section.text}`).join("\n\n");
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -97,6 +121,7 @@ interface DialogLine {
   /** Il fumetto riporta una domanda dell'utente (conversazioni rilette). */
   fromUser?: boolean;
   imageCount?: number;
+  textBytes?: number;
   /** Messaggio di passaggio ("ci penso…"): non entra nello storico della chat. */
   transient?: boolean;
 }
@@ -138,6 +163,9 @@ export class App {
   private referenceSearch: AbortController | undefined;
   private trashRun = 0;
   private saving = new Map<string, Promise<boolean>>();
+  private moving: { path: string; kind: EntryKind } | undefined;
+  private lastMove: EntryMove | undefined;
+  private undoMoveError: string | undefined;
   private currentLines: string[] = [];
   private highlight: [number, number] | undefined;
   /** Contenuto dei file come sono su disco (l'ultima versione letta o salvata). */
@@ -146,8 +174,8 @@ export class App {
   private drafts = new Map<string, string>();
   /** Tutor: il testo di ogni file all'ultima domanda, per dire all'agente quali righe sono cambiate. */
   private askedText = new Map<string, string>();
-  /** Tutor: output del terminale da allegare alla prossima domanda ("Spiegami l'errore"). */
-  private output: string | undefined;
+  private sections: AskSection[] = [];
+  private waitingForOutputPaste = false;
   private askImages = new AskImages($("ask-images"), $("ask-image-status"));
   private askSending = false;
   /** Segni dell'agente (mark_lines) per file, con il testo a cui si riferiscono i numeri di riga. */
@@ -173,8 +201,6 @@ export class App {
   private liveQueue: DialogLine[] = [];
   /** Conversazione delle risposte sul fumetto: una domanda fatta mentre le leggi la continua. */
   private conversation: string | undefined;
-  /** Testo selezionato che accompagna la prossima domanda ("Chiedi su questo"). */
-  private quote: Quote | undefined;
   /** Righe intere scelte dai numeri di riga: [ancora, fine], nell'ordine del trascinamento. */
   private lineSel: [number, number] | undefined;
   /** Passo del tour da riprendere dopo le risposte dal vivo. */
@@ -188,6 +214,12 @@ export class App {
   private popBoard = new Board({ onOpenCode: (file, lines) => this.openFromBoard(file, lines, true), follow: true });
   private terminals = new TerminalPanel({
     url: (cols, rows) => this.source.terminalUrl(cols, rows),
+    canAttach: () => !this.askSending,
+    attach: (text, terminal) => {
+      if (text) this.addSection({ kind: "output", text, terminal });
+      else this.askImages.message(t().ui.emptyTerminal);
+      $("ask-input").focus();
+    },
     changed: () => {
       this.relayout();
       this.renderStatus();
@@ -196,8 +228,9 @@ export class App {
   private fileTree = new FileTree($("file-list"), {
     // Ctrl/Cmd+clic o clic centrale: in una scheda nuova
     open: (path, e) => void this.goToFile(path, undefined, undefined, { newTab: e.ctrlKey || e.metaKey || e.button === 1 }),
-    canEdit: () => this.tutor,
-    move: (path, toDir) => void this.moveFile(path, toDir),
+    canEdit: () => this.tutor && !this.moving,
+    move: (path, toDir, kind) => void this.moveEntry(path, toDir, kind).catch((e) => this.showMoveError(e)),
+    moveFolder: (dir) => this.openMoveFolder(dir),
     rename: (path) => this.openRenameFile(path),
     delete: (path) => this.confirmDeleteFile(path),
     references: (path) => void this.showReferences(path),
@@ -260,6 +293,10 @@ export class App {
     source.onCommand((cmd) => void this.onAgentCommand(cmd));
     source.onPrefs((p) => this.applyStored(p));
     source.onFiles(() => this.renderFileList());
+    source.onDirectoryMoved((move) => {
+      if (this.lastMove && [this.lastMove.from, this.lastMove.to].some((path) => directoryContains(move.from, path))) this.clearUndoMove();
+      this.applyDirectoryMove(move);
+    });
     this.titlePortrait.set({ expression: "felice" });
     this.renderGuide();
     void this.guidePicker.init().then((look) => {
@@ -274,6 +311,7 @@ export class App {
   // ---------- Avvio ----------
 
   private async onReady(): Promise<void> {
+    if (this.loaded) this.clearUndoMove();
     this.loaded = true;
     const stored = this.source.prefs;
     // il database vale per tutti i progetti; se è vuoto riceve quello che c'era in questo browser
@@ -292,6 +330,8 @@ export class App {
     sound.play("menu");
     $("title-screen").hidden = false;
     $("app").inert = true;
+    this.portrait.refresh();
+    this.titlePortrait.refresh();
     this.syncTitleOptions();
     this.guidePicker.sync();
     ($("title-screen").querySelector<HTMLInputElement>(".menu-panel.is-on input:checked") ?? $("start-btn")).focus();
@@ -335,6 +375,8 @@ export class App {
   private closeTitle(): void {
     $("title-screen").hidden = true;
     $("app").inert = false;
+    this.portrait.refresh();
+    this.titlePortrait.refresh();
   }
 
   private async start(): Promise<void> {
@@ -417,13 +459,15 @@ export class App {
     if (radio) radio.checked = true;
     this.guidePicker.relabel();
     this.renderGuide();
-    this.setQuote(this.quote);
+    this.renderSections();
     this.askImages.render();
+    this.terminals.refreshShare();
     this.renderStatus();
     this.renderDock();
     this.renderTitleSource();
     this.syncTitleOptions();
     this.syncSoundOptions();
+    this.renderUndoMove();
     this.foldPop($("board-pop").classList.contains("is-folded"));
     this.renderTabs();
     this.updateNav();
@@ -757,6 +801,8 @@ export class App {
 
   /** Nome e mini-guida ovunque compaiano. */
   private renderGuide(): void {
+    this.portrait.refresh();
+    this.titlePortrait.refresh();
     const name = this.settings.guide.name;
     $("tagline").textContent = t().msg.tagline(name);
     this.renderAskHint();
@@ -1430,6 +1476,7 @@ export class App {
     this.fileTree.dismissMenu();
     $("app").classList.toggle("is-tutor", this.tutor);
     $("explorer-actions").hidden = !this.tutor;
+    this.renderUndoMove();
     this.syncEditable();
     this.renderStatus();
     this.reportState();
@@ -1469,6 +1516,7 @@ export class App {
     // ri-evidenziazione una volta per fotogramma, anche se si scrive veloce
     cancelAnimationFrame(this.rehighlight);
     this.rehighlight = requestAnimationFrame(() => {
+      this.rehighlight = 0;
       if (this.currentFile !== file) return;
       this.renderLines(this.editLayer.value);
       this.editLayer.fit();
@@ -1503,6 +1551,7 @@ export class App {
    */
   private async saveFile(force = false, file = this.currentFile, auto = false): Promise<boolean> {
     if (!this.tutor || !file) return false;
+    if (this.moving && (this.moving.path === file || (this.moving.kind === "dir" && directoryContains(this.moving.path, file)))) return false;
     if (this.fileDialogBusy && this.fileDialogTarget === file) return false;
     const previous = this.saving.get(file) ?? Promise.resolve();
     const saving = previous.then(() => this.doSaveFile(file, force, auto));
@@ -1698,50 +1747,172 @@ export class App {
     document.querySelector<HTMLButtonElement>(`#file-list [data-dir="${CSS.escape(path)}"] .dir-btn`)?.focus();
   }
 
-  /** Sposta un file in un'altra cartella del progetto. */
-  private async moveFile(file: string, toDir: string): Promise<void> {
-    let to: string;
+  private renderUndoMove(): void {
+    const move = this.lastMove;
+    $("explorer-move").hidden = !this.tutor || !move;
+    const button = $<HTMLButtonElement>("explorer-undo-move");
+    button.disabled = !!this.moving;
+    if (!move) return;
+    const toDir = parentDirectory(move.to);
+    const label = t().msg.undoMoveTo(move.from);
+    button.setAttribute("aria-label", label);
+    button.title = label;
+    const status = $("explorer-move-status");
+    status.toggleAttribute("data-error", this.undoMoveError !== undefined);
+    status.textContent = this.undoMoveError === undefined
+      ? t().msg.moved(move.to.split("/").pop()!, toDir || t().msg.projectRoot)
+      : t().msg.undoMoveFailed(this.undoMoveError);
+    status.title = status.textContent;
+  }
+
+  private clearUndoMove(): void {
+    this.lastMove = this.undoMoveError = undefined;
+    this.renderUndoMove();
+  }
+
+  private async undoMove(): Promise<void> {
+    const move = this.lastMove;
+    if (!move || !this.tutor || this.moving || this.fileDialogBusy) return;
+    const button = $("explorer-undo-move");
+    const hadFocus = document.activeElement === button;
+    this.undoMoveError = undefined;
     try {
-      to = await this.source.moveFile(file, toDir);
+      const to = await this.moveEntry(move.to, parentDirectory(move.from), move.kind, true);
+      if (to) this.fileTree.focusEntry(to, move.kind);
     } catch (e) {
+      this.undoMoveError = this.errText(e);
+      this.renderUndoMove();
+      if (hadFocus && document.activeElement === document.body) button.focus();
       sound.play("error");
-      this.setEditMessage(t().msg.moveFailed(this.errText(e)), "error");
-      return;
     }
-    this.repathFile(file, to);
-    sound.play("select");
-    this.setEditMessage(t().msg.moved(to.split("/").pop()!, toDir || t().msg.projectRoot));
+  }
+
+  private showMoveError(e: unknown, error?: HTMLElement): void {
+    const message = t().msg.moveFailed(this.errText(e));
+    sound.play("error");
+    if (error) {
+      error.textContent = message;
+      error.hidden = false;
+    } else this.setEditMessage(message, "error");
+  }
+
+  private async moveEntry(path: string, toDir: string, kind: EntryKind, undo = false): Promise<string | undefined> {
+    if (!this.tutor || this.moving) return;
+    this.moving = { path, kind };
+    this.renderUndoMove();
+    try {
+      const saves = [...this.saving].filter(([file]) => file === path || (kind === "dir" && directoryContains(path, file)));
+      await Promise.all(saves.map(([, saving]) => saving));
+      await this.navigating;
+      const move = kind === "dir" ? await this.source.moveDirectory(path, toDir) : { from: path, to: await this.source.moveFile(path, toDir) };
+      await this.navigating;
+      if (move.from === move.to) return move.to;
+      if (kind === "dir") {
+        this.applyDirectoryMove(move);
+        this.fileTree.showArrival(move.to);
+      } else this.repathFile(move.from, move.to);
+      this.lastMove = undo ? undefined : { ...move, kind };
+      this.undoMoveError = undefined;
+      sound.play("select");
+      this.setEditMessage(undo ? t().msg.moveUndone(move.to) : "");
+      return move.to;
+    } finally {
+      this.moving = undefined;
+      this.renderUndoMove();
+    }
+  }
+
+  private applyDirectoryMove({ from, to }: MovedDirectory): void {
+    if (from === to) return;
+    const repath = (path: string) => repathDirectory(path, from, to);
+    this.fileTree.repathFolders(repath);
+    this.fileTree.reveal(to);
+    this.repathFiles(repath);
+  }
+
+  private openMoveFolder(dir: string): void {
+    const dialog = $<HTMLDialogElement>("move-folder-dialog");
+    if (!this.tutor || this.moving || dialog.open || !this.source.dirs.includes(dir)) return;
+    this.fileDialogTarget = dir;
+    const parent = parentDirectory(dir);
+    const destinations = ["", ...this.source.dirs.filter((path) => !directoryContains(dir, path)).sort((a, b) => a.localeCompare(b))]
+      .filter((path) => path !== parent);
+    const select = $<HTMLSelectElement>("move-folder-to");
+    const options = destinations.map((path) => new Option(path || t().msg.projectRoot, path));
+    select.replaceChildren(...(options.length ? options : [new Option(t().msg.noMoveDestination)]));
+    select.disabled = $<HTMLButtonElement>("move-folder-confirm").disabled = !options.length;
+    $("move-folder-path").textContent = dir;
+    $("move-folder-error").hidden = true;
+    dialog.showModal();
+  }
+
+  private async confirmMoveFolder(): Promise<void> {
+    const dir = this.fileDialogTarget;
+    const dialog = $<HTMLDialogElement>("move-folder-dialog");
+    const select = $<HTMLSelectElement>("move-folder-to");
+    if (!dir || !dialog.open || select.disabled || this.fileDialogBusy) return;
+    const cancel = $<HTMLButtonElement>("move-folder-cancel");
+    const confirm = $<HTMLButtonElement>("move-folder-confirm");
+    const error = $("move-folder-error");
+    this.fileDialogBusy = cancel.disabled = confirm.disabled = select.disabled = true;
+    error.hidden = true;
+    try {
+      const to = await this.moveEntry(dir, select.value, "dir");
+      if (to === undefined) return;
+      dialog.close();
+      this.fileTree.focusEntry(to, "dir");
+    } catch (e) {
+      this.showMoveError(e, error);
+    } finally {
+      this.fileDialogBusy = cancel.disabled = confirm.disabled = select.disabled = false;
+      if (dialog.open) select.focus();
+    }
   }
 
   /** Schede, bozze, segni e selezioni seguono il percorso nuovo. */
   private repathFile(file: string, to: string): void {
     if (file === to) return;
-    const rekey = <V>(map: Map<string, V>) => {
-      const v = map.get(file);
-      if (v === undefined) return;
-      map.delete(file);
-      map.set(to, v);
-    };
-    for (const map of [this.tabState, this.fileCache, this.drafts, this.askedText, this.marks] as Map<string, unknown>[]) rekey(map);
-    this.openFiles = this.openFiles.map((f) => (f === file ? to : f));
-    if (this.closing === file) {
-      this.closing = to;
-      $("edit-close-text").textContent = t().msg.closeUnsaved(to.split("/").pop()!);
+    this.fileTree.reveal(to);
+    this.repathFiles((path) => path === file ? to : path);
+  }
+
+  private repathFiles(repath: (path: string) => string): void {
+    for (const map of [this.tabState, this.fileCache, this.drafts, this.askedText, this.marks] as Map<string, unknown>[]) {
+      for (const [path, value] of [...map]) {
+        const to = repath(path);
+        if (to === path) continue;
+        map.delete(path);
+        map.set(to, value);
+      }
     }
-    if (this.currentFile === file) {
+    this.openFiles = this.openFiles.map(repath);
+    if (this.closing) {
+      this.closing = repath(this.closing);
+      $("edit-close-text").textContent = t().msg.closeUnsaved(this.closing.split("/").pop()!);
+    }
+    if (this.fileDialogTarget) this.fileDialogTarget = repath(this.fileDialogTarget);
+    if (this.pendingCode) this.pendingCode = { ...this.pendingCode, file: repath(this.pendingCode.file) };
+    const file = this.currentFile;
+    const to = file ? repath(file) : undefined;
+    if (file && to && to !== file) {
       this.currentFile = to;
       const lang = langOf(to);
       $("status-lang").textContent = langLabel(lang);
       const text = this.bufferOf(to);
-      if (lang !== langOf(file) && text !== undefined) {
+      if (text !== undefined && (lang !== langOf(file) || this.rehighlight !== 0)) {
+        cancelAnimationFrame(this.rehighlight);
+        this.rehighlight = 0;
         const editor = $("editor");
         const { scrollLeft, scrollTop } = editor;
         this.renderLines(text);
+        if (this.tutor) this.editLayer.fit();
         editor.scrollTo({ left: scrollLeft, top: scrollTop, behavior: "instant" });
       }
     }
-    if (this.quote?.file === file) this.setQuote({ ...this.quote, file: to });
-    this.fileTree.reveal(to);
+    for (const section of this.sections) {
+      if (section.kind === "quote" && section.file) section.file = repath(section.file);
+    }
+    this.renderSections();
     this.renderFileList();
     this.renderTabs();
     this.reportState();
@@ -1785,6 +1956,7 @@ export class App {
       await this.saving.get(file);
       const to = await this.source.renameFile(file, name);
       await this.navigating;
+      if (this.lastMove?.to === file && to !== file) this.clearUndoMove();
       this.repathFile(file, to);
       this.setEditMessage(t().msg.renamed(to));
       sound.play("select");
@@ -1824,13 +1996,15 @@ export class App {
       await this.saving.get(file);
       await this.source.trashFile(file);
       await this.navigating;
+      if (this.lastMove?.to === file) this.clearUndoMove();
       this.fileCache.delete(file);
       this.drafts.delete(file);
       this.askedText.delete(file);
       this.marks.delete(file);
       if (this.closing === file) this.endCloseConfirm();
       if (this.currentFile === file) this.setLineSel(undefined);
-      if (this.quote?.file === file) this.setQuote(undefined);
+      this.sections = this.sections.filter((section) => section.kind !== "quote" || section.file !== file);
+      this.renderSections();
       this.closeFileTab(file, true);
       this.renderFileList();
       this.setEditMessage(t().msg.deleted(file));
@@ -2178,6 +2352,7 @@ export class App {
     $("app").classList.toggle("is-chat", on);
     $("chat-btn").setAttribute("aria-pressed", String(on));
     this.layout?.setChat(on);
+    this.renderStatus();
     this.syncChatBoard();
     if (!quiet) sound.play("select");
     this.relayout();
@@ -2219,6 +2394,7 @@ export class App {
       who: line.fromUser ? "user" : "guide",
       text: line.text,
       imageCount: line.imageCount,
+      textBytes: line.textBytes,
       speaker: line.speaker ?? this.settings.guide.name,
       title: line.fromUser ? undefined : line.title,
       expression: line.expression,
@@ -2526,24 +2702,22 @@ export class App {
 
   // ---------- Domande e agente ----------
 
-  /** Tutor: buffer dell'editor, righe cambiate dall'ultima domanda e output da allegare; commit() li segna come inviati. */
-  private tutorContext(): { context: Pick<GameContext, "buffer" | "changed" | "output">; commit: () => void } {
+  /** Buffer e righe cambiate in tutor. Dopo l’invio, commit() aggiorna il punto di confronto. */
+  private tutorContext(): { context: Pick<GameContext, "buffer" | "changed">; commit: () => void } {
     const file = this.currentFile;
     const content = file !== undefined && this.view === undefined ? this.bufferOf(file) : undefined;
     if (!this.tutor) return { context: {}, commit: () => {} };
-    const context: Pick<GameContext, "buffer" | "changed" | "output"> = {};
+    const context: Pick<GameContext, "buffer" | "changed"> = {};
     if (file !== undefined && content !== undefined) {
       context.buffer = tutorBuffer(file, content, this.isDirty(file));
       const before = this.askedText.get(file) ?? this.fileCache.get(file)?.replace(/\r\n/g, "\n");
       const changed = before === undefined ? [] : changedLines(before, content);
       if (changed.length) context.changed = changed;
     }
-    if (this.output) context.output = this.output;
     return {
       context,
       commit: () => {
         if (file !== undefined && content !== undefined) this.askedText.set(file, content);
-        this.setOutput(undefined);
       },
     };
   }
@@ -2578,11 +2752,66 @@ export class App {
     sound.play("select");
   }
 
-  private setOutput(text: string | undefined): void {
-    this.output = text?.trim() ? text : undefined;
-    $("ask-output").hidden = !this.output;
-    $("ask-output-text").textContent = this.output?.replace(/\s+/g, " ") ?? "";
-    $("ask-output-text").title = this.output ?? "";
+  private addSection(section: AskSection, replace?: AskSection): boolean {
+    if (this.askSending) return false;
+    const next = replace ? this.sections.map((s) => s === replace ? section : s) : [...this.sections, section];
+    if (new Blob([sectionText(next)]).size > QUESTION_TEXT_BYTES) {
+      this.askImages.message(t().msg.askTextLimit);
+      return false;
+    }
+    this.sections = next;
+    this.askImages.message("");
+    this.renderSections();
+    if (!replace) $("ask-sections").scrollTop = $("ask-sections").scrollHeight;
+    return true;
+  }
+
+  private renderSections(): void {
+    const list = $("ask-sections");
+    list.hidden = !this.sections.length;
+    list.replaceChildren(...this.sections.map((section, i) => {
+      const row = document.createElement("li");
+      row.className = "ask-quote";
+      row.dataset.kind = section.kind;
+      const label = document.createElement("span");
+      label.className = "ask-quote-label";
+      label.textContent = `${i + 1}. ${sectionLabel(section)}`;
+      label.title = label.textContent;
+      const preview = document.createElement("span");
+      preview.className = "ask-quote-text";
+      preview.textContent = clip(section.text, 120).replace(/\s+/g, " ");
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "link-btn";
+      remove.textContent = "✕";
+      remove.setAttribute("aria-label", `${t().ui.clearOutput} · ${label.textContent}`);
+      remove.disabled = this.askSending;
+      remove.addEventListener("click", () => {
+        this.sections = this.sections.filter((s) => s !== section);
+        this.renderSections();
+        $("ask-input").focus();
+      });
+      row.append(label, preview, remove);
+      return row;
+    }));
+    this.renderAskHint();
+  }
+
+  private pasteQuestion(event: ClipboardEvent): void {
+    const attach = this.waitingForOutputPaste;
+    this.cancelOutputPaste();
+    this.askImages.paste(event);
+    if (event.defaultPrevented) return;
+    const text = event.clipboardData?.getData("text/plain");
+    if (!text || (!attach && text.length <= QUESTION_INLINE_MAX)) return;
+    event.preventDefault();
+    this.addSection({ kind: "output", text });
+  }
+
+  private cancelOutputPaste(): void {
+    if (!this.waitingForOutputPaste) return;
+    this.waitingForOutputPaste = false;
+    this.askImages.message("");
   }
 
   private showAskMenu(open: boolean): void {
@@ -2594,11 +2823,16 @@ export class App {
     if (open) $<HTMLButtonElement>("edit-ask").querySelector("button")!.focus();
   }
 
+  private tutorErrorSection(): AskSection | undefined {
+    return this.sections.find((s) => s.kind === "output" && s.tutorError);
+  }
+
   private showErrorForm(open: boolean): void {
     $("edit-error").hidden = !open;
     if (open) {
       const area = $<HTMLTextAreaElement>("edit-error-output");
-      area.value = this.output ?? "";
+      area.value = this.tutorErrorSection()?.text ?? "";
+      area.setCustomValidity("");
       area.focus();
     }
   }
@@ -2606,20 +2840,36 @@ export class App {
   private async ask(): Promise<void> {
     const input = $<HTMLTextAreaElement>("ask-input");
     const submit = $<HTMLButtonElement>("ask-submit");
-    const q = input.value.trim();
+    const pasteButton = $<HTMLButtonElement>("ask-paste-output");
+    if (this.askSending || pasteButton.disabled) return;
+    this.cancelOutputPaste();
+    const longQuestion = input.value.length > QUESTION_INLINE_MAX;
+    const q = longQuestion ? "" : input.value.trim();
+    const single = this.sections.length === 1 ? this.sections[0] : undefined;
+    const quote = single?.kind === "quote" ? single : undefined;
+    const inlineQuote = quote && q && quote.text.length <= SELECTION_MAX ? quote : undefined;
+    const inlineOutput = single?.kind === "output" && this.tutor && q && single.tutorError && single.text.length <= QUESTION_INLINE_MAX ? single.text : undefined;
+    const attachment = [longQuestion ? input.value : "", inlineQuote || inlineOutput ? "" : sectionText(this.sections)].filter(Boolean).join("\n\n");
+    const textBytes = new Blob([attachment]).size;
+    if (textBytes > QUESTION_TEXT_BYTES) {
+      this.askImages.message(t().msg.askTextLimit);
+      return;
+    }
     const imageCount = this.askImages.count;
-    if (this.askSending || (!q && !imageCount)) return;
-    this.askSending = submit.disabled = input.readOnly = true;
+    if (!q && !imageCount && !attachment) return;
+    this.askSending = pasteButton.disabled = submit.disabled = input.readOnly = true;
+    this.terminals.refreshShare();
+    for (const button of $("ask-sections").querySelectorAll("button")) button.disabled = true;
     this.askImages.setBusy(true);
     this.askImages.message("");
     // chi chiede mentre legge una risposta continua quella conversazione
     const conversation = this.liveAnswer ? this.conversation : undefined;
     const ctx = this.context();
-    const quote = this.quote;
-    const context: GameContext = quote ? { ...ctx, selection: quote.text, file: quote.file ?? ctx.file, lines: quote.lines ?? ctx.lines } : ctx;
+    const context: GameContext = quote ? { ...ctx, selection: inlineQuote?.text, file: quote.file ?? ctx.file, lines: quote.lines ?? ctx.lines } : ctx;
     // le righe cambiate si calcolano prima di salvare: dopo, il disco coincide col buffer
     const tutor = this.tutorContext();
     Object.assign(context, tutor.context);
+    if (inlineOutput) context.output = inlineOutput;
     let sent: boolean;
     try {
       const images = await this.askImages.encode();
@@ -2627,28 +2877,31 @@ export class App {
         await this.saveAllDirty();
         if (context.buffer) context.buffer.dirty = this.isDirty(context.buffer.file);
       }
-      sent = images.length
-        ? await this.source.askWithImages(q, context, conversation, images)
+      sent = images.length || attachment
+        ? await this.source.askWithAttachments(q, context, conversation, images, attachment)
         : this.source.ask(q, context, conversation);
     } catch (e) {
       this.askImages.message(t().msg.askSendFailed(this.errText(e)));
       sound.play("error");
       return;
     } finally {
-      this.askSending = submit.disabled = input.readOnly = false;
+      this.askSending = pasteButton.disabled = submit.disabled = input.readOnly = false;
+      this.terminals.refreshShare();
       this.askImages.setBusy(false);
+      for (const button of $("ask-sections").querySelectorAll("button")) button.disabled = false;
     }
     sound.play(sent ? "ask" : "error");
     if (sent) {
       input.value = "";
       this.fitAsk();
       this.askImages.clear();
-      this.setQuote(undefined);
+      this.sections = [];
+      this.renderSections();
       tutor.commit();
       // la domanda va nello storico dopo il fumetto che l'ha fatta nascere
       this.logLine(this.dialogLine);
       this.dialogLine = undefined;
-      this.chat.add({ who: "user", text: q, imageCount: imageCount || undefined, quote: quote?.text && clip(quote.text.replace(/\s+/g, " "), QUOTE_NOTE_MAX), code: quote?.file && quote.lines ? { file: quote.file, lines: quote.lines } : undefined });
+      this.chat.add({ who: "user", text: q, textBytes: textBytes || undefined, imageCount: imageCount || undefined, quote: quote?.text && clip(quote.text.replace(/\s+/g, " "), QUOTE_NOTE_MAX), code: quote?.file && quote.lines ? { file: quote.file, lines: quote.lines } : undefined });
       this.say({ text: t().msg.asked, expression: "pensieroso", transient: true });
       this.portrait.set({ talking: false });
       this.waitHint = window.setTimeout(() => {
@@ -2756,14 +3009,15 @@ export class App {
       const { file, lines, selection } = turn.question.context;
       // il testo selezionato su cui era la domanda, sotto il fumetto
       const quote = selection && `${t().msg.quoteFrom(file, lines)} ${t().msg.quoted(clip(selection.replace(/\s+/g, " "), QUOTE_NOTE_MAX))}`;
-      const { imageCount } = turn.question;
+      const { imageCount, textBytes } = turn.question;
       const question: DialogLine = {
         text: turn.question.text,
         expression: "pensieroso",
         speaker: t().msg.you,
         title: t().msg.question,
-        note: [quote, imageCount && t().msg.askImagesAttached(imageCount)].filter(Boolean).join(" ") || undefined,
+        note: [quote, textBytes && t().msg.askTextAttached(textBytes), imageCount && t().msg.askImagesAttached(imageCount)].filter(Boolean).join(" ") || undefined,
         imageCount,
+        textBytes,
         before: file ? () => void this.goToFile(file, lines) : undefined,
         code: file ? { file, lines } : undefined,
         fromUser: true,
@@ -2805,7 +3059,7 @@ export class App {
   /** Il campo delle domande dice se la prossima continua la conversazione o riguarda il testo selezionato. */
   private renderAskHint(): void {
     const name = this.settings.guide.name;
-    $<HTMLTextAreaElement>("ask-input").placeholder = this.quote
+    $<HTMLTextAreaElement>("ask-input").placeholder = this.sections.some((s) => s.kind === "quote")
       ? t().msg.askSelectedPlaceholder
       : this.liveAnswer && this.conversation
         ? t().msg.followUp
@@ -2842,7 +3096,7 @@ export class App {
       const all = (this.bufferOf(file) ?? "").split("\n");
       const text = this.dedent(all.slice(a - 1, b));
       const rect = this.lineRect(this.lineSel[1]);
-      if (text.trim() && rect) return { quote: { text: text.slice(0, SELECTION_MAX), file, lines: [a, b] }, rect };
+      if (text.trim() && rect) return { quote: { text, file, lines: [a, b] }, rect };
     }
     const ta = this.editLayer.area;
     if (file && this.editLayer.attached && document.activeElement === ta && ta.selectionStart !== ta.selectionEnd) {
@@ -2854,7 +3108,7 @@ export class App {
       const text = raw.length > 1 ? this.dedent(raw) : raw[0].trim();
       const col = ta.selectionEnd - (v.lastIndexOf("\n", ta.selectionEnd - 1) + 1);
       const rect = this.lineRect(b, col);
-      return text && rect ? { quote: { text: text.slice(0, SELECTION_MAX), file, lines: [a, b] }, rect } : undefined;
+      return text && rect ? { quote: { text, file, lines: [a, b] }, rect } : undefined;
     }
     const sel = getSelection();
     if (!sel || sel.isCollapsed || !sel.rangeCount) return undefined;
@@ -2864,7 +3118,7 @@ export class App {
     if (!where || where !== area(range.endContainer)) return undefined;
     if (where.id === "dialog-text") {
       const text = sel.toString().trim();
-      return text ? { quote: { text: text.slice(0, SELECTION_MAX) }, rect: lastRect(range) } : undefined;
+      return text ? { quote: { text }, rect: lastRect(range) } : undefined;
     }
     // nel codice: niente numeri di riga, una riga di testo per ogni riga dell'editor
     const frag = range.cloneContents();
@@ -2876,7 +3130,7 @@ export class App {
     const a = lineOf(range.startContainer);
     const b = lineOf(range.endContainer);
     const lines: [number, number] | undefined = a && b ? [Math.min(a, b), Math.max(a, b)] : undefined;
-    return { quote: { text: text.slice(0, SELECTION_MAX), file: this.currentFile, lines }, rect: lastRect(range) };
+    return { quote: { text, file: this.currentFile, lines }, rect: lastRect(range) };
   }
 
   /** Righe scelte dai numeri di riga: evidenziate finché non si clicca altrove. */
@@ -2919,17 +3173,6 @@ export class App {
     const below = r.bottom + 6 + h < innerHeight - 8;
     btn.style.left = `${Math.max(8, Math.min(r.right - w / 2, innerWidth - w - 8))}px`;
     btn.style.top = `${below ? r.bottom + 6 : Math.max(8, r.top - h - 6)}px`;
-  }
-
-  private setQuote(quote: Quote | undefined): void {
-    this.quote = quote;
-    $("ask-quote").hidden = !quote;
-    if (quote) {
-      $("ask-quote-label").textContent = t().msg.quoteFrom(quote.file, quote.lines);
-      $("ask-quote-text").textContent = quote.text.replace(/\s+/g, " ");
-      $("ask-quote-text").title = quote.text;
-    }
-    this.renderAskHint();
   }
 
   private showLive(line: DialogLine, queue: DialogLine[]): void {
@@ -3001,7 +3244,8 @@ export class App {
     $("status-level").textContent = t().msg.statusLevel(t().levels[this.settings.level].label);
     $("status-gen").textContent = t().generation[this.settings.generation].label;
     $("status-mode").textContent = this.tutor ? t().modes.tutor.label : "";
-    $("term-btn").hidden = !this.terminals.available;
+    $("workspace-tabs").hidden = !this.terminals.available && !this.terminals.inWorkspace;
+    $("term-btn").hidden = !this.terminals.available || this.terminals.inWorkspace;
     $("term-btn").setAttribute("aria-pressed", String(this.terminals.isOpen));
   }
 
@@ -3116,16 +3360,12 @@ export class App {
       const found = this.readSelection();
       askSel.hidden = true;
       if (!found) return;
-      this.setQuote(found.quote);
+      if (!this.addSection({ kind: "quote", ...found.quote })) return;
       getSelection()?.removeAllRanges();
       this.setLineSel(undefined);
       const ta = this.editLayer.area;
       ta.selectionEnd = ta.selectionStart;
       sound.play("select");
-      $("ask-input").focus();
-    });
-    $("ask-quote-clear").addEventListener("click", () => {
-      this.setQuote(undefined);
       $("ask-input").focus();
     });
     document.addEventListener("pointerup", (e) => {
@@ -3161,7 +3401,11 @@ export class App {
     document.addEventListener("pointerup", () => (picking = false));
     $("editor").addEventListener("scroll", () => (askSel.hidden = true));
     $("menu-btn").addEventListener("click", () => this.openTitle());
-    $("chat-btn").addEventListener("click", () => this.setChat(!this.isChat));
+    $("chat-btn").addEventListener("click", () => {
+      const open = this.terminals.inWorkspace || !this.isChat;
+      this.terminals.setWorkspace(false);
+      this.setChat(open);
+    });
     new MutationObserver(() => this.syncChatBoard()).observe($("board-pop"), { attributes: true, attributeFilter: ["hidden"] });
     if (this.layout?.chat()) this.setChat(true, true);
     $("project-name").addEventListener("click", () => void this.chooseSession());
@@ -3176,11 +3420,13 @@ export class App {
     const renameDialog = $<HTMLDialogElement>("rename-file-dialog");
     const deleteDialog = $<HTMLDialogElement>("delete-file-dialog");
     const createDialog = $<HTMLDialogElement>("create-entry-dialog");
+    const moveDialog = $<HTMLDialogElement>("move-folder-dialog");
     const trashDialog = $<HTMLDialogElement>("trash-dialog");
     const referencesDialog = $<HTMLDialogElement>("references-dialog");
     const explorerNew = $<HTMLButtonElement>("explorer-new");
     explorerNew.addEventListener("click", (e) => this.fileTree.openFolderMenu(explorerNew, e, ""));
     $("explorer-trash").addEventListener("click", () => this.openTrash());
+    $("explorer-undo-move").addEventListener("click", () => void this.undoMove());
     $("trash-close").addEventListener("click", () => trashDialog.close());
     $("references-close").addEventListener("click", () => referencesDialog.close());
     referencesDialog.addEventListener("close", () => {
@@ -3190,6 +3436,11 @@ export class App {
     $("create-entry-form").addEventListener("submit", (e) => {
       e.preventDefault();
       void this.createExplorerEntry();
+    });
+    $("move-folder-cancel").addEventListener("click", () => moveDialog.close());
+    $("move-folder-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      void this.confirmMoveFolder();
     });
     $("rename-file-form").addEventListener("submit", (e) => {
       e.preventDefault();
@@ -3201,7 +3452,7 @@ export class App {
     });
     $("delete-file-confirm").addEventListener("click", () => void this.deleteFile());
     $("delete-file-cancel").addEventListener("click", () => deleteDialog.close());
-    for (const dialog of [renameDialog, deleteDialog, createDialog, trashDialog, referencesDialog]) {
+    for (const dialog of [renameDialog, deleteDialog, createDialog, moveDialog, trashDialog, referencesDialog]) {
       dialog.addEventListener("cancel", (e) => {
         if (this.fileDialogBusy) e.preventDefault();
       });
@@ -3281,20 +3532,29 @@ export class App {
     });
     $("edit-error").addEventListener("submit", (e) => {
       e.preventDefault();
-      this.setOutput($<HTMLTextAreaElement>("edit-error-output").value);
+      const area = $<HTMLTextAreaElement>("edit-error-output");
+      if (this.askSending) return;
+      const previous = this.tutorErrorSection();
+      if (area.value) {
+        if (!this.addSection({ kind: "output", text: area.value, tutorError: true }, previous)) {
+          area.setCustomValidity(t().msg.askTextLimit);
+          area.reportValidity();
+          return;
+        }
+      } else if (previous) {
+        this.sections = this.sections.filter((s) => s !== previous);
+        this.renderSections();
+      }
       this.showErrorForm(false);
       this.prefillAsk(t().quick.error.question);
     });
+    $("edit-error-output").addEventListener("input", () => $<HTMLTextAreaElement>("edit-error-output").setCustomValidity(""));
     $("edit-error-cancel").addEventListener("click", () => this.showErrorForm(false));
     $("edit-error").addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         e.stopPropagation();
         this.showErrorForm(false);
       }
-    });
-    $("ask-output-clear").addEventListener("click", () => {
-      this.setOutput(undefined);
-      $("ask-input").focus();
     });
     $("edit-new-cancel").addEventListener("click", () => this.openNewFile(false));
     $("edit-new").addEventListener("submit", (e) => {
@@ -3316,19 +3576,49 @@ export class App {
       e.preventDefault();
       void this.ask();
     });
-    $("ask-input").addEventListener("paste", (e) => this.askImages.paste(e));
+    const pasteButton = $<HTMLButtonElement>("ask-paste-output");
+    pasteButton.addEventListener("click", async () => {
+      this.cancelOutputPaste();
+      const submit = $<HTMLButtonElement>("ask-submit");
+      pasteButton.disabled = submit.disabled = true;
+      let text: string | undefined;
+      try {
+        text = await navigator.clipboard?.readText?.();
+      } catch {
+        // Alcuni browser consentono la lettura solo durante un incolla dell’utente.
+      } finally {
+        pasteButton.disabled = submit.disabled = false;
+      }
+      $("ask-input").focus();
+      if (text) this.addSection({ kind: "output", text });
+      else {
+        this.waitingForOutputPaste = true;
+        this.askImages.message(t().msg.pasteOutputHere);
+      }
+    });
+    $("ask-input").addEventListener("blur", () => this.cancelOutputPaste());
+    $("ask-input").addEventListener("paste", (e) => this.pasteQuestion(e));
     // Invio manda la domanda, Maiusc+Invio va a capo (come nella chat degli agenti)
     $("ask-input").addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.waitingForOutputPaste) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.cancelOutputPaste();
+        return;
+      }
       if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
       e.preventDefault();
       $<HTMLFormElement>("ask-form").requestSubmit();
     });
-    $("ask-input").addEventListener("input", () => this.fitAsk());
+    $("ask-input").addEventListener("input", () => {
+      this.cancelOutputPaste();
+      this.fitAsk();
+    });
     document.addEventListener("keydown", (e) => {
       if (renameDialog.open || deleteDialog.open || createDialog.open || trashDialog.open || referencesDialog.open) return;
       const inField = (e.target as HTMLElement).closest("input, textarea");
       // Ctrl+` come in VS Code: apre e chiude i terminali, anche dall'editor o da dentro un terminale
-      if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === "Backquote" && $("title-screen").hidden && !this.isChat) {
+      if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === "Backquote" && $("title-screen").hidden) {
         e.preventDefault();
         this.terminals.toggle();
         return;

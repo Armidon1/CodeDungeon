@@ -120,6 +120,10 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       ? `${selected}\n\n(Seguito di una conversazione. Prima:\n${q.previous.map((p) => `D: ${p.question}\nR: ${p.answers.join(" ") || "(nessuna risposta)"}`).join("\n")})`
       : selected;
     let content = q.context.mode === "tutor" ? `${followUp}${tutorAttachments(q.context)}\n\n${tutorReminder}` : followUp;
+    if (q.textBytes) {
+      meta.text_bytes = String(q.textBytes);
+      content += `\n\nTesto allegato dall’utente (${q.textBytes} byte). Leggilo con read_question_text(question_id="${q.id}"). Puoi partire dalla fine usando offset.`;
+    }
     if (q.imageCount) {
       meta.image_count = String(q.imageCount);
       content += `\n\nAllegati dell'utente: ${q.imageCount} immagini. Prima di rispondere, usa read_question_image con question_id "${q.id}" e index da 1 a ${q.imageCount}.`;
@@ -409,6 +413,23 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
   );
 
   server.registerTool(
+    "read_question_text",
+    {
+      title: "Leggi il testo allegato alla domanda",
+      description: "Legge fino a 8192 byte del testo incollato. Usa nextOffset per continuare fino a totalBytes. Per la fine di un log parti da max(0, textBytes - 8192).",
+      inputSchema: { question_id: z.string().max(64), offset: z.number().int().nonnegative().optional() },
+    },
+    async ({ question_id, offset }) => {
+      try {
+        const page = await project.readQuestionText(question_id, offset ?? 0);
+        return ok("Testo allegato:", page);
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
     "read_question_image",
     {
       title: "Guarda un'immagine della domanda",
@@ -433,7 +454,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
   const withQuestionImages = async (text: string, questions: UserQuestion[]): Promise<ToolResult> => {
     const hasImages = questions.some((q) => q.imageCount);
     const prompt = hasImages ? `${text} Se manca un allegato indicato da imageCount, usa read_question_image con l'id della domanda e l'indice.` : text;
-    const result = ok(prompt, questions);
+    const result = ok(questions.some((q) => q.textBytes) ? `${prompt} Leggi il testo allegato con read_question_text usando l’id della domanda.` : prompt, questions);
     let remaining = QUESTION_IMAGE_WIRE;
     for (const q of questions) {
       if (!q.imageCount) continue;
@@ -469,7 +490,7 @@ export function createMcpServer(project: Project, bridge: Bridge): McpServer {
       title: "Leggi una conversazione",
       description:
         "Restituisce una conversazione salvata in .tour/conversazioni/: le domande dell'utente, le tue risposte e il codice e gli schemi mostrati. " +
-        "Per le domande con imageCount recupera le immagini con read_question_image. " +
+        "Per textBytes usa read_question_text, per imageCount usa read_question_image. " +
         "Le domande che continuano una conversazione hanno il campo conversation e l’ultimo scambio (previous); usalo se ti serve tutto. " +
         "Senza id elenca le conversazioni, dalla più recente.",
       inputSchema: { id: z.string().max(64).optional() },

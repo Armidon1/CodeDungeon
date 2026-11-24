@@ -47,6 +47,8 @@ Tutti i messaggi possibili sono scritti in un solo posto: `src/shared/types.ts` 
    - **attesa**: l'agente chiama `wait_for_question`, che restituisce subito le domande già in coda e altrimenti resta aperto. Una notifica senza risposta resta disponibile anche ai client che iniziano ad ascoltare dopo l’invio.
 4. L'agente risponde con `show_dialog`, che può evidenziare le righe insieme al fumetto, e il percorso dell'esempio precedente riparte.
 
+La scheda Terminali e il pannello sotto l’editor mostrano le stesse istanze xterm.js. L’utente può allegare alla domanda la selezione o la cronologia disponibile della shell attiva. Il gioco mantiene una lista ordinata di estratti di codice, testo e output, ciascuno rimovibile. Per più sezioni prepara un unico allegato numerato con il file e le righe del codice o il nome della shell. Con `ask_with_text` il ponte salva il testo UTF-8 in `.tour/conversazioni/testi/<id>.txt` prima di confermare l’invio. La coda e la cronologia riportano `textBytes`, il canale riporta `text_bytes`. Lo strumento `read_question_text` legge fino a 8192 byte per volta. Il campo `nextOffset` indica da dove proseguire e si può chiedere direttamente la parte finale.
+
 Per incollare un'immagine, il gioco usa `ask_with_images` sul WebSocket. Il ponte valida e salva gli allegati in `.tour/conversazioni/immagini/` prima di confermare l'invio. La domanda conserva il conteggio `imageCount`. `wait_for_question` e `get_user_questions` includono blocchi immagine entro il limite di una domanda. Le notifiche del canale Claude Code usano `image_count` e indicano `read_question_image`, che serve anche per recuperare un allegato dalla cronologia. [Formato delle notifiche del canale Claude Code](https://code.claude.com/docs/en/channels-reference#notification-format)
 
 Per questo le istruzioni del server dicono all'agente di restare in ascolto: l'utente non deve mai tornare al terminale.
@@ -58,7 +60,7 @@ Per questo le istruzioni del server dicono all'agente di restare in ascolto: l'u
 | `cli.ts` | Punto d'ingresso. Legge `--project` e `--port`, crea `Project`, `Store` e `Bridge`, poi avvia MCP su stdio. Due modi: `mcp` (con agente) e `play` (solo il gioco, per riprodurre tour salvati). |
 | `mcp.ts` | Strumenti e prompt MCP, e le **istruzioni** che l'agente legge quando si collega. Qui si decide cosa l'agente può fare. |
 | `bridge.ts` | Server HTTP (serve i file del gioco da `dist/game` e `GET /session`) e WebSocket verso il gioco. Tiene lo stato della sessione: domande in coda, titolo, ultima attività. Mentre il gioco è aperto ricontrolla i file ogni 1,5 s. |
-| `project.ts` | Accesso ai file confinato nel progetto. In tutor il gioco può salvare, spostare e rinominare file, creare file e cartelle e usare il Cestino. L'albero include anche le cartelle vuote. Il progetto gestisce inoltre tour, schemi, conversazioni e lacune in `.tour/`. |
+| `project.ts` | Accesso ai file confinato nel progetto. In tutor il gioco può salvare e rinominare file, creare e spostare file e cartelle e usare il Cestino. L'albero include anche le cartelle vuote. Il progetto gestisce inoltre tour, schemi, conversazioni e lacune in `.tour/`. |
 | `store.ts` | Impostazioni dell'utente (livello, lingua, guida…) in un database SQLite in `~/.local/share/code-dungeon/`. Valgono per tutti i progetti. |
 | `chat-title.ts` | Titolo della chat dell'agente ("Cartelle e terminale nel TODO") per l'elenco delle sessioni. Claude Code non lo passa via MCP: il server lo legge da `~/.claude`, partendo dal processo che l'ha avviato. Solo lettura; con altri agenti non c'è. |
 | `terminal.ts` | Terminali del gioco su `/term`: una shell vera nella cartella del progetto. È l'unico punto che avvia processi; l'agente non può usarli. |
@@ -67,7 +69,7 @@ Per questo le istruzioni del server dicono all'agente di restare in ascolto: l'u
 
 - *mostrare codice*: `list_project_files`, `open_file`, `highlight_lines`, `mark_lines`;
 - *parlare*: `show_dialog`, `name_session`;
-- *ascoltare*: `wait_for_question`, `get_user_questions`, `read_question_image`, `get_conversation`, `get_game_state`;
+- *ascoltare*: `wait_for_question`, `get_user_questions`, `read_question_image`, `read_question_text`, `get_conversation`, `get_game_state`;
 - *tour*: `list_tours`, `get_tour`, `create_tour`, `add_step`, `set_step_text`, `set_step_diagram`, `play_tour`;
 - *schemi*: `draw_diagram`, `reveal_diagram`;
 - *tutor*: `record_gap`, `get_gaps`.

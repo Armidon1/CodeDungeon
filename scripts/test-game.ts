@@ -243,6 +243,21 @@ const overflowing = () =>
     }
     return out.slice(0, 5);
   })()`);
+/** Conta solo i disegni sui due canvas animati durante la finestra di osservazione. */
+const portraitDraws = (ms: number) => evaluate<{ title: number; game: number }>(`(async () => {
+  const counts = { title: 0, game: 0 };
+  const proto = CanvasRenderingContext2D.prototype;
+  const clear = proto.clearRect;
+  proto.clearRect = function (...args) {
+    if (this.canvas.id === "title-portrait") counts.title++;
+    if (this.canvas.id === "portrait") counts.game++;
+    return clear.apply(this, args);
+  };
+  try {
+    await new Promise(resolve => setTimeout(resolve, ${ms}));
+    return counts;
+  } finally { proto.clearRect = clear; }
+})()`);
 const fillsWindow = () => evaluate<boolean>(`(() => {
   const r = document.getElementById("app").getBoundingClientRect();
   return r.left === 0 && r.top === 0 && r.right === ${screenW} && r.bottom === ${screenH};
@@ -264,6 +279,9 @@ try {
   await viewport(1400, 900);
   check(await load(), "il gioco si apre sul menu");
   check(await noOverflow(), "menu senza scorrimento orizzontale a 1400 px");
+  const idle = await portraitDraws(2100);
+  check(idle.game === 0 && idle.title > 0 && idle.title < 10,
+    `nel menu in 2,1 s il ritratto visibile si aggiorna ${idle.title} volte, quello coperto ${idle.game}`);
 
   await viewport(3440, 1440);
   await click("#opt-frame-classica");
@@ -292,6 +310,8 @@ try {
   check(await waitFor(`document.getElementById("dialog-text").textContent.trim().length > 0`, 8000), "parte il primo tour con il fumetto della guida");
   check(await waitFor(`document.querySelector("#tabs [role=tab], #tabs .tab")`), "il tour apre un file nell'editor");
   check(await noOverflow(), "editor senza scorrimento orizzontale a 1400 px");
+  const inGame = await portraitDraws(2000);
+  check(inGame.title === 0 && inGame.game > 0, "entrando nel tour si anima solo il ritratto di gioco");
 
   // modalità chat
   await evaluate(`document.activeElement?.blur()`);
@@ -330,6 +350,13 @@ try {
   await viewport(390, 844);
   check(await load(), "il gioco si apre a 390 px");
   check(await fillsWindow(), "la finestra larga occupa anche lo schermo a 390 px");
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  await sleep(200);
+  const still = await portraitDraws(600);
+  check(still.title === 0 && still.game === 0, "a 390 px i ritratti restano fermi con movimento ridotto");
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+  const moving = await portraitDraws(2100);
+  check(moving.title > 0 && moving.game === 0, "a 390 px il ritratto visibile riprende quando torna il movimento");
   check(await noOverflow(), "menu senza scorrimento orizzontale a 390 px");
   await click("#start-btn");
   await waitFor(`document.getElementById("title-screen").hidden`);
@@ -425,13 +452,13 @@ try {
   await typeText("NameError: name 'x' is not defined");
   await evaluate(`document.getElementById("edit-error").requestSubmit()`);
   check(
-    await waitFor(`document.getElementById("edit-error").hidden && !document.getElementById("ask-output").hidden && document.activeElement?.id === "ask-input"`),
+    await waitFor(`document.getElementById("edit-error").hidden && !document.getElementById("ask-sections").hidden && document.activeElement?.id === "ask-input"`),
     "l'output resta allegato sopra il campo della domanda",
   );
   await press("Enter");
   await waitFor(`window.__questions.length === 2`);
   q = await lastQuestion();
-  check(/NameError/.test(q?.context.output) && !q.context.changed && (await evaluate(`document.getElementById("ask-output").hidden`)), "l'output parte con la domanda, senza righe cambiate se il codice è lo stesso");
+  check(/NameError/.test(q?.context.output) && !q.context.changed && (await evaluate(`document.getElementById("ask-sections").hidden`)), "l'output parte con la domanda, senza righe cambiate se il codice è lo stesso");
   await evaluate(`document.getElementById("code-input").focus()`);
   await typeText("#");
   await press("s", 2);
@@ -538,12 +565,16 @@ try {
     await evaluate(`[...document.querySelectorAll("#file-list > li")].findIndex((li) => li.dataset.dir === "lib") < [...document.querySelectorAll("#file-list > li")].findIndex((li) => li.querySelector('[data-path="protocol.py"]'))`),
     "le cartelle vengono prima dei file",
   );
+  const libIcon = `document.querySelector('#file-list [data-dir="lib"] .dir-icon')`;
+  const closedIcon = await evaluate<string>(`getComputedStyle(${libIcon}, "::after").clipPath`);
   await click(`#file-list .dir[data-dir="lib"] .dir-btn`);
   check(
     (await visible(`#file-list .file[data-path="lib/util.py"]`)) && !(await visible(`#file-list .file[data-path="lib/deep/inner.py"]`)) &&
       (await evaluate(`document.querySelector('#file-list .dir[data-dir="lib"] .dir-btn').getAttribute("aria-expanded") === "true"`)),
     "il clic apre la cartella, quelle dentro restano chiuse",
   );
+  check(closedIcon.startsWith("polygon(") && await evaluate(`getComputedStyle(${libIcon}, "::after").clipPath !== ${JSON.stringify(closedIcon)}`),
+    "l'icona pixel art mostra la cartella aperta con una sagoma diversa");
 
   // file e cartelle creati fuori dal gioco (dall'agente o dal terminale) compaiono senza ricaricare
   await fs.mkdir(path.join(project, "nuova"), { recursive: true });
@@ -559,7 +590,7 @@ try {
   await waitFor(`!!document.querySelector('#file-list .file[data-path="sposta.py"]') && !!document.querySelector('#file-list .dir[data-dir="dentro"]')`, 6000);
   await click(`#file-list .file[data-path="sposta.py"]`);
   await waitFor(`!!document.querySelector('#tabs .tab.is-active[data-file="sposta.py"]')`);
-  {
+  const dragTestFile = async () => {
     const box = (sel: string) => evaluate<{ x: number; y: number }>(`(() => { const el = document.querySelector('${sel}'); el.scrollIntoView({ block: "nearest" }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     const a = await box(`#file-list .file[data-path="sposta.py"]`);
     const b = await box(`#file-list .dir[data-dir="dentro"] .dir-btn`);
@@ -568,7 +599,8 @@ try {
     for (let k = 1; k <= 6; k++) await mouse("mouseMoved", a.x + ((b.x - a.x) * k) / 6, a.y + ((b.y - a.y) * k) / 6);
     check(await evaluate(`document.querySelector('#file-list .dir[data-dir="dentro"]').classList.contains("is-drop")`), "trascinando un file la cartella sotto si illumina");
     await mouse("mouseReleased", b.x, b.y);
-  }
+  };
+  await dragTestFile();
   check(
     (await waitFor(`!!document.querySelector('#file-list .file[data-path="dentro/sposta.py"]') && !document.querySelector('#file-list .file[data-path="sposta.py"]')`)) &&
       (await fs.readFile(path.join(project, "dentro", "sposta.py"), "utf8")) === "z = 3\n" &&
@@ -576,6 +608,23 @@ try {
     "lasciato su una cartella, il file si sposta su disco e nell'albero",
   );
   check(await evaluate(`!!document.querySelector('#tabs .tab.is-active[data-file="dentro/sposta.py"]') && !document.querySelector('#tabs .tab[data-file="sposta.py"]')`), "la scheda del file spostato segue il percorso nuovo");
+
+  await evaluate(`(() => { const ta = document.getElementById("code-input"); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); })()`);
+  await typeText("# bozza");
+  await fs.writeFile(path.join(project, "sposta.py"), "origine occupata\n");
+  await click("#explorer-undo-move");
+  check(await waitFor(`document.getElementById("explorer-move-status").hasAttribute("data-error") && !document.getElementById("explorer-undo-move").disabled`) &&
+    (await fs.readFile(path.join(project, "sposta.py"), "utf8")) === "origine occupata\n" &&
+    (await fs.readFile(path.join(project, "dentro", "sposta.py"), "utf8")) === "z = 3\n", "Annulla lascia entrambi i file intatti se il percorso originale è occupato");
+  await fs.unlink(path.join(project, "sposta.py"));
+  await click("#explorer-undo-move");
+  check(await waitFor(`document.getElementById("explorer-move").hidden &&
+    !!document.querySelector('#tabs .tab.is-active[data-file="sposta.py"]') &&
+    document.getElementById("code-input").value.endsWith("# bozza")`) &&
+    !existsSync(path.join(project, "dentro", "sposta.py")) &&
+    (await fs.readFile(path.join(project, "sposta.py"), "utf8")) === "z = 3\n", "Annulla riporta il file alla radice e conserva scheda e bozza");
+  await dragTestFile();
+  await waitFor(`document.querySelector('#tabs .tab.is-active[data-file="dentro/sposta.py"]')`);
 
   const movedFile = '#file-list .file[data-path="dentro/sposta.py"]';
   const renamedFile = '#file-list .file[data-path="dentro/con bozza.js"]';
@@ -680,6 +729,63 @@ try {
   check(await waitFor(`!document.getElementById("create-entry-dialog").open && !!document.querySelector('#file-list .dir[data-dir="prove/esercizi"]:not(.is-folded)')`) &&
     (await fs.stat(path.join(project, "prove", "esercizi"))).isDirectory(), "il menu di una cartella crea una sottocartella al suo interno");
 
+  const folderRow = (dir: string) => `#file-list .dir[data-dir="${dir}"]`;
+  const folderButton = (dir: string) => `${folderRow(dir)} .dir-btn`;
+  await fs.mkdir(path.join(project, "schedario", "interno", "vuota"), { recursive: true });
+  await fs.mkdir(path.join(project, "schedario-altro"));
+  await fs.writeFile(path.join(project, "schedario", "primo.py"), "a = 1\n");
+  await fs.writeFile(path.join(project, "schedario", "interno", "secondo.py"), "b = 2\n\n");
+  await waitFor(`document.querySelector(${JSON.stringify(folderRow("schedario"))})`, 6000);
+  await click(folderButton("schedario"));
+  await click(folderButton("schedario/interno"));
+  await click('#file-list .file[data-path="schedario/primo.py"]');
+  await waitFor(`document.querySelector('#tabs .tab.is-active[data-file="schedario/primo.py"]')`);
+  await evaluate(`document.querySelector('#file-list .file[data-path="schedario/interno/secondo.py"]')
+    .dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }))`);
+  await waitFor(`document.querySelector('#tabs .tab.is-active[data-file="schedario/interno/secondo.py"]')`);
+  await callTool("mark_lines", { path: "schedario/interno/secondo.py", marks: [{ line: 1, kind: "warning", message: "Controlla il valore." }] });
+  await waitFor(`document.querySelector('#editor .line[data-n="1"] .mark-pin')`);
+  await evaluate(`(() => { const ta = document.getElementById("code-input"); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); })()`);
+  await typeText("# bozza");
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+  {
+    const point = (selector: string) => evaluate<{ x: number; y: number }>(`(() => {
+      const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+    const from = await point(folderButton("schedario"));
+    const descendant = await point(folderButton("schedario/interno"));
+    const to = await point(folderButton("prove"));
+    const mouse = (type: string, { x, y }: { x: number; y: number }) =>
+      send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mouseReleased" ? 0 : 1, clickCount: 1 });
+    await mouse("mousePressed", from);
+    await mouse("mouseMoved", descendant);
+    check(await evaluate(`!document.querySelector('#file-list .is-drop')`), "trascinare una cartella su una propria sottocartella non la rende una destinazione");
+    await mouse("mouseReleased", descendant);
+    await mouse("mousePressed", from);
+    await mouse("mouseMoved", to);
+    check(await evaluate(`document.querySelector(${JSON.stringify(folderRow("prove"))}).classList.contains("is-drop")`), "trascinando una cartella si illumina la destinazione valida");
+    await mouse("mouseReleased", to);
+  }
+  check(await waitFor(`!!document.querySelector('#tabs .tab.is-active[data-file="prove/schedario/interno/secondo.py"]') &&
+    !!document.querySelector('#tabs .tab[data-file="prove/schedario/primo.py"]') &&
+    !!document.querySelector('#file-list [data-dir="prove/schedario/interno"].is-open') &&
+    !!document.querySelector('#file-list [data-dir="prove/schedario/interno/vuota"]') &&
+    !!document.querySelector('#file-list [data-dir="schedario-altro"]') && !document.querySelector('#file-list [data-dir="schedario"]') &&
+    document.getElementById("code-input").value.endsWith("# bozza") &&
+    !!document.querySelector('#editor .line[data-n="1"] .mark-pin')`) &&
+    !existsSync(path.join(project, "schedario")) &&
+    (await fs.readFile(path.join(project, "prove", "schedario", "interno", "secondo.py"), "utf8")) === "b = 2\n\n",
+  "spostare una cartella conserva i file, le schede, la bozza, i segni e le cartelle aperte");
+  check(await evaluate(`(() => {
+    const sparkle = document.querySelector('#file-list [data-dir="prove/schedario"].dir-arrived .dir-sparkle');
+    return !!sparkle && getComputedStyle(sparkle).animationName === "dir-sparkle";
+  })()`), "la cartella spostata mostra una scintilla nella sua nuova posizione");
+  await click("#edit-save");
+  check(await waitFor(`document.querySelector('#tabs .tab.is-active')?.title === "prove/schedario/interno/secondo.py"`) &&
+    (await fs.readFile(path.join(project, "prove", "schedario", "interno", "secondo.py"), "utf8")).endsWith("# bozza"),
+  "Salva scrive nel nuovo percorso dopo lo spostamento della cartella");
+
   await viewport(390, 844);
   check(await load(), "a 390 px il gioco si apre in tutor");
   check(dialogs.includes("beforeunload"), "lasciare la pagina con modifiche non salvate chiede conferma");
@@ -704,6 +810,40 @@ try {
   check(await noOverflow(), "tutor senza scorrimento orizzontale a 390 px");
   check(await evaluate(`document.querySelector('#file-list .file[data-path="lib/deep/inner.py"]').getClientRects().length > 0`), "a 390 px la striscia dei file mostra anche quelli nelle cartelle chiuse");
   check(await evaluate(`document.querySelector('#file-list .dir[data-dir="lib"]').classList.contains("is-open")`), "la cartella aperta resta aperta dopo il ricaricamento");
+
+  await rightClick(folderButton("prove/schedario"));
+  await click('.file-menu [data-action="moveFolder"]');
+  check(await inView("move-folder-dialog") && await noOverflow() && await evaluate(`(() => {
+    const options = [...document.getElementById("move-folder-to").options].map((option) => option.value);
+    return options.includes("") && !options.some((dir) => dir.startsWith("prove/schedario"));
+  })()`), "a 390 px il menu Sposta cartella offre la radice ed esclude le sottocartelle della sorgente");
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  await click("#move-folder-confirm");
+  check(await waitFor(`!document.getElementById("move-folder-dialog").open && !!document.querySelector('#file-list [data-dir="schedario/interno/vuota"]')`) &&
+    !existsSync(path.join(project, "prove", "schedario")) && existsSync(path.join(project, "schedario", "primo.py")),
+  "a 390 px il menu sposta la cartella e i suoi file nella radice");
+  const arrivalOnPhone = await evaluate<{ visible: boolean; focused: boolean; highlight: string; animation: string } | null>(`(() => {
+    const row = document.querySelector('#file-list [data-dir="schedario"].dir-arrived');
+    if (!row) return null;
+    const button = row.querySelector('.dir-btn');
+    const r = button.getBoundingClientRect();
+    return {
+      visible: r.left >= 0 && r.right <= innerWidth,
+      focused: document.activeElement === button,
+      highlight: getComputedStyle(button).boxShadow,
+      animation: getComputedStyle(row.querySelector('.dir-sparkle')).animationName,
+    };
+  })()`);
+  const staticArrival = arrivalOnPhone?.visible && arrivalOnPhone.focused && arrivalOnPhone.highlight !== "none" && arrivalOnPhone.animation === "none";
+  if (!staticArrival) console.log("     risalto dopo lo spostamento:", arrivalOnPhone);
+  check(staticArrival && await noOverflow(), "a 390 px, con movimento ridotto, la cartella è visibile e ha un risalto statico");
+  await send("Emulation.setEmulatedMedia", { features: [] });
+  check(await inView("explorer-undo-move") && await noOverflow(), "a 390 px Annulla è visibile in Esplora");
+  await click("#explorer-undo-move");
+  check(await waitFor(`document.getElementById("explorer-move").hidden &&
+    !!document.querySelector('#file-list [data-dir="prove/schedario/interno/vuota"]')`) &&
+    !existsSync(path.join(project, "schedario")) && existsSync(path.join(project, "prove", "schedario", "primo.py")) &&
+    await noOverflow(), "a 390 px Annulla riporta la cartella e il suo contenuto nel percorso originale");
 
   const narrowFile = '#file-list .file[data-path="dentro/gia.py"]';
   const narrowRenamed = '#file-list .file[data-path="dentro/prima.py"]';
@@ -777,6 +917,15 @@ try {
     (await evaluate(`(() => { const r = document.getElementById("edit-error").getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth; })()`)) && (await noOverflow()),
     "a 390 px il riquadro dell'errore sta nella finestra",
   );
+
+  await typeText("riga\n".repeat(1200) + "ERRORE FINALE");
+  await evaluate(`document.getElementById("edit-error").requestSubmit()`);
+  check(await waitFor(`!document.getElementById("ask-sections").hidden`), "anche Spiegami l’errore accetta un log oltre 4000 caratteri");
+  await click("#edit-ask-btn");
+  await click('#edit-ask [data-quick="error"]');
+  check(await evaluate(`document.getElementById("edit-error-output").value.endsWith("ERRORE FINALE")`), "il riquadro dell’errore conserva anche l’ultima riga");
+  await click("#edit-error-cancel");
+  await click("#ask-sections [data-kind=output] button");
 
   // risposte formattate (dopo l'ultimo ricaricamento: il ponte rimanda l'ultimo fumetto e chiuderebbe il menu): paragrafi, elenchi, codice e link, senza apici inversi visibili
   const RICH = "Due fonti:\n\n- Indice: https://docs.pwntools.com.\n- Classe `ELF(\"./vuln\")`, vedi [la pagina](https://docs.pwntools.com/en/stable/elf/elf.html)\n\n1. Web\n2. **Offline**";
@@ -1002,11 +1151,10 @@ try {
   );
   await click("#ask-sel");
   check(
-    (await waitFor(`!document.getElementById("ask-quote").hidden && /2.*4/.test(document.getElementById("ask-quote-label").textContent)`)) &&
+    (await waitFor(`!document.getElementById("ask-sections").hidden && /2.*4/.test(document.querySelector("#ask-sections [data-kind=quote] .ask-quote-label").textContent)`)) &&
       (await evaluate<number>(`document.querySelectorAll("#editor .line.is-picked").length`)) === 0,
     "Chiedi a <guida> cita le righe scelte",
   );
-  await click("#ask-quote-clear");
   // tutor: la selezione dentro la textarea
   await evaluate(`(() => { const ta = document.getElementById("code-input"); ta.focus(); ta.setSelectionRange(0, ta.value.indexOf("\\n", 40)); })()`);
   // la focus fa scorrere l'editor, e lo scorrimento nasconde il pulsante: si riprova finché lo scorrimento non si ferma
@@ -1018,8 +1166,9 @@ try {
   }
   check(selShown, "anche la selezione nell'editor del tutor mostra Chiedi a <guida>");
   await click("#ask-sel");
-  check(await waitFor(`!document.getElementById("ask-quote").hidden && /protocol\\.py/.test(document.getElementById("ask-quote-label").textContent)`), "la selezione del tutor diventa la citazione della domanda");
-  await click("#ask-quote-clear");
+  check(await waitFor(`!document.getElementById("ask-sections").hidden && /protocol\\.py/.test(document.querySelector("#ask-sections [data-kind=quote] .ask-quote-label").textContent)`), "la selezione del tutor diventa la citazione della domanda");
+  const quoteLabels = await evaluate<string[]>(`[...document.querySelectorAll("#ask-sections [data-kind=quote] .ask-quote-label")].map(el => el.textContent)`);
+  check(quoteLabels.length === 2 && quoteLabels.every(label => label.includes("protocol.py")), "due Chiedi alla guida conservano entrambe le selezioni con file e righe");
 
   // terminali: Ctrl+` apre il pannello sotto il codice con una shell vera nella cartella del progetto
   const ctrlBackquote = async () => {
@@ -1030,12 +1179,28 @@ try {
   };
   const termRows = `[...document.querySelectorAll("#term-body .term-view:not([hidden]) .xterm-rows > div")].map((d) => d.textContent).join(" ")`;
   check(await waitFor(`!document.getElementById("term-btn").hidden`), "la barra di stato offre i terminali");
-  await ctrlBackquote();
+  const shellTabsOnRight = () => evaluate<boolean>(`(() => {
+    const body = document.getElementById("term-body").getBoundingClientRect();
+    const tabs = document.getElementById("term-tabs").getBoundingClientRect();
+    const rows = [...document.querySelectorAll("#term-tabs .term-tab")].map(el => el.getBoundingClientRect());
+    return body.width > tabs.width && tabs.width > 0 && Math.abs(body.right - tabs.left) < 1 &&
+      Math.abs(body.top - tabs.top) < 1 && rows.length > 0 &&
+      rows.every((row, i) => row.left >= tabs.left && (!i || row.top >= rows[i - 1].bottom));
+  })()`);
+  await click("#term-btn");
   check(
     await waitFor(`!document.getElementById("term-panel").hidden && document.querySelectorAll("#term-tabs .term-tab").length === 1 && document.querySelector("#term-body .xterm-rows")`, 8000),
-    "Ctrl+` apre il pannello dei terminali con un terminale",
+    "Terminali nella barra inferiore apre una shell restando in Agente",
   );
   check(await evaluate<boolean>(`document.querySelector(".editor-wrap").getBoundingClientRect().height >= 120`), "con i terminali aperti il codice resta visibile");
+  check(await shellTabsOnRight(), "nel pannello in basso le schede delle shell sono a destra dell’output");
+  const termFont = `parseFloat(getComputedStyle(document.querySelector(".term-view:not([hidden]) .xterm-rows")).fontSize)`;
+  const initialFont = await evaluate<number>(termFont);
+  const codeFont = await evaluate<string>(`getComputedStyle(document.getElementById("editor")).fontSize`);
+  await click("#term-zoom-in");
+  check(await waitFor(`${termFont} > ${initialFont}`) &&
+    await evaluate(`getComputedStyle(document.getElementById("editor")).fontSize === ${JSON.stringify(codeFont)}`),
+    "Zoom + ingrandisce il testo del terminale indipendentemente dall’editor");
   await waitFor(`!/^(Terminal|Terminale) /.test(document.querySelector("#term-tabs .term-tab").textContent)`, 8000);
   await sleep(500); // il prompt della shell
   await evaluate(`document.querySelector("#term-body .xterm-helper-textarea").focus()`);
@@ -1046,10 +1211,67 @@ try {
   check(termOk, "il terminale esegue i comandi nella cartella del progetto");
   await press("Escape");
   check(await evaluate<boolean>(`document.getElementById("title-screen").hidden`), "Esc dentro il terminale resta alla shell");
+  await click("#terminals-tab");
+  check(await waitFor(`document.getElementById("agent-workspace").hidden && document.querySelector("#terminal-workspace #term-panel").clientHeight > innerHeight / 2 && /cd-42/.test(${termRows})`),
+    "la scheda Terminali occupa l’area di lavoro e riprende la stessa shell");
   await click("#term-new");
   check(await waitFor(`document.querySelectorAll("#term-tabs .term-tab").length === 2 && document.querySelectorAll("#term-body .term-view:not([hidden])").length === 1`, 8000), "+ apre un secondo terminale in una scheda nuova");
+  await waitFor(`!/^(Terminal|Terminale) /.test(document.querySelector("#term-tabs .is-active").textContent)`);
+  check(await evaluate(`${termFont} > ${initialFont}`), "una nuova shell nella scheda Terminali eredita lo zoom");
+  check(await shellTabsOnRight(), "nella vista Terminali le due shell sono impilate nella colonna destra");
+  await evaluate(`document.querySelector("#term-tabs .is-active").focus()`);
+  await press("ArrowUp");
+  check(await waitFor(`document.activeElement.matches('#term-tabs .term-tab:first-child.is-active') && /cd-42/.test(${termRows})`),
+    "Freccia su nella lista seleziona la shell precedente");
+  await press("ArrowDown");
+  check(await evaluate(`document.activeElement.matches('#term-tabs .term-tab:last-child.is-active')`), "Freccia giù torna alla seconda shell");
+  await click("#term-zoom-out");
+  check(await waitFor(`${termFont} === ${initialFont}`), "Zoom − ripristina la misura precedente");
+  await typeText("echo secondo-$((8*9))");
+  await press("Enter");
+  check(await waitFor(`/secondo-72/.test(${termRows})`), "la seconda scheda usa una shell indipendente");
+  const outputLine = await evaluate<{ x: number; y: number }>(`(() => {
+    const row = [...document.querySelectorAll("#term-body .term-view:not([hidden]) .xterm-rows > div")].find(el => el.textContent.trim() === "secondo-72");
+    const rect = row.getBoundingClientRect();
+    return { x: rect.left + 8, y: rect.top + rect.height / 2 };
+  })()`);
+  for (const type of ["mousePressed", "mouseReleased"]) {
+    await send("Input.dispatchMouseEvent", { type, ...outputLine, button: "left", clickCount: 3 });
+  }
+  await click("#term-share");
+  check(await waitFor(`document.querySelector("#ask-sections [data-kind=output] .ask-quote-text").textContent.trim() === "secondo-72"`),
+    "Allega selezione prepara la sola riga scelta nel terminale");
+  await click("#terminals-tab");
+  // Un clic nella shell toglie la selezione prima della prova sulla cronologia.
+  for (const type of ["mousePressed", "mouseReleased"]) {
+    await send("Input.dispatchMouseEvent", { type, ...outputLine, button: "left", clickCount: 1 });
+  }
+  await viewport(390, 844);
+  check(await shellTabsOnRight(), "a 390 px le due schede restano a destra con spazio per la shell");
+  check(await inView("term-share") && await inView("term-new") && await noOverflow(), "a 390 px si possono creare terminali e allegarne l’output");
+  await click("#term-share");
+  check(await waitFor(`document.getElementById("terminal-workspace").hidden && !document.getElementById("ask-sections").hidden && document.activeElement.id === "ask-input"`),
+    "Allega cronologia prepara la domanda nella scheda Agente");
+  check(await evaluate(`document.querySelectorAll("#ask-sections li").length === 4`) && await inView("ask-sections") && await noOverflow(),
+    "a 390 px due sezioni di codice e due allegati del terminale restano nella lista");
+  await click("#ask-sections li:nth-child(3) button");
+  const kept = await evaluate<string[]>(`[...document.querySelectorAll("#ask-sections .ask-quote-label")].map(el => el.textContent)`);
+  check(kept.length === 3 && quoteLabels.every((label, i) => kept[i] === label) && kept[2].startsWith("3."), "togliere un allegato intermedio conserva e rinumera gli altri");
+  await evaluate(`document.getElementById("ask-input").value = "Risultato della seconda shell?"`);
+  await press("Enter");
+  await waitFor(`document.getElementById("ask-sections").hidden`);
+  const shellQueue = (await callTool("get_user_questions", {})).content[0].text;
+  const shellQuestion = JSON.parse(shellQueue.slice(shellQueue.indexOf("\n"))).find(q => q.text === "Risultato della seconda shell?");
+  const sharedShell = shellQuestion?.textBytes && (await callTool("read_question_text", { question_id: shellQuestion.id })).content[0].text;
+  check(sharedShell && sharedShell.includes("echo secondo-") && sharedShell.includes("secondo-72") && !sharedShell.includes("cd-42"), "l’agente legge solo la cronologia della shell allegata");
+  const sectionsText = sharedShell && JSON.parse(sharedShell.slice(sharedShell.indexOf("\n"))).text;
+  check(sectionsText && sectionsText.startsWith(kept[0] + "\n") && sectionsText.indexOf(kept[1] + "\n") > 0 &&
+    sectionsText.indexOf(kept[2] + "\n") > sectionsText.indexOf(kept[1] + "\n") && !sectionsText.includes("\n4. "),
+    "l'agente legge tutte e sole le sezioni rimaste nello stesso ordine della bozza");
+  await viewport(1400, 900);
   await click("#term-tabs .term-tab:last-child .tab-close");
   check(await waitFor(`document.querySelectorAll("#term-tabs .term-tab").length === 1 && document.querySelectorAll("#term-body .term-view").length === 1`), "× chiude il terminale");
+  const editorHeight = await evaluate<number>(`document.querySelector(".editor-wrap").clientHeight`);
   const termH = await evaluate<number>(`document.getElementById("term-panel").getBoundingClientRect().height`);
   await evaluate(`document.getElementById("split-term").focus()`);
   await press("ArrowUp");
@@ -1058,12 +1280,47 @@ try {
       typeof (await evaluate<any>(`JSON.parse(localStorage.getItem("code-dungeon:layout")).term`)) === "number",
     "il divisore allarga i terminali e la misura resta salvata",
   );
+  check(await evaluate(`document.querySelector(".editor-wrap").clientHeight === ${editorHeight} &&
+    Math.abs(document.getElementById("term-panel").getBoundingClientRect().bottom - document.querySelector(".editor-wrap").getBoundingClientRect().bottom) < 2`),
+    "il terminale si sovrappone al fondo dell’editor senza ridimensionarlo");
+  const desktopGrip = await evaluate<{ x: number; y: number; height: number }>(`(() => {
+    const r = document.getElementById("split-term").getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, height: document.getElementById("term-panel").clientHeight };
+  })()`);
+  for (const [type, dy] of [["mousePressed", 0], ["mouseMoved", 32], ["mouseReleased", 32]] as const) {
+    await send("Input.dispatchMouseEvent", { type, x: desktopGrip.x, y: desktopGrip.y + dy, button: "left", buttons: type === "mouseReleased" ? 0 : 1, clickCount: 1 });
+  }
+  check(await waitFor(`document.getElementById("term-panel").clientHeight < ${desktopGrip.height - 20} && document.querySelector(".editor-wrap").clientHeight === ${editorHeight}`),
+    "il bordo del pannello segue il mouse senza spostare l’editor");
   await viewport(390, 844);
   check(await noOverflow(), "a 390 px i terminali non allargano la pagina");
   check(await evaluate<boolean>(`document.querySelector(".editor-wrap").getBoundingClientRect().height >= 100`), "a 390 px con i terminali il codice resta visibile");
+  const grip = await evaluate<{ x: number; y: number; height: number; editor: number }>(`(() => {
+    const r = document.getElementById("split-term").getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, height: document.getElementById("term-panel").clientHeight, editor: document.querySelector(".editor-wrap").clientHeight };
+  })()`);
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true });
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: grip.x, y: grip.y }] });
+  await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: grip.x, y: grip.y + 40 }] });
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await send("Emulation.setTouchEmulationEnabled", { enabled: false });
+  const dragWorked = await waitFor(`document.getElementById("term-panel").clientHeight < ${grip.height - 20} && document.querySelector(".editor-wrap").clientHeight === ${grip.editor}`);
+  check(dragWorked && await inView("term-zoom-in") && await inView("term-zoom-out"), "a 390 px si trascina il bordo sopra il codice e si raggiungono i pulsanti Zoom");
   await viewport(1400, 900);
   await ctrlBackquote();
   check(await waitFor(`document.getElementById("term-panel").hidden && document.getElementById("term-btn").getAttribute("aria-pressed") === "false"`), "Ctrl+` richiude il pannello");
+  await click("#chat-btn");
+  await click("#term-btn");
+  check(await waitFor(`!document.getElementById("agent-workspace").hidden && document.getElementById("term-panel").getBoundingClientRect().height > 50 && /cd-42/.test(${termRows})`) &&
+    await inView("ask-input"), "nella chat Agente il terminale si apre in basso e la domanda resta accessibile");
+  await ctrlBackquote();
+  await click("#terminals-tab");
+  check(await waitFor(`document.getElementById("term-panel").clientHeight > innerHeight / 2 && /cd-42/.test(${termRows})`),
+    "anche dalla chat si ritrova la prima shell con il suo output");
+  await click("#agent-tab");
+  check(await evaluate(`document.getElementById("app").classList.contains("is-chat") && document.getElementById("term-panel").hidden`),
+    "Agente ripristina la chat e il pannello del terminale chiuso");
+  await click("#chat-btn");
   // /term accetta solo il gioco: un'altra pagina su localhost non apre una shell
   const termFrom = (origin: string) =>
     new Promise<boolean>((resolve) => {
@@ -1089,6 +1346,42 @@ try {
     (await evaluate<string>(`document.getElementById("ask-input").value`)) === "prima riga\nseconda riga\nterza riga" && (await askH()) > h1 + 20,
     "Maiusc+Invio va a capo e il campo della domanda cresce",
   );
+  // Ritarda il primo giro del timer del brano mentre l'orologio Web Audio continua.
+  const lagged = await evaluate<{ late: number; played: number; delayed: boolean }>(`(async () => {
+    const music = id => {
+      const radio = document.getElementById("opt-music-" + id);
+      radio.checked = true;
+      radio.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    music("off");
+    const originalInterval = window.setInterval;
+    const proto = AudioScheduledSourceNode.prototype;
+    const originalStart = proto.start;
+    let delayed = false;
+    let late = 0, played = 0;
+    try {
+      const resumeAt = performance.now() + 1000;
+      window.setInterval = (fn, ms) => originalInterval(() => {
+        if (performance.now() < resumeAt) delayed = true;
+        else fn();
+      }, ms);
+      music("taverna");
+      window.setInterval = originalInterval;
+      proto.start = function (when) {
+        if (when < this.context.currentTime - 0.03) late++;
+        played++;
+        return originalStart.call(this, when);
+      };
+      await new Promise(resolve => setTimeout(resolve, 1800));
+      return { late, played, delayed };
+    } finally {
+      proto.start = originalStart;
+      window.setInterval = originalInterval;
+      music("off");
+    }
+  })()`);
+  check(lagged.delayed && lagged.late === 0 && lagged.played > 0,
+    `con un timer musicale in ritardo il brano prosegue (${lagged.played} note, ${lagged.late} scadute)`);
   // suono dei tasti: si conta quanti suoni nascono scrivendo, acceso e spento dal menu
   // la musica crea oscillatori anche lei: si spegne, così si contano solo i tasti
   await evaluate(`(() => { const r = document.getElementById("opt-music-off"); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); document.getElementById("ask-input").focus(); })()`);
@@ -1140,6 +1433,56 @@ try {
   await click("#ask-submit");
   check(await waitFor(`document.getElementById("ask-images").hidden`) &&
     (await receivedImages(""))[0]?.data === smallPng, "a 390 px si può inviare un'immagine anche senza testo");
+  await evaluate(`navigator.clipboard.readText = async () => "exit 1"`);
+  await evaluate(`document.getElementById("ask-input").focus()`);
+  await typeText("Come mai?");
+  await click("#ask-paste-output");
+  check(await waitFor(`document.querySelector("#ask-sections [data-kind=output] .ask-quote-text").textContent === "exit 1" && document.activeElement.id === "ask-input" && document.activeElement.value === "Come mai?"`) &&
+    await inView("ask-paste-output") && await noOverflow(), "a 390 px il pulsante allega anche una riga e conserva la domanda");
+  await click("#ask-sections [data-kind=output] button");
+  check(await evaluate(`document.getElementById("ask-sections").hidden && document.activeElement.value === "Come mai?"`), "si può togliere soltanto l’output breve");
+  await evaluate(`navigator.clipboard.readText = async () => { throw new DOMException("denied", "NotAllowedError"); }`);
+  await click("#ask-paste-output");
+  check(await waitFor(`!document.getElementById("ask-image-status").hidden && document.activeElement.id === "ask-input"`), "se il browser blocca gli appunti si può incollare nel campo");
+  await evaluate(`(() => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "exit 1");
+    document.activeElement.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  })()`);
+  await press("Enter");
+  check(await waitFor(`document.getElementById("ask-input").value === "" && document.getElementById("ask-sections").hidden`), "la domanda con l’allegato breve viene inviata");
+  const shortQueue = (await callTool("get_user_questions", {})).content[0].text;
+  const shortQuestion = JSON.parse(shortQueue.slice(shortQueue.indexOf("\n"))).find((q) => q.text === "Come mai?");
+  const shortPage = shortQuestion?.textBytes === 6 && (await callTool("read_question_text", { question_id: shortQuestion.id })).content[0].text;
+  check(shortPage && JSON.parse(shortPage.slice(shortPage.indexOf("\n"))).text === "exit 1", "l’agente riceve anche l’output breve come allegato di testo");
+  const log = "passo completato\n".repeat(9000) + "ULTIMO ERRORE 🪲\n";
+  const pasteLog = () => evaluate(`(() => {
+    const data = new DataTransfer();
+    data.setData("text/plain", ${JSON.stringify(log)});
+    const input = document.getElementById("ask-input");
+    input.focus();
+    input.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  })()`);
+  await pasteLog();
+  check(await inView("ask-sections") && await noOverflow(), "a 390 px il log lungo compare come allegato compatto");
+  await click("#ask-sections [data-kind=output] button");
+  await typeText("Spiega");
+  await pasteLog();
+  await evaluate(`(() => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "a".repeat(5 * 1024 * 1024));
+    document.getElementById("ask-input").dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  })()`);
+  check(await evaluate(`document.getElementById("ask-image-status").textContent.includes("5 MiB")`), "un secondo incolla oltre il limite avvisa e conserva il log precedente");
+  await typeText(" la fine");
+  check(await evaluate(`document.getElementById("ask-input").value === "Spiega la fine"`), "si può scrivere prima e dopo il log incollato");
+  await press("Enter");
+  check(await waitFor(`document.getElementById("ask-sections").hidden && document.getElementById("ask-input").value === ""`), "il log si libera dopo la conferma del ponte");
+  const queuedLog = (await callTool("get_user_questions", {})).content[0].text;
+  const logQuestion = JSON.parse(queuedLog.slice(queuedLog.indexOf("\n"))).find((q) => q.text === "Spiega la fine");
+  check(logQuestion?.textBytes === Buffer.byteLength(log) &&
+    (await callTool("read_question_text", { question_id: logQuestion.id, offset: logQuestion.textBytes - 100 })).content[0].text.includes("ULTIMO ERRORE 🪲"),
+    "l’agente riceve la domanda e legge l’ultima riga del log");
   await viewport(1400, 900);
 
   // guida a destra: colonna a tutta altezza accanto al codice, divisore verticale, sul telefono torna sotto
@@ -1159,7 +1502,7 @@ try {
   await ctrlBackquote();
   await waitFor(`!document.getElementById("term-panel").hidden`, 8000);
   const tp = await rectOf("#term-panel");
-  check(tp.right <= (await rectOf("#dialog")).left && tp.top >= (await rectOf(".editor-wrap")).bottom - 1, "i terminali stanno sotto il codice, accanto alla guida");
+  check(tp.right <= (await rectOf("#dialog")).left && Math.abs(tp.bottom - (await rectOf(".editor-wrap")).bottom) < 2, "con la guida a destra i terminali coprono solo il fondo dell’editor");
   if (process.env.SCREENSHOT) {
     const shot = await send("Page.captureScreenshot", { format: "png" });
     await fs.writeFile(path.join(process.env.SCREENSHOT, "guida-destra.png"), Buffer.from(shot.data, "base64"));

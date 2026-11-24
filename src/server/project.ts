@@ -3,11 +3,11 @@
 // che escono dalla radice del progetto.
 // Il gioco in modalità tutor può salvare, spostare, rinominare ed eliminare file, esclusi .tour/ e .git/.
 
-import { constants, promises as fs } from "node:fs";
+import { constants, lstatSync, mkdirSync, promises as fs, renameSync, rmdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { validRenameName } from "../shared/file-name.js";
-import { QUESTION_IMAGE_WIRE, type Conversation, type ConversationSummary, type Diagram, type DiagramSummary, type EntryKind, type GapLog, type ProjectTree, type QuestionImage, type Tour, type TourSummary, type TrashEntry } from "../shared/types.js";
+import { QUESTION_TEXT_BYTES, QUESTION_IMAGE_WIRE, type Conversation, type ConversationSummary, type Diagram, type DiagramSummary, type EntryKind, type GapLog, type MovedDirectory, type ProjectTree, type QuestionImage, type Tour, type TourSummary, type TrashEntry } from "../shared/types.js";
 import { validateQuestionImages } from "./question-images.js";
 
 const IGNORED_DIRS = new Set([
@@ -18,6 +18,7 @@ const MAX_FILES = 2000;
 const TOUR_DIR = ".tour";
 const DIAGRAM_DIR = "schemi"; // dentro .tour/
 const CONVERSATION_DIR = "conversazioni"; // dentro .tour/
+const QUESTION_TEXT_DIR = `${TOUR_DIR}/${CONVERSATION_DIR}/testi`;
 const QUESTION_IMAGE_DIR = `${TOUR_DIR}/${CONVERSATION_DIR}/immagini`;
 const GAPS_FILE = "lacune.json"; // dentro .tour/
 const TRASH_DIR = `${TOUR_DIR}/cestino`;
@@ -112,11 +113,44 @@ export class Project {
    */
   async moveFile(relPath: string, toDir: string): Promise<string> {
     const root = await this.getRealRoot();
-    const from = await this.resolveInside(relPath);
-    if (!(await fs.lstat(from)).isFile()) throw new Error(`Non è un file: ${relPath}`);
-    const dir = toDir === "" || toDir === "." ? root : await this.resolveInside(toDir);
-    if (!(await fs.stat(dir)).isDirectory()) throw new Error(`Non è una cartella: ${toDir}`);
+    const from = await this.resolveRegularFile(relPath, root);
+    const dir = await this.editableDirectory(root, toDir);
     return this.relocateFile(root, from, path.join(dir, path.basename(from)));
+  }
+
+  async moveDirectory(relPath: string, toDir: string): Promise<MovedDirectory> {
+    if (typeof relPath !== "string" || typeof toDir !== "string") throw new Error("Percorso non valido.");
+    const root = await this.getRealRoot();
+    const from = await this.editableDirectory(root, relPath);
+    if (from === root) throw new Error("La radice del progetto non si può spostare.");
+    const dir = await this.editableDirectory(root, toDir);
+    if (isWithin(from, dir)) throw new Error("Destinazione dentro la cartella da spostare.");
+    const to = path.join(dir, path.basename(from));
+    this.checkEditable(root, to);
+    const moved = { from: relativePath(root, from), to: relativePath(root, to) };
+    if (from === to) return moved;
+
+    const conflict = () => new Error(`C'è già un elemento con questo nome: ${moved.to}`);
+    if (process.platform === "win32") {
+      // MoveFileEx rifiuta una cartella di destinazione già esistente.
+      if (lstatSync(to, { throwIfNoEntry: false })) throw conflict();
+      renameSync(from, to);
+    } else {
+      // Su POSIX rename può sostituire una cartella vuota. Prima riserviamo il nome con mkdir esclusivo.
+      try {
+        mkdirSync(to);
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "EEXIST") throw conflict();
+        throw e;
+      }
+      try {
+        renameSync(from, to);
+      } catch (e) {
+        rmdirSync(to);
+        throw e;
+      }
+    }
+    return moved;
   }
 
   /** Rinomina un file dell'utente lasciandolo nella stessa cartella. */
@@ -484,6 +518,43 @@ export class Project {
     const tmp = `${file}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(c, null, 2) + "\n", "utf8");
     await fs.rename(tmp, file);
+  }
+
+  async saveQuestionText(id: string, text: string): Promise<number> {
+    if (!UUID_ID.test(id)) throw new Error("Id della domanda non valido.");
+    const bytes = Buffer.byteLength(text);
+    if (!bytes || bytes > QUESTION_TEXT_BYTES) throw new Error("Il testo allegato deve avere da 1 byte a 5 MiB.");
+    const dir = await this.metadataDirectory(await this.getRealRoot(), QUESTION_TEXT_DIR, true);
+    if (!dir) throw new Error("Cartella dei testi non accessibile.");
+    await fs.writeFile(path.join(dir, `${id}.txt`), text, { flag: "wx", mode: 0o600 });
+    return bytes;
+  }
+
+  private async questionTextPath(id: string): Promise<string> {
+    if (!UUID_ID.test(id)) throw new Error("Id della domanda non valido.");
+    return this.resolveRegularFile(`${QUESTION_TEXT_DIR}/${id}.txt`, await this.getRealRoot());
+  }
+
+  async discardQuestionText(id: string): Promise<void> {
+    await fs.unlink(await this.questionTextPath(id));
+  }
+
+  async readQuestionText(id: string, offset: number): Promise<{ text: string; offset: number; nextOffset: number; totalBytes: number }> {
+    const file = await fs.open(await this.questionTextPath(id), "r");
+    try {
+      const { size } = await file.stat();
+      if (size > QUESTION_TEXT_BYTES || offset < 0 || offset > size) throw new Error("Intervallo del testo non valido.");
+      const page = Buffer.alloc(Math.min(8192, size - offset));
+      const { bytesRead } = await file.read(page, 0, page.length, offset);
+      // Un offset libero può cadere dentro un carattere UTF-8. I cursori restituiti cadono sempre tra caratteri.
+      let start = 0;
+      while (start < bytesRead && (page[start] & 0xc0) === 0x80) start++;
+      const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(page.subarray(start, bytesRead), { stream: offset + bytesRead < size });
+      const first = offset + start;
+      return { text, offset: first, nextOffset: first + Buffer.byteLength(text), totalBytes: size };
+    } finally {
+      await file.close();
+    }
   }
 
   /** Le immagini sono salvate a parte, una volta sola per domanda. */

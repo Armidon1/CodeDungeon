@@ -3,7 +3,8 @@
 // - DemoSource (demo-source.ts): il progetto d'esempio incorporato, senza agente.
 
 import { t } from "./i18n";
-import type { Conversation, ConversationSummary, Diagram, DiagramSummary, EntryKind, GameContext, Gap, MovedFile, QuestionImage, ServerMessage, StoredPrefs, Tour, TourSummary, TrashEntry } from "../shared/types";
+import { repathDirectory } from "../shared/project-path";
+import type { Conversation, ConversationSummary, Diagram, DiagramSummary, EntryKind, GameContext, Gap, MovedDirectory, MovedFile, QuestionImage, ServerMessage, StoredPrefs, Tour, TourSummary, TrashEntry } from "../shared/types";
 
 export type AgentCommand = Extract<ServerMessage, { type: "open_file" | "highlight" | "marks" | "gaps" | "dialog" | "play_tour" | "diagram" | "conversation" }>;
 
@@ -27,6 +28,7 @@ export interface GameSource {
   writeFile(path: string, content: string): Promise<string[]>;
   /** Modalità tutor: sposta un file nella cartella toDir ("" = radice); risolve col percorso nuovo. */
   moveFile(path: string, toDir: string): Promise<string>;
+  moveDirectory(path: string, toDir: string): Promise<MovedDirectory>;
   /** Modalità tutor: rinomina un file nella sua cartella e risolve col nuovo percorso. */
   renameFile(path: string, name: string): Promise<string>;
   trashFile(path: string): Promise<void>;
@@ -44,13 +46,14 @@ export interface GameSource {
   resolveGap(id: string, resolved: boolean): Promise<Gap[]>;
   /** conversation: id della conversazione che la domanda continua. */
   ask(text: string, context: GameContext, conversation?: string): boolean;
-  askWithImages(text: string, context: GameContext, conversation: string | undefined, images: QuestionImage[]): Promise<boolean>;
+  askWithAttachments(text: string, context: GameContext, conversation: string | undefined, images: QuestionImage[], attachment?: string): Promise<boolean>;
   sendState(context: GameContext): void;
   savePrefs(prefs: StoredPrefs): void;
   /** Impostazioni cambiate da un'altra finestra del gioco. */
   onPrefs(cb: (prefs: StoredPrefs) => void): void;
   /** I file del progetto sono cambiati fuori dal gioco. */
   onFiles(cb: (files: string[]) => void): void;
+  onDirectoryMoved(cb: (moved: MovedDirectory) => void): void;
   onCommand(cb: (cmd: AgentCommand) => void): void;
   onStatus(cb: (state: ConnectionState) => void): void;
   /** Risolve quando arrivano i primi dati (file del progetto). */
@@ -80,6 +83,7 @@ export class BridgeSource implements GameSource {
   private statusCbs: ((s: ConnectionState) => void)[] = [];
   private prefsCbs: ((p: StoredPrefs) => void)[] = [];
   private filesCbs: ((files: string[]) => void)[] = [];
+  private directoryMovedCbs: ((moved: MovedDirectory) => void)[] = [];
   private readyResolve!: () => void;
   private readyPromise = new Promise<void>((r) => (this.readyResolve = r));
   private retry = 0;
@@ -151,6 +155,9 @@ export class BridgeSource implements GameSource {
         this.files = msg.files;
         this.dirs = msg.dirs ?? [];
         for (const cb of this.filesCbs) cb(msg.files);
+      } else if (msg.type === "directory_moved") {
+        this.applyDirectoryMove(msg);
+        for (const cb of this.directoryMovedCbs) cb(msg);
       } else {
         for (const cb of this.commandCbs) cb(msg);
       }
@@ -186,6 +193,16 @@ export class BridgeSource implements GameSource {
     const moved = await this.request<MovedFile>({ op: "move_file", path, to: toDir });
     this.files = moved.files;
     return moved.path;
+  }
+  async moveDirectory(path: string, toDir: string): Promise<MovedDirectory> {
+    const moved = await this.request<MovedDirectory>({ op: "move_dir", path, to: toDir });
+    this.applyDirectoryMove(moved);
+    return moved;
+  }
+  private applyDirectoryMove({ from, to }: MovedDirectory): void {
+    const repath = (path: string) => repathDirectory(path, from, to);
+    this.files = [...new Set(this.files.map(repath))];
+    this.dirs = [...new Set(this.dirs.map(repath))];
   }
   async renameFile(path: string, name: string): Promise<string> {
     const to = await this.request<string>({ op: "rename_file", path, name });
@@ -239,9 +256,13 @@ export class BridgeSource implements GameSource {
     this.ws.send(JSON.stringify({ type: "question", text, context, conversation }));
     return true;
   }
-  async askWithImages(text: string, context: GameContext, conversation: string | undefined, images: QuestionImage[]): Promise<boolean> {
+  async askWithAttachments(text: string, context: GameContext, conversation: string | undefined, images: QuestionImage[], attachment?: string): Promise<boolean> {
     if (!this.agent || !this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
-    await this.request<string>({ op: "ask_with_images", text, context, conversation, images });
+    if (attachment) {
+      await this.request<string>({ op: "ask_with_text", text, context, conversation, attachment, images: images.length ? images : undefined });
+    } else {
+      await this.request<string>({ op: "ask_with_images", text, context, conversation, images });
+    }
     return true;
   }
   sendState(context: GameContext): void {
@@ -253,6 +274,9 @@ export class BridgeSource implements GameSource {
   }
   onFiles(cb: (files: string[]) => void): void {
     this.filesCbs.push(cb);
+  }
+  onDirectoryMoved(cb: (moved: MovedDirectory) => void): void {
+    this.directoryMovedCbs.push(cb);
   }
   onPrefs(cb: (prefs: StoredPrefs) => void): void {
     this.prefsCbs.push(cb);

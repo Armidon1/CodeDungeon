@@ -378,11 +378,20 @@ function startMusic(id: TrackId): void {
     return;
   }
   const state = { id, step: 0, next: g.ctx.currentTime + 0.12, timer: 0 };
+  const stepDuration = 60 / tr.bpm / 4;
   // pianificazione in anticipo: il timer di JS non è preciso, l'orologio audio sì
   state.timer = window.setInterval(() => {
-    while (state.next < g.ctx.currentTime + 0.15) {
+    if (document.hidden || g.ctx.state !== "running") return;
+    const now = g.ctx.currentTime;
+    if (state.next < now) {
+      // Riprende sul tempo del brano senza creare nodi audio per le note già passate.
+      const missed = Math.ceil((now - state.next) / stepDuration);
+      state.step += missed;
+      state.next += missed * stepDuration;
+    }
+    while (state.next < now + 0.15) {
       scheduleStep(g, tr, state.step, state.next);
-      state.next += 60 / tr.bpm / 4;
+      state.next += stepDuration;
       state.step++;
     }
   }, 30);

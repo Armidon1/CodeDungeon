@@ -221,6 +221,9 @@ export function cleanTutorContext(ctx: GameContext): GameContext {
   return out;
 }
 
+export const QUESTION_INLINE_MAX = 2000;
+export const QUESTION_TEXT_BYTES = 5 * 1024 * 1024;
+
 export const QUESTION_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
 export type QuestionImageType = (typeof QUESTION_IMAGE_TYPES)[number];
 export const QUESTION_IMAGES_MAX = 4;
@@ -245,6 +248,7 @@ export interface UserQuestion {
   askedAt: string;
   context: GameContext;
   imageCount?: number;
+  textBytes?: number; // Allegato UTF-8 recuperabile con read_question_text.
   /** Conversazione a cui appartiene la domanda (id in .tour/conversazioni/). */
   conversation?: string;
   /** Ultimo scambio della stessa conversazione. Gli altri si recuperano con get_conversation. */
@@ -276,7 +280,7 @@ export interface LineMark {
 
 /** Una domanda e ciò che l'agente ha mostrato per rispondere. */
 export interface ConversationTurn {
-  question: Pick<UserQuestion, "id" | "text" | "askedAt" | "context" | "imageCount">;
+  question: Pick<UserQuestion, "id" | "text" | "askedAt" | "context" | "imageCount" | "textBytes">;
   answers: ConversationAnswer[];
   /** Ultimo codice mostrato nella risposta. */
   code?: { file: string; lines?: [number, number] };
@@ -379,6 +383,7 @@ export type ServerMessage =
   | { type: "hello"; project: string; files: string[]; dirs?: string[]; agent: boolean; prefs: StoredPrefs; terminal: boolean }
   /** I file o le cartelle del progetto sono cambiati. */
   | { type: "files"; files: string[]; dirs?: string[] }
+  | ({ type: "directory_moved" } & MovedDirectory)
   /** Preferenze cambiate da un'altra finestra del gioco. */
   | { type: "prefs"; prefs: StoredPrefs }
   | { type: "open_file"; path: string; content: string }
@@ -401,6 +406,12 @@ export interface MovedFile {
   files: string[];
 }
 
+/** Percorsi relativi della cartella prima e dopo move_dir. */
+export interface MovedDirectory {
+  from: string;
+  to: string;
+}
+
 /** Dal gioco al ponte. */
 export type ClientMessage =
   | { type: "request"; reqId: string; op: "read_file"; path: string }
@@ -408,6 +419,8 @@ export type ClientMessage =
   | { type: "request"; reqId: string; op: "write_file"; path: string; content: string }
   /** Modalità tutor: sposta un file in un'altra cartella del progetto ("" = radice). Risponde con MovedFile. */
   | { type: "request"; reqId: string; op: "move_file"; path: string; to: string }
+  /** Modalità tutor: sposta una cartella con il suo contenuto ("" = radice). */
+  | { type: "request"; reqId: string; op: "move_dir"; path: string; to: string }
   /** Modalità tutor: rinomina un file nella sua cartella. Risponde con il nuovo percorso. */
   | { type: "request"; reqId: string; op: "rename_file"; path: string; name: string }
   /** Modalità tutor: sposta un file nel cestino del progetto. */
@@ -425,6 +438,7 @@ export type ClientMessage =
   /** Segna una lacuna come risolta (o la riapre). Risponde con l'elenco aggiornato. */
   | { type: "request"; reqId: string; op: "resolve_gap"; id: string; resolved: boolean }
   | ({ type: "question" } & QuestionSubmission)
+  | ({ type: "request"; reqId: string; op: "ask_with_text"; attachment: string; images?: QuestionImage[] } & QuestionSubmission)
   | ({ type: "request"; reqId: string; op: "ask_with_images"; images: QuestionImage[] } & QuestionSubmission)
   | { type: "state"; context: GameContext }
   | { type: "save_prefs"; prefs: StoredPrefs };

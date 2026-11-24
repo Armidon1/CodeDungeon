@@ -22,6 +22,7 @@ export interface ChatEntry {
   /** Testo selezionato che accompagnava la domanda. */
   quote?: string;
   imageCount?: number;
+  textBytes?: number;
   code?: ChatCode;
   diagram?: { id: string; title: string };
 }
@@ -113,10 +114,10 @@ export class ChatLog {
       else p.textContent = entry.text;
       bubble.append(p);
     }
-    if (entry.imageCount) {
+    if (entry.imageCount || entry.textBytes) {
       const images = document.createElement("p");
       images.className = "chat-images";
-      images.textContent = t().msg.askImagesAttached(entry.imageCount);
+      images.textContent = [entry.textBytes && t().msg.askTextAttached(entry.textBytes), entry.imageCount && t().msg.askImagesAttached(entry.imageCount)].filter(Boolean).join(" · ");
       bubble.append(images);
     }
     if (entry.code) bubble.append(this.codeCard(entry.code));
@@ -246,6 +247,7 @@ function isEntry(x: unknown): x is ChatEntry {
     str(e.title) &&
     str(e.quote) &&
     (e.imageCount === undefined || (Number.isSafeInteger(e.imageCount) && e.imageCount > 0)) &&
+    (e.textBytes === undefined || (Number.isSafeInteger(e.textBytes) && e.textBytes > 0)) &&
     (e.code === undefined || typeof e.code?.file === "string") &&
     (e.diagram === undefined || (typeof e.diagram?.id === "string" && typeof e.diagram.title === "string"))
   );

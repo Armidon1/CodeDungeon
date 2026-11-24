@@ -7,13 +7,18 @@ import { FENCE } from "./richtext";
 let profile: ReaderProfile = { aids: [] };
 
 export function applyReader(p: ReaderProfile): void {
+  const wasReduced = reducedMotion();
   profile = p;
   const root = document.documentElement.classList;
   root.toggle("font-leggibile", p.aids.includes("font_leggibile"));
   root.toggle("meno-movimento", p.aids.includes("meno_movimento"));
+  if (wasReduced !== reducedMotion()) motionChanges.dispatchEvent(new Event("change"));
 }
 
 const systemReduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+export const motionChanges = new EventTarget();
+systemReduced.addEventListener("change", () => motionChanges.dispatchEvent(new Event("change")));
 
 /** Movimento ridotto: dal sistema operativo o dal questionario. */
 export const reducedMotion = (): boolean => profile.aids.includes("meno_movimento") || systemReduced.matches;

@@ -179,12 +179,23 @@ export function initLayout(onChange: () => void): LayoutControls {
     onChange();
   };
 
-  // pannello dei terminali: tra il codice e la guida, il codice tiene sempre EDITOR_MIN
-  const termMax = () => Math.max(TERM_MIN, main.clientHeight - EDITOR_MIN - (isRight() ? 0 : dialog.getBoundingClientRect().height) - 50);
+  // Il cassetto può coprire l’intera cella dell’editor o dello storico della chat.
+  const editor = main.querySelector<HTMLElement>(".editor-wrap")!;
+  const chatLog = document.getElementById("chat-log")!;
+  const termMax = () => Math.max(0, (inChat() ? chatLog : editor).clientHeight - termSplit.offsetHeight);
+  const updateTermRange = () => {
+    if (!termSplit.offsetHeight) return;
+    const max = termMax();
+    termSplit.setAttribute("aria-valuemin", String(Math.min(TERM_MIN, max)));
+    termSplit.setAttribute("aria-valuemax", String(max));
+    termSplit.setAttribute("aria-valuenow", String(termPanel.offsetHeight));
+  };
+  const termObserver = new ResizeObserver(updateTermRange);
+  for (const el of [editor, chatLog, termPanel]) termObserver.observe(el);
   const applyTerm = () => {
     if (layout.term === undefined) main.style.removeProperty("--term-h");
-    else main.style.setProperty("--term-h", `${Math.min(termMax(), Math.max(TERM_MIN, layout.term))}px`);
-    termSplit.setAttribute("aria-valuenow", String(Math.round(termPanel.getBoundingClientRect().height)));
+    else main.style.setProperty("--term-h", `${Math.max(TERM_MIN, layout.term)}px`);
+    updateTermRange();
   };
   const setTerm = (h: number | undefined) => {
     layout.term = h === undefined ? undefined : Math.round(Math.min(termMax(), Math.max(TERM_MIN, h)));

@@ -24,7 +24,11 @@
         <button type="button" class="chip-btn" id="menu-btn" aria-label="Open the menu" data-i18n="ui.menu" data-i18n-aria-label="ui.openMenu">Menu</button>
       </header>
 
-      <div class="workbench">
+      <div class="workspace-tabs" id="workspace-tabs" role="tablist" aria-label="Workspace" data-i18n-aria-label="ui.workspace" hidden>
+        <button type="button" id="agent-tab" role="tab" aria-controls="agent-workspace" aria-selected="true" data-i18n="ui.agent">Agent</button>
+        <button type="button" id="terminals-tab" role="tab" aria-controls="terminal-workspace" aria-selected="false" tabindex="-1" data-i18n="ui.terminals">Terminals</button>
+      </div>
+      <div class="workbench" id="agent-workspace" role="tabpanel" aria-labelledby="agent-tab">
         <nav class="activitybar" aria-label="Side panels" data-i18n-aria-label="ui.panels">
           <button type="button" class="act-btn" data-panel="files" aria-pressed="false" data-i18n-aria-label="ui.explorer" data-i18n-title="ui.explorer"><span class="act act-files" aria-hidden="true"></span></button>
           <button type="button" class="act-btn" data-panel="search" aria-pressed="false" data-i18n-aria-label="ui.searchTitle" data-i18n-title="ui.searchTitle"><span class="act act-search" aria-hidden="true"></span></button>
@@ -40,6 +44,10 @@
             <div class="explorer-actions" id="explorer-actions" hidden>
               <button type="button" class="chip-btn" id="explorer-new" aria-haspopup="menu" data-i18n="ui.explorerNew">New…</button>
               <button type="button" class="chip-btn" id="explorer-trash" aria-haspopup="dialog" data-i18n="ui.trash">Trash</button>
+            </div>
+            <div class="explorer-move" id="explorer-move" hidden>
+              <span class="explorer-move-status" id="explorer-move-status" role="status"></span>
+              <button type="button" class="chip-btn" id="explorer-undo-move" data-i18n="ui.undoMove">Undo</button>
             </div>
             <div class="explorer" id="explorer">
               <canvas class="walker" id="walker" aria-hidden="true"></canvas>
@@ -109,7 +117,7 @@
             </div>
             <form class="edit-error" id="edit-error" hidden>
               <label for="edit-error-output" data-i18n="ui.pasteOutput">Paste the terminal output</label>
-              <textarea id="edit-error-output" rows="6" maxlength="4000" spellcheck="false" placeholder="Traceback (most recent call last): …"></textarea>
+              <textarea id="edit-error-output" rows="6" spellcheck="false" placeholder="Traceback (most recent call last): …"></textarea>
               <span class="edit-error-actions">
                 <button type="submit" class="chip-btn" data-i18n="ui.useOutput">Ask about it</button>
                 <button type="button" class="chip-btn" id="edit-error-cancel" data-i18n="ui.cancel">Cancel</button>
@@ -143,16 +151,23 @@
           <ol class="chat-log" id="chat-log" aria-label="Messages" data-i18n-aria-label="ui.chatLog"></ol>
           <div class="splitter splitter-chat" id="split-chat" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize the board next to the chat (arrows, Enter resets)" title="Drag to resize · double click resets" data-i18n-aria-label="ui.resizeChat" data-i18n-title="ui.resizeTitle"></div>
 
-          <div class="splitter splitter-term" id="split-term" role="separator" aria-orientation="horizontal" tabindex="0" hidden aria-label="Resize the terminals (arrows, Enter resets)" title="Drag to resize · double click resets" data-i18n-aria-label="ui.resizeTerminal" data-i18n-title="ui.resizeTitle"></div>
-          <section class="term-panel" id="term-panel" hidden aria-label="Terminals" data-i18n-aria-label="ui.terminals">
-            <div class="term-head">
-              <span class="term-label" data-i18n="ui.terminals">Terminals</span>
-              <div class="term-tabs" id="term-tabs" role="tablist"></div>
-              <button type="button" class="chip-btn" id="term-new" aria-label="New terminal" title="New terminal" data-i18n-aria-label="ui.newTerminal" data-i18n-title="ui.newTerminal">+</button>
-              <button type="button" class="chip-btn" id="term-hide" aria-label="Hide the terminals (Ctrl+`)" title="Hide the terminals (Ctrl+`)" data-i18n-aria-label="ui.hideTerminal" data-i18n-title="ui.hideTerminal">✕</button>
-            </div>
-            <div class="term-body" id="term-body"></div>
-          </section>
+          <div class="term-dock" id="term-dock" hidden>
+            <div class="splitter splitter-term" id="split-term" role="separator" aria-orientation="horizontal" tabindex="0" aria-controls="term-panel" aria-label="Resize the terminals (arrows, Enter resets)" title="Drag to resize · double click resets" data-i18n-aria-label="ui.resizeTerminal" data-i18n-title="ui.resizeTitle"></div>
+            <section class="term-panel" id="term-panel" hidden aria-label="Terminals" data-i18n-aria-label="ui.terminals">
+              <div class="term-head">
+                <span class="term-label" data-i18n="ui.terminals">Terminals</span>
+                <button type="button" class="chip-btn" id="term-share" data-i18n-title="ui.attachTerminalHint" disabled></button>
+                <span class="term-zoom">
+                  <button type="button" class="chip-btn" id="term-zoom-out" data-i18n="ui.zoomOut" data-i18n-aria-label="ui.terminalZoomOut" data-i18n-title="ui.terminalZoomOut">Zoom −</button>
+                  <button type="button" class="chip-btn" id="term-zoom-in" data-i18n="ui.zoomIn" data-i18n-aria-label="ui.terminalZoomIn" data-i18n-title="ui.terminalZoomIn">Zoom +</button>
+                </span>
+                <button type="button" class="chip-btn" id="term-new" aria-label="New terminal" title="New terminal" data-i18n-aria-label="ui.newTerminal" data-i18n-title="ui.newTerminal">+</button>
+                <button type="button" class="chip-btn" id="term-hide" aria-label="Hide the terminals (Ctrl+`)" title="Hide the terminals (Ctrl+`)" data-i18n-aria-label="ui.hideTerminal" data-i18n-title="ui.hideTerminal">✕</button>
+              </div>
+              <div class="term-body" id="term-body"></div>
+              <div class="term-tabs" id="term-tabs" role="tablist" aria-orientation="vertical" aria-label="Terminals" data-i18n-aria-label="ui.terminals"></div>
+            </section>
+          </div>
 
           <div class="splitter splitter-dialog" id="split-dialog" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize the guide panel (arrows, Enter resets)" title="Drag to resize · double click resets" data-i18n-aria-label="ui.resizeDialog" data-i18n-title="ui.resizeTitle"></div>
           <section class="dialog" id="dialog" aria-label="Dialog with the guide" data-i18n-aria-label="ui.dialog">
@@ -178,34 +193,30 @@
               </div>
             </div>
             <form class="ask" id="ask-form" autocomplete="off">
-              <p class="ask-quote" id="ask-quote" hidden>
-                <span class="ask-quote-label" id="ask-quote-label"></span>
-                <span class="ask-quote-text" id="ask-quote-text"></span>
-                <button type="button" class="link-btn" id="ask-quote-clear" aria-label="Remove the selected text" data-i18n-aria-label="ui.clearSelection">✕</button>
-              </p>
-              <p class="ask-quote" id="ask-output" hidden>
-                <span class="ask-quote-label" data-i18n="ui.outputLabel">Terminal output:</span>
-                <span class="ask-quote-text" id="ask-output-text"></span>
-                <button type="button" class="link-btn" id="ask-output-clear" aria-label="Remove the output" data-i18n-aria-label="ui.clearOutput">✕</button>
-              </p>
+              <ol class="ask-sections" id="ask-sections" data-i18n-aria-label="ui.askSections" hidden></ol>
               <ul class="ask-images" id="ask-images" aria-label="Image attachments" data-i18n-aria-label="ui.askImageAttachments" hidden></ul>
               <p class="ask-image-status" id="ask-image-status" role="status" hidden></p>
               <label class="sr-only" for="ask-input" data-i18n="ui.askLabel">Question for the guide</label>
-              <textarea id="ask-input" name="question" rows="1" maxlength="2000" placeholder="Ask something about this code…"></textarea>
+              <textarea id="ask-input" name="question" rows="1" placeholder="Ask something about this code…"></textarea>
               <button type="submit" class="pix-btn" id="ask-submit" data-i18n="ui.ask">Ask</button>
+              <button type="button" class="chip-btn" id="ask-paste-output" data-i18n="ui.pasteTerminalOutput">Paste terminal output</button>
             </form>
           </section>
         </main>
       </div>
 
+      <div class="terminal-workspace" id="terminal-workspace" role="tabpanel" aria-labelledby="terminals-tab" hidden></div>
+
       <button type="button" class="pix-btn ask-sel" id="ask-sel" hidden>? Ask</button>
 
       <span class="frame-grip" id="frame-grip" role="separator" tabindex="0" aria-label="Resize the window (arrows, Enter resets)" title="Drag to resize · double click resets" data-i18n-aria-label="ui.resizeFrame" data-i18n-title="ui.resizeTitle"></span>
       <footer class="statusbar">
+        <button type="button" class="status-btn" id="term-btn" hidden aria-controls="term-dock" aria-pressed="false" data-i18n-title="ui.toggleTerminal">
+          <span aria-hidden="true">›_</span> <span data-i18n="ui.terminals">Terminals</span>
+        </button>
         <span class="status-conn" id="status-conn"></span>
         <span class="status-step" id="status-step"></span>
         <span class="status-right">
-          <button type="button" class="status-btn" id="term-btn" hidden aria-pressed="false" title="Terminals (Ctrl+`)" data-i18n="ui.terminals" data-i18n-title="ui.toggleTerminal">Terminals</button>
           <span id="status-level"></span>
           <span id="status-mode" class="status-mode"></span>
           <span id="status-gen"></span>
@@ -391,6 +402,19 @@
         <div class="file-dialog-actions">
           <button type="button" class="chip-btn" id="create-entry-cancel" data-i18n="ui.cancel">Cancel</button>
           <button type="submit" class="chip-btn" id="create-entry-confirm" data-i18n="ui.create">Create</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="project-file-dialog" id="move-folder-dialog" aria-labelledby="move-folder-title" aria-describedby="move-folder-path">
+      <h2 id="move-folder-title" data-i18n="ui.moveFolder">Move folder</h2>
+      <p class="muted" id="move-folder-path"></p>
+      <form id="move-folder-form">
+        <label for="move-folder-to" data-i18n="ui.moveDestination">Destination folder</label>
+        <select id="move-folder-to" autofocus></select>
+        <p class="file-dialog-error" id="move-folder-error" role="alert" hidden></p>
+        <div class="file-dialog-actions">
+          <button type="button" class="chip-btn" id="move-folder-cancel" data-i18n="ui.cancel">Cancel</button>
+          <button type="submit" class="chip-btn" id="move-folder-confirm" data-i18n="ui.move">Move</button>
         </div>
       </form>
     </dialog>
