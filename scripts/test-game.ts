@@ -319,21 +319,20 @@ try {
   check(await evaluate(`document.getElementById("app").classList.contains("is-chat")`), "il tasto C apre la modalità chat");
   await press("ArrowRight");
   await press("ArrowRight");
-  check(await waitFor(`document.querySelectorAll("#chat-log .chat-msg").length > 0`), "i fumetti passati finiscono nello storico della chat");
+  check(await waitFor(`document.querySelectorAll("#chat-log .chat-msg:not(.is-live)").length > 0`), "i fumetti passati finiscono nello storico della chat");
   check(await inView("ask-input"), "in chat il campo della domanda resta visibile");
-
-  const dialogH = () => evaluate<number>(`Math.round(document.getElementById("dialog").getBoundingClientRect().height)`);
-  const before = await dialogH();
-  await evaluate(`document.getElementById("split-dialog").focus()`);
-  await press("ArrowUp");
-  await press("ArrowUp");
-  check((await dialogH()) > before, "il divisore della chat ingrandisce il fumetto con le frecce");
-  for (let i = 0; i < 8; i++) await press("ArrowUp");
   check(
-    await evaluate(`(() => { const d = document.getElementById("dialog").getBoundingClientRect(); const a = document.getElementById("ask-form").getBoundingClientRect(); const t = document.getElementById("dialog-text").getBoundingClientRect(); return d.bottom - a.bottom < 40 && t.height > 160; })()`),
-    "col fumetto ingrandito la domanda resta in fondo e il testo si allarga",
+    await waitFor(`(() => { const live = document.querySelector("#chat-log > :last-child"); const d = document.getElementById("dialog-text"); return live?.classList.contains("is-live") && d.getClientRects().length === 0 && live.textContent.includes(document.getElementById("dialog-live").textContent.trim().slice(0, 40)); })()`),
+    "in chat il fumetto della guida è l'ultimo messaggio dello storico, non un riquadro sotto",
   );
-
+  check(
+    await evaluate(`(() => { const a = document.getElementById("ask-form").getBoundingClientRect(); const l = document.getElementById("chat-log").getBoundingClientRect(); return document.getElementById("portrait").getClientRects().length === 0 && document.getElementById("split-dialog").getClientRects().length === 0 && a.top >= l.bottom - 1 && a.width <= 884; })()`),
+    "in chat sotto lo storico resta solo la casella di scrittura, senza ritratto né divisore",
+  );
+  if (process.env.SCREENSHOT) {
+    const shot = await send("Page.captureScreenshot", { format: "png" });
+    await fs.writeFile(path.join(process.env.SCREENSHOT, "chat.png"), Buffer.from(shot.data, "base64"));
+  }
   await load();
   check(await evaluate(`document.getElementById("app").classList.contains("is-chat")`), "la modalità chat resta dopo il ricaricamento");
   check(await evaluate(`document.documentElement.lang === "it"`), "la lingua resta dopo il ricaricamento");
@@ -342,9 +341,9 @@ try {
     "lo storico della chat resta dopo il ricaricamento, separato dai messaggi nuovi",
   );
   await click("#chat-clear");
-  check(await evaluate(`document.querySelectorAll("#chat-log .chat-msg").length === 0 && !!document.querySelector("#chat-log .chat-empty")`), "Svuota cancella lo storico della chat");
+  check(await evaluate(`document.querySelectorAll("#chat-log .chat-msg:not(.is-live)").length === 0 && !document.querySelector("#chat-log .chat-sep")`), "Svuota cancella lo storico della chat");
   await load();
-  check(await evaluate(`document.querySelectorAll("#chat-log .chat-msg").length === 0`), "lo storico svuotato resta vuoto dopo il ricaricamento");
+  check(await evaluate(`document.querySelectorAll("#chat-log .chat-msg:not(.is-live)").length === 0`), "lo storico svuotato resta vuoto dopo il ricaricamento");
 
   // ---------- telefono ----------
   await viewport(390, 844);
@@ -362,10 +361,14 @@ try {
   await waitFor(`document.getElementById("title-screen").hidden`);
   await waitFor(`document.getElementById("dialog-text").textContent.trim().length > 0`, 8000);
   check(await noOverflow(), "chat senza scorrimento orizzontale a 390 px");
+  if (process.env.SCREENSHOT) {
+    const shot = await send("Page.captureScreenshot", { format: "png" });
+    await fs.writeFile(path.join(process.env.SCREENSHOT, "chat-390.png"), Buffer.from(shot.data, "base64"));
+  }
   await evaluate(`document.activeElement?.blur()`);
   await press("ArrowRight");
   await press("ArrowRight");
-  await waitFor(`document.querySelectorAll("#chat-log .chat-msg").length > 0`);
+  await waitFor(`document.querySelectorAll("#chat-log .chat-msg:not(.is-live)").length > 0`);
   await load();
   check(await waitFor(`!!document.querySelector("#chat-log .chat-sep")`), "a 390 px lo storico resta dopo il ricaricamento");
   check(await noOverflow(), "storico salvato senza scorrimento orizzontale a 390 px");
@@ -394,6 +397,14 @@ try {
   await click("#shortcuts-close");
   await waitFor(`!document.getElementById("shortcuts-dialog").open`);
 
+  const gutterAt = (n: number, shift = false) =>
+    evaluate(`(() => {
+      const ln = document.querySelector('#editor .line[data-n="${n}"] .ln').getBoundingClientRect();
+      const o = { bubbles: true, cancelable: true, clientX: ln.left + ln.width / 2, clientY: ln.top + ln.height / 2, shiftKey: ${shift}, button: 0, pointerId: 1 };
+      const el = document.elementFromPoint(o.clientX, o.clientY);
+      el.dispatchEvent(new PointerEvent("pointerdown", o));
+      el.dispatchEvent(new PointerEvent("pointerup", o));
+    })()`);
   // ---------- modalità tutor ----------
   await viewport(1400, 900);
   await load();
@@ -1167,14 +1178,6 @@ try {
   await callTool("open_file", { path: "protocol.py" });
   await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "protocol.py"`);
   await evaluate(`document.getElementById("editor").scrollTop = 0`);
-  const gutterAt = (n: number, shift = false) =>
-    evaluate(`(() => {
-      const ln = document.querySelector('#editor .line[data-n="${n}"] .ln').getBoundingClientRect();
-      const o = { bubbles: true, cancelable: true, clientX: ln.left + ln.width / 2, clientY: ln.top + ln.height / 2, shiftKey: ${shift}, button: 0, pointerId: 1 };
-      const el = document.elementFromPoint(o.clientX, o.clientY);
-      el.dispatchEvent(new PointerEvent("pointerdown", o));
-      el.dispatchEvent(new PointerEvent("pointerup", o));
-    })()`);
   await gutterAt(2);
   await gutterAt(4, true);
   check(
@@ -1205,10 +1208,10 @@ try {
   const quoteLabels = await evaluate<string[]>(`[...document.querySelectorAll("#ask-sections [data-kind=quote] .ask-quote-label")].map(el => el.textContent)`);
   check(quoteLabels.length === 2 && quoteLabels.every(label => label.includes("protocol.py")), "due Chiedi alla guida conservano entrambe le selezioni con file e righe");
 
-  // terminali: Ctrl+` apre il pannello sotto il codice con una shell vera nella cartella del progetto
-  const ctrlBackquote = async () => {
+  // terminali: Ctrl+J apre il pannello sotto il codice con una shell vera nella cartella del progetto
+  const ctrlJ = async () => {
     for (const type of ["rawKeyDown", "keyUp"]) {
-      await send("Input.dispatchKeyEvent", { type, key: "`", code: "Backquote", windowsVirtualKeyCode: 192, modifiers: 2 });
+      await send("Input.dispatchKeyEvent", { type, key: "j", code: "KeyJ", windowsVirtualKeyCode: 74, modifiers: 2 });
     }
     await sleep(150);
   };
@@ -1285,14 +1288,18 @@ try {
   check(await waitFor(`document.getElementById("term-dock").hidden && !document.getElementById("agent-workspace").hidden`), "Ctrl+Maiusc+T nasconde i terminali in basso");
   await ctrlT(true);
   check(await waitFor(`!document.getElementById("term-dock").hidden && document.getElementById("terminal-workspace").hidden`), "Ctrl+Maiusc+T li fa ricomparire");
-  // l'alternativa che il browser lascia passare: Ctrl+Maiusc+`
-  const ctrlShiftBackquote = async () => {
-    for (const type of ["rawKeyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: "~", code: "Backquote", windowsVirtualKeyCode: 192, modifiers: 10 });
+  // le alternative senza Ctrl+T: Ctrl+Maiusc+J (app) e Alt+J (anche in Chrome, dove Ctrl+Maiusc+J apre la console)
+  const switchKey = async (modifiers: number) => {
+    for (const type of ["rawKeyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: modifiers === 1 ? "j" : "J", code: "KeyJ", windowsVirtualKeyCode: 74, modifiers });
   };
-  await ctrlShiftBackquote();
-  check(await waitFor(`!document.getElementById("terminal-workspace").hidden`), "Ctrl+Maiusc+` porta alla scheda Terminali");
-  await ctrlShiftBackquote();
-  check(await waitFor(`!document.getElementById("agent-workspace").hidden && !document.getElementById("term-dock").hidden`), "Ctrl+Maiusc+` riporta alla scheda Agente");
+  await switchKey(10);
+  check(await waitFor(`!document.getElementById("terminal-workspace").hidden`), "Ctrl+Maiusc+J porta alla scheda Terminali");
+  await switchKey(10);
+  check(await waitFor(`!document.getElementById("agent-workspace").hidden && !document.getElementById("term-dock").hidden`), "Ctrl+Maiusc+J riporta alla scheda Agente");
+  await switchKey(1);
+  check(await waitFor(`!document.getElementById("terminal-workspace").hidden`), "Alt+J porta alla scheda Terminali");
+  await switchKey(1);
+  check(await waitFor(`!document.getElementById("agent-workspace").hidden && !document.getElementById("term-dock").hidden`), "Alt+J riporta alla scheda Agente");
   await click("#terminals-tab");
   check(await waitFor(`document.getElementById("agent-workspace").hidden && document.querySelector("#terminal-workspace #term-panel").clientHeight > innerHeight / 2 && /cd-42/.test(${termRows})`),
     "la scheda Terminali occupa l’area di lavoro e riprende la stessa shell");
@@ -1396,13 +1403,13 @@ try {
   const dragWorked = await waitFor(`document.getElementById("term-panel").clientHeight < ${grip.height - 20} && document.querySelector(".editor-wrap").clientHeight === ${grip.editor}`);
   check(dragWorked && await inView("term-zoom-in") && await inView("term-zoom-out"), "a 390 px si trascina il bordo sopra il codice e si raggiungono i pulsanti Zoom");
   await viewport(1400, 900);
-  await ctrlBackquote();
-  check(await waitFor(`document.getElementById("term-panel").hidden && document.getElementById("term-btn").getAttribute("aria-pressed") === "false"`), "Ctrl+` richiude il pannello");
+  await ctrlJ();
+  check(await waitFor(`document.getElementById("term-panel").hidden && document.getElementById("term-btn").getAttribute("aria-pressed") === "false"`), "Ctrl+J richiude il pannello");
   await click("#chat-btn");
   await click("#term-btn");
   check(await waitFor(`!document.getElementById("agent-workspace").hidden && document.getElementById("term-panel").getBoundingClientRect().height > 50 && /cd-42/.test(${termRows})`) &&
     await inView("ask-input"), "nella chat Agente il terminale si apre in basso e la domanda resta accessibile");
-  await ctrlBackquote();
+  await ctrlJ();
   await click("#terminals-tab");
   check(await waitFor(`document.getElementById("term-panel").clientHeight > innerHeight / 2 && /cd-42/.test(${termRows})`),
     "anche dalla chat si ritrova la prima shell con il suo output");
@@ -1588,7 +1595,7 @@ try {
   await evaluate(`document.getElementById("split-dialog").focus()`);
   await press("ArrowLeft");
   check((await rectOf("#dialog")).width > dl.width + 10, "le frecce allargano la guida a destra");
-  await ctrlBackquote();
+  await ctrlJ();
   await waitFor(`!document.getElementById("term-panel").hidden`, 8000);
   const tp = await rectOf("#term-panel");
   check(tp.right <= (await rectOf("#dialog")).left && Math.abs(tp.bottom - (await rectOf(".editor-wrap")).bottom) < 2, "con la guida a destra i terminali coprono solo il fondo dell’editor");
@@ -1596,7 +1603,7 @@ try {
     const shot = await send("Page.captureScreenshot", { format: "png" });
     await fs.writeFile(path.join(process.env.SCREENSHOT, "guida-destra.png"), Buffer.from(shot.data, "base64"));
   }
-  await ctrlBackquote();
+  await ctrlJ();
   await viewport(390, 844);
   ed = await rectOf(".editor-wrap");
   dl = await rectOf("#dialog");
@@ -1607,6 +1614,61 @@ try {
   check(await waitFor(`document.readyState === "complete" && document.querySelector(".main").classList.contains("is-dialog-right") && document.getElementById("dialog-dock").getAttribute("aria-pressed") === "true"`), "la guida a destra resta dopo il ricaricamento");
   await click("#dialog-dock");
   check(!(await evaluate<boolean>(`document.querySelector(".main").classList.contains("is-dialog-right")`)), "di nuovo il pulsante la riporta sotto");
+
+  // blocchi ripiegabili: la freccetta di def recv_exact nasconde il corpo, l'evidenziazione lo riapre
+  if (await evaluate<boolean>(`document.getElementById("title-screen").hidden`)) await click("#menu-btn");
+  await waitFor(`!document.getElementById("title-screen").hidden`);
+  await click(`#mode-options input[value="flusso"]`);
+  await click("#start-btn");
+  await waitFor(`document.getElementById("title-screen").hidden`);
+  await viewport(390, 844);
+  await callTool("open_file", { path: "protocol.py" });
+  await waitFor(`document.querySelector("#tabs .tab.is-active")?.dataset.file === "protocol.py"`);
+  // la riga della funzione e quella della successiva (le bozze dei test di prima spostano i numeri)
+  const defAt = (name: string) =>
+    evaluate<number>(`Number([...document.querySelectorAll("#editor .line")].find((l) => l.querySelector("code").textContent.startsWith("def ${name}"))?.dataset.n)`);
+  const fn = await defAt("recv_exact");
+  const next = await defAt("read_packet");
+  const ln = (n: number) => `document.querySelector('#editor .line[data-n="${n}"]')`;
+  check(
+    fn > 0 && next > fn + 2 && (await waitFor(`!!${ln(fn)}.querySelector('.fold-btn[aria-expanded="true"]') && !${ln(fn + 1)}.querySelector(".fold-btn")`)),
+    "accanto a una funzione c'è la freccetta per comprimerla",
+  );
+  await evaluate(`${ln(fn)}.querySelector(".fold-btn").click()`);
+  // il corpo finisce prima delle due righe vuote che precedono la funzione dopo
+  const body = Array.from({ length: next - 3 - fn }, (_, i) => fn + 1 + i);
+  check(
+    await waitFor(`(() => {
+      const ln = (n) => document.querySelector('#editor .line[data-n="' + n + '"]');
+      return ${JSON.stringify(body)}.every((n) => ln(n).offsetHeight === 0) && ln(${next - 2}).offsetHeight > 0 &&
+        ln(${fn}).classList.contains("is-fold-head") && ln(${fn}).querySelector(".fold-btn").getAttribute("aria-expanded") === "false";
+    })()`),
+    "la freccetta comprime il corpo della funzione e resta visibile la riga dopo",
+  );
+  check(await noOverflow(), "a 390 px il blocco compresso non allarga la pagina");
+  if (process.env.SCREENSHOT) {
+    await new Promise((r) => setTimeout(r, 1500));
+    for (const [w, name] of [[390, "piega-390.png"], [1400, "piega.png"]] as const) {
+      await viewport(w, w === 390 ? 844 : 900);
+      await evaluate(`document.getElementById("editor").scrollTop = ${ln(fn)}.offsetTop - 60`);
+      await new Promise((r) => setTimeout(r, 300));
+      const shot = await send("Page.captureScreenshot", { format: "png" });
+      await fs.writeFile(path.join(process.env.SCREENSHOT, name), Buffer.from(shot.data, "base64"));
+    }
+    await viewport(390, 844);
+  }
+  await evaluate(`${ln(next)}.scrollIntoView({ block: "center" })`);
+  await gutterAt(next);
+  check(
+    await waitFor(`document.querySelectorAll("#editor .line.is-picked").length === 1 && ${ln(next)}.classList.contains("is-picked")`),
+    "con un blocco compresso il clic sul numero sceglie la riga giusta",
+  );
+  await evaluate(`document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }))`);
+  await callTool("highlight_lines", { path: "protocol.py", start: fn + 2, end: fn + 3 });
+  check(
+    await waitFor(`${ln(fn + 2)}.offsetHeight > 0 && ${ln(fn)}.querySelector(".fold-btn").getAttribute("aria-expanded") === "true"`),
+    "evidenziare righe dentro un blocco compresso lo riapre",
+  );
 
   // uscita a clip dell'app su Linux: suoni calcolati in WAV e suonati da elementi <audio>
   await send("Page.navigate", { url: `${URL_GAME}?audio=clips` });

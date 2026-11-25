@@ -1,5 +1,7 @@
 // Modalità chat: lo storico dei fumetti al posto del codice, con il codice in schede da aprire.
 // Lo storico si riempie anche fuori dalla modalità chat e resta nel browser (localStorage, per progetto).
+// In fondo c'è il messaggio in corso (il fumetto attuale della guida, o i puntini mentre l'agente pensa):
+// entra nello storico salvato solo quando arriva il fumetto dopo.
 
 import type { Expression } from "../shared/types";
 import { highlightLines, langOf } from "./highlight";
@@ -44,6 +46,8 @@ export class ChatLog {
   private entries: ChatEntry[] = [];
   /** Chiave in localStorage; undefined finché non si sa il progetto. */
   private storeKey: string | undefined;
+  /** Messaggio in corso, sempre l'ultimo della lista; non salvato. */
+  private live: HTMLElement | undefined;
 
   constructor(
     private el: HTMLElement,
@@ -65,13 +69,41 @@ export class ChatLog {
     const fresh = this.entries;
     this.entries = [];
     this.el.innerHTML = "";
+    if (this.live) this.el.append(this.live);
     for (const entry of saved) this.render(entry);
     this.entries = saved;
     if (saved.length > 0) this.renderSeparator();
     for (const entry of fresh) this.add(entry);
-    if (this.entries.length === 0) this.renderEmpty();
+    if (this.entries.length === 0 && !this.live) this.renderEmpty();
     this.trim();
     this.save();
+    this.scrollToEnd();
+  }
+
+  /**
+   * Il messaggio in corso in fondo allo storico: un fumetto della guida, oppure (waiting) i puntini
+   * con il testo di attesa. undefined lo toglie.
+   */
+  setLive(entry: ChatEntry | undefined, waiting = false): void {
+    this.live?.remove();
+    this.live = undefined;
+    if (!entry) {
+      if (this.entries.length === 0 && !this.el.querySelector(".chat-empty")) this.renderEmpty();
+      return;
+    }
+    this.el.querySelector(".chat-empty")?.remove();
+    const item = this.build(entry);
+    item.classList.add("is-live");
+    if (waiting) {
+      item.classList.add("is-waiting");
+      const dots = document.createElement("span");
+      dots.className = "chat-dots";
+      dots.setAttribute("aria-hidden", "true");
+      dots.append(...[0, 1, 2].map(() => document.createElement("i")));
+      item.querySelector(".chat-who")!.after(dots);
+    }
+    this.live = item;
+    this.el.append(item);
     this.scrollToEnd();
   }
 
@@ -85,6 +117,15 @@ export class ChatLog {
 
   private render(entry: ChatEntry): void {
     this.el.querySelector(".chat-empty")?.remove();
+    this.place(this.build(entry));
+  }
+
+  /** Mette un elemento in fondo allo storico, prima del messaggio in corso. */
+  private place(node: HTMLElement): void {
+    this.el.insertBefore(node, this.live ?? null);
+  }
+
+  private build(entry: ChatEntry): HTMLLIElement {
     const item = document.createElement("li");
     item.className = `chat-msg is-${entry.who}`;
     if (entry.who === "guide") {
@@ -131,13 +172,13 @@ export class ChatLog {
       bubble.append(btn);
     }
     item.append(bubble);
-    this.el.append(item);
+    return item;
   }
 
   /** Tiene gli ultimi LOG_MAX messaggi, nella pagina e nello storico salvato. */
   private trim(): void {
     if (this.entries.length > LOG_MAX) this.entries = this.entries.slice(-LOG_MAX);
-    const msgs = this.el.querySelectorAll(".chat-msg");
+    const msgs = this.el.querySelectorAll(".chat-msg:not(.is-live)");
     for (let i = 0; i < msgs.length - LOG_MAX; i++) msgs[i].remove();
     const first = this.el.firstElementChild;
     if (first?.classList.contains("chat-sep") && this.el.querySelector(".chat-msg")) first.remove();
@@ -157,7 +198,8 @@ export class ChatLog {
   clear(): void {
     this.entries = [];
     this.el.innerHTML = "";
-    this.renderEmpty();
+    if (this.live) this.el.append(this.live);
+    else this.renderEmpty();
     this.save();
   }
 
@@ -224,7 +266,7 @@ export class ChatLog {
     btn.textContent = t().ui.chatClear;
     btn.addEventListener("click", () => this.clear());
     sep.append(label, btn);
-    this.el.append(sep);
+    this.place(sep);
   }
 
   private renderEmpty(): void {

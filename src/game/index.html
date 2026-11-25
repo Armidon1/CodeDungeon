@@ -26,8 +26,8 @@
       </header>
 
       <div class="workspace-tabs" id="workspace-tabs" role="tablist" aria-label="Workspace" data-i18n-aria-label="ui.workspace" hidden>
-        <button type="button" id="agent-tab" role="tab" aria-controls="agent-workspace" aria-selected="true" title="Switch between Agent and Terminals (Ctrl+T or Ctrl+Shift+`)" data-i18n="ui.agent" data-i18n-title="ui.switchWorkspace">Agent</button>
-        <button type="button" id="terminals-tab" role="tab" aria-controls="terminal-workspace" aria-selected="false" tabindex="-1" title="Switch between Agent and Terminals (Ctrl+T or Ctrl+Shift+`)" data-i18n="ui.terminals" data-i18n-title="ui.switchWorkspace">Terminals</button>
+        <button type="button" id="agent-tab" role="tab" aria-controls="agent-workspace" aria-selected="true" title="Switch between Agent and Terminals (Ctrl+T, Ctrl+Shift+J or Alt+J)" data-i18n="ui.agent" data-i18n-title="ui.switchWorkspace">Agent</button>
+        <button type="button" id="terminals-tab" role="tab" aria-controls="terminal-workspace" aria-selected="false" tabindex="-1" title="Switch between Agent and Terminals (Ctrl+T, Ctrl+Shift+J or Alt+J)" data-i18n="ui.terminals" data-i18n-title="ui.switchWorkspace">Terminals</button>
       </div>
       <div class="workbench" id="agent-workspace" role="tabpanel" aria-labelledby="agent-tab">
         <nav class="activitybar" aria-label="Side panels" data-i18n-aria-label="ui.panels">
@@ -163,7 +163,7 @@
                   <button type="button" class="chip-btn" id="term-zoom-in" data-i18n="ui.zoomIn" data-i18n-aria-label="ui.terminalZoomIn" data-i18n-title="ui.terminalZoomIn">Zoom +</button>
                 </span>
                 <button type="button" class="chip-btn" id="term-new" aria-label="New terminal" title="New terminal" data-i18n-aria-label="ui.newTerminal" data-i18n-title="ui.newTerminal">+</button>
-                <button type="button" class="chip-btn" id="term-hide" aria-label="Hide the terminals (Ctrl+` or Ctrl+Shift+T)" title="Hide the terminals (Ctrl+` or Ctrl+Shift+T)" data-i18n-aria-label="ui.hideTerminal" data-i18n-title="ui.hideTerminal">✕</button>
+                <button type="button" class="chip-btn" id="term-hide" aria-label="Hide the terminals (Ctrl+J or Ctrl+Shift+T)" title="Hide the terminals (Ctrl+J or Ctrl+Shift+T)" data-i18n-aria-label="ui.hideTerminal" data-i18n-title="ui.hideTerminal">✕</button>
               </div>
               <div class="term-body" id="term-body"></div>
               <div class="term-tabs" id="term-tabs" role="tablist" aria-orientation="vertical" aria-label="Terminals" data-i18n-aria-label="ui.terminals"></div>

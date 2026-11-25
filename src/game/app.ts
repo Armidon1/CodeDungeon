@@ -29,12 +29,13 @@ import { directoryContains, parentDirectory, repathDirectory } from "../shared/p
 import { AskImages } from "./ask-images";
 import * as sound from "./audio";
 import { TRACK_IDS, type SoundSettings } from "./audio";
-import { ChatLog, type ChatCode } from "./chat";
+import { ChatLog, type ChatCode, type ChatEntry } from "./chat";
 import { Board } from "./diagram";
 import { FileTree } from "./filetree";
 import { followTarget } from "./follow";
 import { findFileReferences } from "./references";
 import { EditLayer } from "./editing";
+import { foldRanges, type FoldMap } from "./fold";
 import { changedLines, remapMarks, tutorBuffer, type QuickAsk } from "./tutor";
 import { highlightLines, langLabel, langOf } from "./highlight";
 import { GuidePicker } from "./guide";
@@ -211,6 +212,9 @@ export class App {
   private conversation: string | undefined;
   /** Righe intere scelte dai numeri di riga: [ancora, fine], nell'ordine del trascinamento. */
   private lineSel: [number, number] | undefined;
+  /** Blocchi ripiegabili del file mostrato (riga d'inizio → ultima riga) e, per file, quelli chiusi. */
+  private foldable: FoldMap = new Map();
+  private folded = new Map<string, Set<number>>();
   /** Passo del tour da riprendere dopo le risposte dal vivo. */
   private resumeStep: number | undefined;
   /** Suggerimento se l'agente tarda a rispondere a una domanda. */
@@ -1412,9 +1416,70 @@ export class App {
       "afterbegin",
       this.currentLines.map((html, i) => `<div class="line" data-n="${i + 1}"><span class="ln">${i + 1}</span><code>${html || " "}</code></div>`).join(""),
     );
+    this.applyFolds(text);
     this.applyHighlight();
     this.applyMarks();
     this.setLineSel(this.lineSel);
+  }
+
+  // ---------- Blocchi ripiegabili ----------
+
+  /** Freccette nel margine per i blocchi del testo e righe nascoste di quelli chiusi. In tutor no: la textarea copre tutte le righe. */
+  private applyFolds(text?: string): void {
+    const editor = $("editor");
+    const file = this.currentFile;
+    if (text !== undefined) this.foldable = file && !this.tutor ? foldRanges(text, langOf(file)) : new Map();
+    const closed = file ? this.folded.get(file) : undefined;
+    // i blocchi spariti (il file è cambiato) non restano chiusi
+    if (closed) for (const n of closed) if (!this.foldable.has(n)) closed.delete(n);
+    for (const el of editor.querySelectorAll(".fold-btn")) el.remove();
+    for (const el of editor.querySelectorAll(".line.is-folded, .line.is-fold-head")) el.classList.remove("is-folded", "is-fold-head");
+    editor.classList.toggle("has-folds", this.foldable.size > 0);
+    const lines = editor.querySelectorAll<HTMLElement>(".line[data-n]");
+    for (const [start, end] of this.foldable) {
+      const line = lines[start - 1];
+      if (!line) continue;
+      const shut = closed?.has(start) ?? false;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "fold-btn";
+      btn.dataset.fold = String(start);
+      btn.setAttribute("aria-expanded", String(!shut));
+      btn.setAttribute("aria-label", shut ? t().ui.unfoldBlock(start, end) : t().ui.foldBlock(start, end));
+      btn.title = btn.getAttribute("aria-label")!;
+      line.querySelector(".ln")?.append(btn);
+      if (!shut) continue;
+      line.classList.add("is-fold-head");
+      for (let n = start + 1; n <= end; n++) lines[n - 1]?.classList.add("is-folded");
+    }
+  }
+
+  /** Apre o chiude il blocco che parte dalla riga start. */
+  private toggleFold(start: number): void {
+    const file = this.currentFile;
+    if (!file || !this.foldable.has(start)) return;
+    const closed = this.folded.get(file) ?? new Set<number>();
+    if (closed.has(start)) closed.delete(start);
+    else closed.add(start);
+    if (closed.size) this.folded.set(file, closed);
+    else this.folded.delete(file);
+    this.applyFolds();
+    sound.play("select");
+  }
+
+  /** Riapre i blocchi chiusi che nascondono una delle righe a..b (per l'evidenziazione o un segno). */
+  private unfoldAround(a: number, b: number): void {
+    const closed = this.currentFile ? this.folded.get(this.currentFile) : undefined;
+    if (!closed?.size) return;
+    let changed = false;
+    for (const start of [...closed]) {
+      const end = this.foldable.get(start) ?? start;
+      if (b > start && a <= end) {
+        closed.delete(start);
+        changed = true;
+      }
+    }
+    if (changed) this.applyFolds();
   }
 
   // ---------- Segni dell'agente sulle righe ----------
@@ -1438,6 +1503,7 @@ export class App {
     for (const el of editor.querySelectorAll(".line.mark")) el.classList.remove("mark", "mark-error", "mark-warning", "mark-hint");
     this.showMarkNote(undefined);
     const list = this.currentFile ? this.marks.get(this.currentFile)?.marks : undefined;
+    for (const mk of list ?? []) this.unfoldAround(mk.line, mk.endLine ?? mk.line);
     list?.forEach((mk, i) => {
       for (let l = mk.line; l <= (mk.endLine ?? mk.line); l++) editor.querySelector(`.line[data-n="${l}"]`)?.classList.add("mark", `mark-${mk.kind}`);
       const ln = editor.querySelector(`.line[data-n="${mk.line}"] .ln`);
@@ -1508,6 +1574,8 @@ export class App {
     $("explorer-actions").hidden = !this.tutor;
     this.renderUndoMove();
     this.syncEditable();
+    // in tutor niente blocchi chiusi: la textarea copre tutte le righe
+    if (this.currentFile) this.applyFolds(this.bufferOf(this.currentFile) ?? "");
     this.renderStatus();
     this.reportState();
   }
@@ -2089,6 +2157,7 @@ export class App {
 
   private applyHighlight(): void {
     const [a, b] = this.highlight ?? [0, -1];
+    if (this.highlight) this.unfoldAround(a, b);
     for (const el of $("editor").querySelectorAll<HTMLElement>(".line")) {
       const n = Number(el.dataset.n);
       const on = n >= a && n <= b;
@@ -2422,6 +2491,13 @@ export class App {
     this.renderStatus();
     this.syncChatBoard();
     if (!quiet) sound.play("select");
+    // nella chat il fumetto è intero, fuori torna a pagine
+    const line = this.dialogLine;
+    const want = line && (on ? [line.text] : pages(line.text));
+    if (want && want.length !== this.pageList.length) {
+      this.pageList = want;
+      this.showPage(0);
+    } else if (on && this.typing) this.typingFinish?.();
     this.relayout();
     if (on) this.chat.scrollToEnd();
     else if (this.highlight) requestAnimationFrame(() => this.scrollToHighlight());
@@ -2450,14 +2526,20 @@ export class App {
     this.dialogLine = line;
     const slot = $("dialog-code");
     slot.replaceChildren(...(line.code ? [this.chat.codeCard(line.code)] : []));
-    this.pageList = pages(line.text);
+    // nella chat il fumetto è anche l'ultimo messaggio dello storico, intero
+    this.chat.setLive(this.chatEntry(line), line.transient);
+    this.pageList = this.isChat ? [line.text] : pages(line.text);
     this.showPage(0);
   }
 
   /** Il fumetto che lascia il posto a un altro entra nello storico della chat. */
   private logLine(line: DialogLine | undefined): void {
     if (!line || line.transient) return;
-    this.chat.add({
+    this.chat.add(this.chatEntry(line));
+  }
+
+  private chatEntry(line: DialogLine): ChatEntry {
+    return {
       who: line.fromUser ? "user" : "guide",
       text: line.text,
       imageCount: line.imageCount,
@@ -2468,7 +2550,7 @@ export class App {
       quote: line.fromUser ? line.note : undefined,
       code: line.code,
       diagram: line.diagram,
-    });
+    };
   }
 
   /** Mostra una pagina del fumetto corrente; scelte e azioni solo sull'ultima. */
@@ -2514,7 +2596,8 @@ export class App {
     };
 
     const voice = () => sound.blip(this.settings.guide.id, line.expression);
-    if (reducedMotion()) {
+    // nella chat il testo arriva intero nello storico: niente macchina da scrivere
+    if (reducedMotion() || this.isChat) {
       voice();
       finish();
       return;
@@ -2968,6 +3051,7 @@ export class App {
       // la domanda va nello storico dopo il fumetto che l'ha fatta nascere
       this.logLine(this.dialogLine);
       this.dialogLine = undefined;
+      this.chat.setLive(undefined);
       this.chat.add({ who: "user", text: q, textBytes: textBytes || undefined, imageCount: imageCount || undefined, quote: quote?.text && clip(quote.text.replace(/\s+/g, " "), QUOTE_NOTE_MAX), code: quote?.file && quote.lines ? { file: quote.file, lines: quote.lines } : undefined });
       this.say({ text: t().msg.asked, expression: "pensieroso", transient: true });
       this.portrait.set({ talking: false });
@@ -3218,8 +3302,21 @@ export class App {
     if (!first || !ln) return undefined;
     const r = ln.getBoundingClientRect();
     if (!anywhere && (e.clientX < r.left || e.clientX > r.right)) return undefined;
+    const lines = editor.querySelectorAll<HTMLElement>(".line");
+    const count = lines.length;
+    if (editor.querySelector(".line.is-folded")) {
+      // con blocchi chiusi le righe visibili non sono più in fila: si cerca quella sotto il puntatore
+      let last: HTMLElement | undefined;
+      for (const line of lines) {
+        if (line.classList.contains("is-folded")) continue;
+        const box = line.getBoundingClientRect();
+        if (e.clientY < box.top) return anywhere ? Number((last ?? line).dataset.n) : undefined;
+        if (e.clientY < box.bottom) return Number(line.dataset.n);
+        last = line;
+      }
+      return anywhere && last ? Number(last.dataset.n) : undefined;
+    }
     const n = Math.floor((e.clientY - first.getBoundingClientRect().top) / first.offsetHeight) + 1;
-    const count = editor.querySelectorAll(".line").length;
     if (!anywhere && (n < 1 || n > count)) return undefined;
     return Math.max(1, Math.min(count, n));
   }
@@ -3446,11 +3543,15 @@ export class App {
     });
     // numeri di riga: clic per una riga, trascinamento o Maiusc+clic per un blocco
     const editorEl = $("editor");
+    editorEl.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>(".fold-btn");
+      if (btn) this.toggleFold(Number(btn.dataset.fold));
+    });
     let picking = false;
     document.addEventListener("pointerdown", (e) => {
       if (e.target === askSel) return;
       const target = e.target as HTMLElement;
-      const n = editorEl.contains(target) && !target.closest(".mark-pin") && e.button === 0 ? this.gutterLine(e) : undefined;
+      const n = editorEl.contains(target) && !target.closest(".mark-pin, .fold-btn") && e.button === 0 ? this.gutterLine(e) : undefined;
       if (n === undefined) {
         if (this.lineSel) this.setLineSel(undefined);
         return;
@@ -3688,11 +3789,14 @@ export class App {
     document.addEventListener("keydown", (e) => {
       if (renameDialog.open || deleteDialog.open || createDialog.open || trashDialog.open || referencesDialog.open || shortcutsDialog.open) return;
       const inField = (e.target as HTMLElement).closest("input, textarea");
-      // Ctrl+` come in VS Code: apre e chiude i terminali, anche dall'editor o da dentro un terminale.
-      // Ctrl+Maiusc+` passa tra Agente e Terminali: è il Ctrl+T che il browser non si tiene
-      if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === "Backquote" && $("title-screen").hidden) {
+      // Ctrl+J come in VS Code: apre e chiude i terminali, anche dall'editor o da dentro un terminale.
+      // Ctrl+Maiusc+J e Alt+J passano tra Agente e Terminali: sono il Ctrl+T che il browser non si tiene
+      // (in Chrome Ctrl+Maiusc+J apre la console, Alt+J no). Niente tasto `: sulla tastiera italiana non c'è.
+      const ctrlJ = e.ctrlKey && !e.altKey;
+      const altJ = e.altKey && !e.ctrlKey && !e.shiftKey;
+      if ((ctrlJ || altJ) && !e.metaKey && e.code === "KeyJ" && $("title-screen").hidden) {
         e.preventDefault();
-        if (!e.shiftKey) this.terminals.toggle();
+        if (ctrlJ && !e.shiftKey) this.terminals.toggle();
         else if (this.terminals.available) this.terminals.setWorkspace(!this.terminals.inWorkspace);
         return;
       }

@@ -718,6 +718,47 @@ body.frame-classica .frame-grip:focus-visible { outline-offset: -2px; }
 .code-input::selection { color: transparent; background: color-mix(in srgb, var(--sky) 35%, transparent); }
 .editor.is-editable:focus-within .ln { color: var(--ink-dim); }
 
+/* Blocchi ripiegabili: freccetta a destra del numero (si vede passando sull'editor), righe nascoste, "⋯" sulla riga del blocco chiuso */
+.fold-btn {
+  position: absolute;
+  right: 0.15ch;
+  top: 0;
+  z-index: 3;
+  width: 1.1ch;
+  height: 1.22em;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  background: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+  opacity: 0;
+}
+.fold-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  clip-path: polygon(0 20%, 100% 20%, 50% 80%);
+}
+.fold-btn[aria-expanded="false"]::before { clip-path: polygon(20% 0, 80% 50%, 20% 100%); }
+.editor:hover .fold-btn, .fold-btn:focus-visible, .fold-btn[aria-expanded="false"] { opacity: 1; }
+.fold-btn:hover, .fold-btn:focus-visible { color: var(--lantern); }
+.fold-btn[aria-expanded="false"] { color: var(--lantern); }
+.fold-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 0; }
+@media (hover: none) { .fold-btn { opacity: 1; } }
+.line.is-folded { display: none; }
+.line.is-fold-head code::after {
+  content: "⋯";
+  margin-left: 1ch;
+  padding: 0 0.6ch;
+  color: var(--ink-dim);
+  background: color-mix(in srgb, var(--ink-faint) 25%, transparent);
+}
+
 /* Segni della guida (mark_lines): ondina sotto le righe, pulsante nel margine, commento sotto la riga */
 .line.mark code { text-decoration: underline wavy; text-decoration-skip-ink: none; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 .line.mark-error code { text-decoration-color: var(--ember); }
@@ -923,15 +964,50 @@ button.board-node:hover { color: var(--lantern); }
   grid-template-columns: minmax(0, 1fr) 6px var(--chat-board-w, minmax(0, 1.25fr));
   grid-template-areas: "log splitc board" "splitd splitc board" "dialog splitc board";
 }
-.app.is-chat .splitter-dialog { grid-area: splitd; margin-inline: 10px; }
+.app.is-chat .splitter-dialog { display: none; }
 .app.is-chat .main.has-board .splitter-chat { display: block; grid-area: splitc; margin-block: 10px; }
 .app.is-chat .editor-wrap { display: none; grid-area: board; }
 .app.is-chat .main.has-board .editor-wrap { display: block; margin: 10px 10px 10px 4px; background: none; }
 .app.is-chat .chat-log { grid-area: log; display: flex; }
-.app.is-chat .dialog { grid-area: dialog; max-height: 50vh; overflow-y: auto; align-content: start; }
-.app.is-chat .main.has-dialog-h .dialog { max-height: none; }
-.app.is-chat .dialog-code { display: block; }
-.app.is-chat .dialog-code:empty { display: none; }
+/* In chat il riquadro della guida diventa la casella di scrittura: il fumetto è l'ultimo messaggio dello storico.
+   Sopra la casella le scelte e la nota, sotto il livello e "Avanti" (solo quando c'è qualcosa dopo). */
+.app.is-chat .dialog {
+  grid-area: dialog;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "note note" "choices choices" "ask ask" "head foot";
+  gap: 8px 12px;
+  width: min(880px, calc(100% - 28px));
+  justify-self: center;
+  max-height: 50vh;
+  margin: 4px 0 12px;
+  padding: 0;
+  overflow-y: auto;
+  align-content: start;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  clip-path: none;
+}
+.app.is-chat .dialog-body { display: contents; }
+.app.is-chat :is(.portrait-frame, .speaker, .step-title, .dialog-text, .dialog-code, #prev-btn, .advance, #next-btn:disabled) { display: none; }
+.app.is-chat .dialog :is(.dialog-head, .dialog-note, .choices, .dialog-foot) { margin-left: 0; }
+.app.is-chat .dialog .dialog-head { grid-area: head; min-height: 0; }
+.app.is-chat .dialog .level-switch { margin-left: 0; }
+.app.is-chat .dialog .dialog-note { grid-area: note; justify-self: center; text-align: center; color: var(--ink-faint); }
+.app.is-chat .dialog .choices { grid-area: choices; }
+.app.is-chat .dialog .dialog-foot { grid-area: foot; justify-self: end; }
+.app.is-chat .ask {
+  grid-area: ask;
+  align-items: center;
+  padding: 8px 8px 8px 12px;
+  background: var(--night);
+  border: 2px solid var(--line);
+  box-shadow: 3px 3px 0 var(--code-bg);
+}
+.app.is-chat .ask:focus-within { border-color: var(--lantern); }
+.app.is-chat .ask textarea { flex: 1 1 100%; padding: 4px 0; font-size: calc(17px * var(--fs)); background: none; border: 0; }
+.app.is-chat #ask-paste-output { order: 1; }
+.app.is-chat #ask-submit { order: 2; margin-left: auto; align-self: center; }
 .app.is-chat .board-pop,
 .app.is-chat .board-pop.has-size { inset: 0; width: auto; height: auto; max-height: none; animation: none; }
 .app.is-chat .board-pop .board { flex: 1; }
@@ -949,11 +1025,19 @@ button.board-node:hover { color: var(--lantern); }
 .chat-sep { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; font-size: calc(13px * var(--fs)); color: var(--ink-faint); }
 .chat-sep .chip-btn { margin-left: 0; }
 .chat-empty { align-self: center; max-width: 44ch; text-align: center; font-size: calc(15px * var(--fs)); color: var(--ink-faint); }
-.chat-msg { display: flex; align-items: flex-start; gap: 10px; max-width: min(100%, 72ch); }
-.chat-msg.is-user { align-self: flex-end; flex-direction: row-reverse; }
+/* come in una chat: la guida scrive a tutta larghezza accanto al ritratto, l'utente in un fumetto a destra */
+.chat-msg { display: flex; align-items: flex-start; gap: 12px; max-width: 100%; }
+.chat-msg.is-user { align-self: flex-end; flex-direction: row-reverse; max-width: min(85%, 64ch); }
 .chat-face { flex: none; width: 40px; height: 40px; image-rendering: pixelated; background: var(--panel); border: 2px solid var(--line); }
-.chat-bubble { display: grid; gap: 6px; min-width: 0; padding: 8px 12px; background: var(--night); border: 2px solid var(--line); }
-.chat-msg.is-user .chat-bubble { background: var(--panel-2); border-color: var(--sky); }
+.chat-bubble { display: grid; gap: 6px; flex: 1 1 auto; min-width: 0; padding: 2px 0 0; }
+.chat-msg.is-user .chat-bubble { padding: 8px 12px; background: var(--panel-2); border: 2px solid var(--line); box-shadow: 3px 3px 0 var(--code-bg); }
+.chat-msg.is-live .chat-face { border-color: var(--lantern); }
+.chat-msg.is-waiting .chat-text { color: var(--ink-faint); }
+.chat-dots { display: flex; gap: 5px; padding: 4px 0; }
+.chat-dots i { width: 6px; height: 6px; background: var(--lantern); animation: chat-dot 1.2s steps(1) infinite; }
+.chat-dots i:nth-child(2) { animation-delay: 0.4s; }
+.chat-dots i:nth-child(3) { animation-delay: 0.8s; }
+@keyframes chat-dot { 0% { opacity: 1; } 33% { opacity: 0.25; } }
 .chat-who { margin: 0; font-family: var(--font-display); font-size: calc(9px * var(--fs)); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lantern); }
 .chat-msg.is-user .chat-who { color: var(--sky); }
 .chat-text { margin: 0; font-size: calc(17px * var(--fs)); line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
@@ -1468,10 +1552,13 @@ button.board-node:hover { color: var(--lantern); }
     grid-template-areas: "board" "log" "dialog";
   }
   .app.is-chat .main.has-board .editor-wrap { margin: 6px 6px 0; }
-  .app.is-chat .dialog { max-height: 55vh; }
+  .app.is-chat .dialog { max-height: 55vh; width: calc(100% - 16px); margin-bottom: 8px; grid-template-areas: "note note" "choices choices" "ask ask" "head foot"; }
+  .app.is-chat .dialog .level-switch { width: auto; }
   /* sul telefono il fumetto tiene solo il nome del file: l'estratto si legge nello storico */
   .dialog-code .chat-snippet { display: none; }
   .chat-log { padding-inline: 8px; }
+  .chat-msg { gap: 8px; }
+  .chat-face { width: 32px; height: 32px; }
   .reader-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .track-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sound-slider { flex: 1 1 100%; }

@@ -1,6 +1,6 @@
 // Sezioni ridimensionabili: larghezza dell'esplora file, altezza del pannello della guida e dei terminali, finestra della lavagna
 // e, con la finestra "classica" del menu, la finestra intera del gioco. Nella modalità chat: la colonna della
-// lavagna e l'altezza del fumetto, salvate a parte.
+// lavagna, salvata a parte.
 // Si trascina il divisore (o si usano le frecce quando ha il fuoco); doppio clic torna alla misura iniziale.
 // Le misure restano in questo browser: sono una comodità di chi guarda, non un'impostazione del progetto.
 
@@ -22,8 +22,7 @@ const POP_MIN_W = 320;
 const POP_MIN_H = 180;
 /** Distanza della finestra della lavagna dai bordi dell'editor (top/right in styles.css). */
 const POP_GAP = 10;
-/** Nella chat: lo storico e la lavagna tengono almeno questo spazio. */
-const CHAT_LOG_MIN = 80;
+/** Nella chat: lo storico e la lavagna tengono almeno questo spazio in larghezza. */
 const CHAT_MIN_W = 320;
 const CHAT_BOARD_MIN = 280;
 const FRAME_MIN_W = 600;
@@ -51,9 +50,8 @@ interface Layout {
   menuTab?: string;
   /** Modalità chat: il codice nascosto, lo storico dei messaggi al suo posto. */
   chat?: boolean;
-  /** Nella chat: larghezza della colonna della lavagna e altezza del fumetto in px. */
+  /** Nella chat: larghezza della colonna della lavagna in px. */
   chatBoard?: number;
-  chatDialog?: number;
 }
 
 export interface LayoutControls {
@@ -95,7 +93,6 @@ function load(): Layout {
       menuTab: typeof raw.menuTab === "string" ? raw.menuTab : undefined,
       chat: raw.chat === true || undefined,
       chatBoard: typeof raw.chatBoard === "number" ? raw.chatBoard : undefined,
-      chatDialog: typeof raw.chatDialog === "number" ? raw.chatDialog : undefined,
     };
   } catch {
     return {};
@@ -124,7 +121,7 @@ export function initLayout(onChange: () => void): LayoutControls {
   const chatSplit = document.getElementById("split-chat")!;
   const termSplit = document.getElementById("split-term")!;
   const termPanel = document.getElementById("term-panel")!;
-  /** Nella chat il fumetto ha una sua altezza: lì sopra c'è lo storico, non il codice. */
+  /** Nella chat la guida è la casella di scrittura sotto lo storico: niente altezza da salvare. */
   const inChat = () => app.classList.contains("is-chat");
   const layout = load();
   /** Larghezza da ridare alla barra laterale quando la si riapre dalla barra delle attività. */
@@ -136,8 +133,8 @@ export function initLayout(onChange: () => void): LayoutControls {
     workbench.style.setProperty("--side-w", `${w}px`);
     sideSplit.setAttribute("aria-valuenow", String(w));
   };
-  const dialogMax = () => Math.max(DIALOG_MIN, main.clientHeight - (inChat() ? CHAT_LOG_MIN : EDITOR_MIN) - 40);
-  const dialogSaved = () => (inChat() ? layout.chatDialog : layout.dialog);
+  const dialogMax = () => Math.max(DIALOG_MIN, main.clientHeight - EDITOR_MIN - 40);
+  const dialogSaved = () => (inChat() ? undefined : layout.dialog);
   /** La guida sta davvero a destra: scelta, non nella chat, finestra abbastanza larga (vedi styles.css). */
   const isRight = () => layout.dialogRight === true && !inChat() && matchMedia("(min-width: 761px)").matches;
   const dialogWMax = () => Math.max(DIALOG_W_MIN, main.clientWidth - EDITOR_MIN_W);
@@ -172,9 +169,8 @@ export function initLayout(onChange: () => void): LayoutControls {
     onChange();
   };
   const setDialog = (h: number | undefined) => {
-    const v = h === undefined ? undefined : Math.round(h);
-    if (inChat()) layout.chatDialog = v;
-    else layout.dialog = v;
+    if (inChat()) return;
+    layout.dialog = h === undefined ? undefined : Math.round(h);
     applyDialog();
     onChange();
   };
